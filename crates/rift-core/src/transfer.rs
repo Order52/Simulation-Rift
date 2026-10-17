@@ -129,11 +129,18 @@ impl<W: Write> SealingWriter<W> {
     /// Completes the age stream. Only after this succeeds may the object be
     /// committed; on any error the caller deletes the partial output.
     pub fn finish(self) -> Result<Sealed, VaultError> {
-        self.inner.finish()?;
-        Ok(Sealed {
+        self.finish_into_inner().map(|(sealed, _)| sealed)
+    }
+
+    /// Like [`finish`](Self::finish), also returning the underlying writer
+    /// (e.g. so the caller can fsync the file before publishing it).
+    pub fn finish_into_inner(self) -> Result<(Sealed, W), VaultError> {
+        let inner = self.inner.finish()?;
+        let sealed = Sealed {
             sha256: self.hasher.finalize().into(),
             size: self.size,
-        })
+        };
+        Ok((sealed, inner))
     }
 }
 
