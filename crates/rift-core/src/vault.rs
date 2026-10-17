@@ -19,6 +19,8 @@ use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::transfer::SealingWriter;
+
 pub const INDEX_FORMAT_VERSION: u32 = 1;
 /// The index is small metadata; anything larger is refused before decryption.
 pub const MAX_INDEX_FILE_BYTES: u64 = 16 * 1024 * 1024;
@@ -159,31 +161,15 @@ pub fn seal(
     out: impl Write,
     limit: u64,
 ) -> Result<Sealed, VaultError> {
-    let encryptor = age::Encryptor::with_recipients(iter::once(recipient as &dyn age::Recipient))
-        .map_err(|e| VaultError::Encrypt(e.to_string()))?;
-    let mut writer = encryptor
-        .wrap_output(out)
-        .map_err(|e| VaultError::Encrypt(e.to_string()))?;
-    let mut hasher = Sha256::new();
-    let mut size: u64 = 0;
-    let mut buffer = vec![0u8; CHUNK];
-    loop {
-        let n = plaintext.read(&mut buffer)?;
-        let Some(chunk) = buffer.get(..n).filter(|c| !c.is_empty()) else {
-            break;
-        };
-        size = size.saturating_add(u64::try_from(n).map_err(|_| VaultError::TooLarge(limit))?);
-        if size > limit {
-            return Err(VaultError::TooLarge(limit));
+    let mut writer = SealingWriter::new(recipient, out, limit)?;
+    io::copy(&mut plaintext, &mut writer).map_err(|e| {
+        if e.kind() == io::ErrorKind::FileTooLarge {
+            VaultError::TooLarge(limit)
+        } else {
+            VaultError::Io(e)
         }
-        hasher.update(chunk);
-        writer.write_all(chunk)?;
-    }
-    writer.finish()?;
-    Ok(Sealed {
-        sha256: hasher.finalize().into(),
-        size,
-    })
+    })?;
+    writer.finish()
 }
 
 /// Decrypts `ciphertext` into `out` and verifies it against `expected`.
