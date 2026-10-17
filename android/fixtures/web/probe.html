@@ -1,0 +1,16 @@
+<!doctype html><html><meta charset="utf-8"><title>Probe session state</title>
+<script src="/report.js"></script>
+<script>
+// S12: report which seeded state a page can still see. ?test= names the run.
+const state = present => present ? "PRESENT" : "absent";
+(async () => {
+  await report("cookie", state(document.cookie.includes("rift_js_cookie")));
+  await report("server_cookie", state(document.cookie.includes("rift_server_cookie")));
+  await report("localStorage", state(localStorage.getItem("rift")));
+  const dbs = indexedDB.databases ? (await indexedDB.databases()).map(d => d.name) : [];
+  await report("indexedDB", state(dbs.includes("rift-db")));
+  await report("cacheStorage", state((await caches.keys()).includes("rift-cache")));
+  await report("serviceWorker", state((await navigator.serviceWorker.getRegistrations()).length > 0));
+  await report("done", "1");
+})().catch(e => report("probe_error", e));
+</script>

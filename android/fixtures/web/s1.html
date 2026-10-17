@@ -1,0 +1,39 @@
+<!doctype html><html data-test="s1"><meta charset="utf-8"><title>S1 bridges</title>
+<script src="/report.js"></script>
+<script>
+// S1: a page looks for anything native it can talk to.
+(async () => {
+  const names = Object.getOwnPropertyNames(window);
+  const suspicious = names.filter(k => /android|bridge|native|rift|jsinterface|javascriptinterface|injected|messagehandler/i.test(k));
+  await report("bridge.globals", suspicious.join(",") || "none");
+  await report("webkit.messageHandlers", typeof (window.webkit && window.webkit.messageHandlers));
+  await report("chrome.webview", typeof (window.chrome && window.chrome.webview));
+  // Objects added with addJavascriptInterface are untagged plain objects whose
+  // methods are native code. Standard namespaces (CSS, WebAssembly, Math…)
+  // carry their own Symbol.toStringTag.
+  const objects = names.filter(k => {
+    try {
+      const v = window[k];
+      return v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype &&
+        Object.prototype.toString.call(v) === "[object Object]" &&
+        Object.values(v).some(f => typeof f === "function" && /\[native code\]/.test(Function.prototype.toString.call(f)));
+    } catch (e) { return false; }
+  });
+  await report("plain.objects.with.native.methods", objects.join(",") || "none");
+  // WebView itself provides window.android.webview: the Media Integrity API,
+  // which asks Google Play for a device attestation. Rift disables it.
+  const w = window.android && window.android.webview;
+  if (w) {
+    const members = [];
+    for (let p = w; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) members.push(...Object.getOwnPropertyNames(p));
+    await report("android.webview.members", members.filter(m => m !== "constructor").sort().join("|"));
+    try {
+      await w.getExperimentalMediaIntegrityTokenProvider({ cloudProjectNumber: 1 });
+      await report("media_integrity", "ANSWERED");
+    } catch (e) {
+      await report("media_integrity", "REJECTED " + e.name + ": " + e.message);
+    }
+  }
+  await report("done", "1");
+})().catch(e => report("probe_error", e));
+</script>

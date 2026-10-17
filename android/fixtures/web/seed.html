@@ -1,0 +1,22 @@
+<!doctype html><html data-test="seed"><meta charset="utf-8"><title>Seed session state</title>
+<script src="/report.js"></script>
+<script src="/cacheable.js"></script>
+<script>
+// S12: seed every kind of storage a session could leave behind.
+(async () => {
+  document.cookie = "rift_js_cookie=1; max-age=86400; path=/";
+  await fetch("/set-cookie");
+  localStorage.setItem("rift", "1");
+  await new Promise((resolve, reject) => {
+    const req = indexedDB.open("rift-db", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("s");
+    req.onsuccess = () => { const tx = req.result.transaction("s", "readwrite"); tx.objectStore("s").put("1", "k"); tx.oncomplete = resolve; tx.onerror = reject; };
+    req.onerror = reject;
+  });
+  const cache = await caches.open("rift-cache");
+  await cache.put("/cache-entry", new Response("1"));
+  await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.ready;
+  await report("seeded", "cookie,server_cookie,localStorage,indexedDB,cacheStorage,serviceWorker,httpCache");
+})().catch(e => report("seed_error", e));
+</script>

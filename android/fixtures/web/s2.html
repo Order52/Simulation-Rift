@@ -1,0 +1,21 @@
+<!doctype html><html data-test="s2"><meta charset="utf-8"><title>S2 permissions</title>
+<script src="/report.js"></script>
+<script>
+// S2: a page asks for camera, microphone, location and the clipboard.
+const settle = p => p.then(() => "ALLOWED", e => "DENIED " + (e && (e.name || e.code)));
+(async () => {
+  await report("secure_context", window.isSecureContext);
+  const media = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+  await report("camera", media ? await settle(navigator.mediaDevices.getUserMedia({ video: true })) : "UNAVAILABLE");
+  await report("microphone", media ? await settle(navigator.mediaDevices.getUserMedia({ audio: true })) : "UNAVAILABLE");
+  await report("geolocation", await new Promise(resolve => navigator.geolocation.getCurrentPosition(
+    () => resolve("ALLOWED"), e => resolve("DENIED code=" + e.code), { timeout: 5000 })));
+  await report("clipboard_read", navigator.clipboard && navigator.clipboard.readText
+    ? await settle(navigator.clipboard.readText()) : "UNAVAILABLE");
+  await report("file_fetch", await settle(fetch("file:///etc/hosts")));
+  await report("content_fetch", await settle(fetch("content://settings/system")));
+  const popup = window.open("/s2.html#popup");
+  await report("window_open", popup ? "OPENED" : "BLOCKED");
+  await report("done", "1");
+})();
+</script>

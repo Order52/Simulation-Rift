@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cleartext is permitted only because users may browse http: sites, which
+     the browser marks as not encrypted (§10.2). This file governs the
+     WebView and platform HTTP stacks; Rift's own transfers run in rift-core
+     and apply their own rules (INV-13). No user-installed CAs are trusted. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
