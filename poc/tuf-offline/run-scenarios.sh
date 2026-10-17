@@ -33,6 +33,10 @@ publish() { # $1 = cmd (create|update) $2 = version $3 = outdir $4 = timestamp e
     --snapshot-expires 'in 3 weeks' --snapshot-version "$2" \
     --timestamp-expires "$4" --timestamp-version "$2" \
     --outdir "$3" $extra
+  # tuftool links targets to the input files. Replace the links with copies so
+  # each repository copy below is independent (tampering one must not change
+  # another) and the repository can be pushed to a device.
+  cp -RL "$3" "$3.copy" && rm -rf "$3" && mv "$3.copy" "$3"
 }
 
 make_root "$wrk/root" >/dev/null
@@ -45,14 +49,20 @@ cp "$wrk/input/pack.bin" "$wrk/pack-v1.bin"
 # --- client side --------------------------------------------------------------
 echo "| scenario | expected | client output | result |"
 echo "|---|---|---|---|"
-check() { # $1 = scenario, $2 = expected (OK|REJECTED), rest = client args
+# A rejection only counts when it is for the expected reason: a repository that
+# is merely unreadable (say, a dangling link) must not pass as "tamper detected".
+check() { # $1 = scenario, $2 = OK or REJECTED:<reason substring>, rest = client args
   name="$1"; expected="$2"; shift 2
+  outcome="${expected%%:*}"
+  reason=""
+  [ "$outcome" != "$expected" ] && reason="${expected#*:}"
   out="$("$client" "$@" 2>&1 || true)"
   case "$out" in
-    "$expected"*) verdict=pass ;;
+    "$outcome"*"$reason"*) verdict=pass ;;
     *) verdict="**FAIL**"; failures=$((failures + 1)) ;;
   esac
-  printf '| %s | %s | `%s` | %s |\n' "$name" "$expected" "$(printf '%s' "$out" | tr '|' '/' | cut -c1-160)" "$verdict"
+  shown="$(printf '%s' "$out" | tr '|\n' '/ ' | sed -E "s#file://[^ ']*/##g" | cut -c1-220)"
+  printf '| %s | %s | `%s` | %s |\n' "$name" "$expected" "$shown" "$verdict"
 }
 load() { # $1 = repo, $2 = datastore, $3 = root
   echo load --root "${3:-$wrk/root/root.json}" --repo "$1" --datastore "$2"
@@ -65,13 +75,13 @@ cp -R "$wrk/repo" "$wrk/repo-tamper-target"
 target_file="$(ls "$wrk"/repo-tamper-target/targets/*pack.bin)"
 printf 'X' | dd of="$target_file" bs=1 seek=100 conv=notrunc 2>/dev/null
 # shellcheck disable=SC2046
-check "target bytes modified" REJECTED $(load "$wrk/repo-tamper-target" "$wrk/ds-t1") --target pack.bin --expect "$wrk/pack-v1.bin"
+check "target bytes modified" "REJECTED:Hash mismatch" $(load "$wrk/repo-tamper-target" "$wrk/ds-t1") --target pack.bin --expect "$wrk/pack-v1.bin"
 
 cp -R "$wrk/repo" "$wrk/repo-tamper-meta"
 targets_meta="$(ls "$wrk"/repo-tamper-meta/metadata/*.targets.json)"
 sed -i.bak 's/"expires": *"[^"]*"/"expires": "2099-01-01T00:00:00Z"/' "$targets_meta" && rm -f "$targets_meta.bak"
 # shellcheck disable=SC2046
-check "targets.json modified (unsigned)" REJECTED $(load "$wrk/repo-tamper-meta" "$wrk/ds-t2")
+check "targets.json modified (unsigned)" "REJECTED:Hash mismatch" $(load "$wrk/repo-tamper-meta" "$wrk/ds-t2")
 
 # shellcheck disable=SC2046
 check "rollback: load v1 into fresh store" OK $(load "$wrk/repo" "$wrk/ds-rollback")
@@ -80,38 +90,38 @@ publish update 2 "$wrk/repo" 'in 1 week' >/dev/null
 # shellcheck disable=SC2046
 check "rollback: update to v2" OK $(load "$wrk/repo" "$wrk/ds-rollback") --target pack.bin --expect "$wrk/input/pack.bin"
 # shellcheck disable=SC2046
-check "rollback: replay v1 after v2 was trusted" REJECTED $(load "$wrk/repo-v1" "$wrk/ds-rollback")
+check "rollback: replay v1 after v2 was trusted" "REJECTED:Found version 1 of timestamp" $(load "$wrk/repo-v1" "$wrk/ds-rollback")
 
 publish create 1 "$wrk/repo-expired" "$(date -u -v-1d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-1 day' +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1 \
   || echo "| expired timestamp | REJECTED | tuftool refused to publish expired metadata | n/a |"
 if [ -d "$wrk/repo-expired" ]; then
   # shellcheck disable=SC2046
-  check "expired timestamp" REJECTED $(load "$wrk/repo-expired" "$wrk/ds-exp")
+  check "expired timestamp" "REJECTED:expired" $(load "$wrk/repo-expired" "$wrk/ds-exp")
 fi
 
 make_root "$wrk/other-root" >/dev/null
 # shellcheck disable=SC2046
-check "repository signed by an untrusted root" REJECTED $(load "$wrk/repo" "$wrk/ds-other" "$wrk/other-root/root.json")
+check "repository signed by an untrusted root" "REJECTED:Signature threshold" $(load "$wrk/repo" "$wrk/ds-other" "$wrk/other-root/root.json")
 
 cp -R "$wrk/repo" "$wrk/repo-oversize"
 ts="$wrk/repo-oversize/metadata/timestamp.json"
 # Whitespace keeps the JSON (and its canonical signature) valid, isolating the size limit.
 { head -c 1 "$ts"; head -c 20000 /dev/zero | tr '\0' ' '; tail -c +2 "$ts"; } > "$ts.new" && mv "$ts.new" "$ts"
 # shellcheck disable=SC2046
-check "timestamp.json above 16 KiB limit" REJECTED $(load "$wrk/repo-oversize" "$wrk/ds-big")
+check "timestamp.json above 16 KiB limit" "REJECTED:Maximum size 16384" $(load "$wrk/repo-oversize" "$wrk/ds-big")
 
 # shellcheck disable=SC2046
-check "target not listed in metadata" REJECTED $(load "$wrk/repo" "$wrk/ds-valid") --target missing.bin --expect "$wrk/pack-v1.bin"
+check "target not listed in metadata" "REJECTED:not listed" $(load "$wrk/repo" "$wrk/ds-valid") --target missing.bin --expect "$wrk/pack-v1.bin"
 # Informational: how tough itself treats hostile names (normalizes, does not reject).
 for name in ../../etc/passwd a/../../escape /etc/passwd; do
   printf '| tough TargetName %s (informational) | — | `%s` | info |\n' "$name" "$("$client" target-name "$name" 2>&1 || true)"
 done
 # Rift's staging policy: only allowlisted, already-normalized flat names.
-check "Rift policy: ../../etc/passwd" REJECTED rift-target-policy ../../etc/passwd
-check "Rift policy: a/../../escape" REJECTED rift-target-policy a/../../escape
-check "Rift policy: /etc/passwd" REJECTED rift-target-policy /etc/passwd
-check "Rift policy: ./url-hashes.bin" REJECTED rift-target-policy ./url-hashes.bin
-check "Rift policy: unknown.bin" REJECTED rift-target-policy unknown.bin
+check "Rift policy: ../../etc/passwd" "REJECTED:not in normal form" rift-target-policy ../../etc/passwd
+check "Rift policy: a/../../escape" "REJECTED:not in normal form" rift-target-policy a/../../escape
+check "Rift policy: /etc/passwd" "REJECTED:not a known pack file" rift-target-policy /etc/passwd
+check "Rift policy: ./url-hashes.bin" "REJECTED:not in normal form" rift-target-policy ./url-hashes.bin
+check "Rift policy: unknown.bin" "REJECTED:not a known pack file" rift-target-policy unknown.bin
 check "Rift policy: url-hashes.bin" OK rift-target-policy url-hashes.bin
 
 echo
