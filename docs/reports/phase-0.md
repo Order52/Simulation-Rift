@@ -10,7 +10,7 @@
 | L3 | Is the sealed-memfd output immutable? | **Pass** | same | same |
 | X1 | Does the vault format detect damage? | **Pass**, with a design finding | host (macOS arm64) | `cargo test -p rift-core vault` |
 | X2 | Can TUF be verified offline, on Android too? | **Pass** on host and Android (arm64), with two design findings | host; Android emulators API 30 and 36 | [host](evidence/phase0-X2-host.md), [Android](evidence/phase0-X2-android.md) |
-| X3 | Are URL lookups fast and correct? | **Pass** on host; phone measurement pending | host | [evidence](evidence/phase0-X3-host.md) |
+| X3 | Are URL lookups fast and correct? | **Pass** on host and Android emulator (p95 11.6 µs); phone pending | host; API 36 emulator | [host](evidence/phase0-X3-host.md), [Android](evidence/phase0-X3-android.md) |
 | L1 | Is the WebKitGTK sandbox actually active, and can Rift detect it? | **Pass** (native package), with a design finding; Flatpak pending | Docker, Fedora 44, WebKitGTK 2.54.1, aarch64 | [evidence](evidence/phase0-L1-docker.md) |
 | A1 | Is the WebView renderer sandboxed on our floor? | **Pass** on API 30 and 36 | Android emulator, arm64, `google_apis` images | [evidence](evidence/phase0-android.md) |
 | A2 | Is disposal complete, including after a crash mid-reset? | **Pass**, with a design finding | same | same |
@@ -80,7 +80,7 @@
 
 - L2/L3 on Fedora kernels, and inside Flatpak, where Flatpak's own seccomp filter also applies. (Ubuntu x86_64 passes in CI; there the ptrace negative control is inconclusive because Yama already blocks it.)
 - X2 on x86_64 Android and physical phones; the size of tough and aws-lc-rs inside Rift's shared library (the standalone binary, 4.8 MB, is an upper bound).
-- X3 latency on a real phone. Memory cost: ~19 MiB per million URL entries when held in a `Vec`.
+- X3 latency on a real phone (the API 36 emulator gives p95 11.6 µs). Memory cost: ~19 MiB per million URL entries when held in a `Vec`.
 - Android on physical devices, OEM WebView builds, API 33/34/35, x86_64, and 16 KB page-size devices. API 30 was run only with the image's stock WebView 91.
 - L1 inside Flatpak (the shipping configuration), on a real desktop with a GPU, and with the Rust `webkit6` bindings instead of the Python probe. Whether the Flatpak sandbox bounds the network process.
 

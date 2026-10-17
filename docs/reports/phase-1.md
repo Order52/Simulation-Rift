@@ -54,7 +54,7 @@
 - Fuzzing depth: minutes per target, not the CPU-days a release would need, and no coverage report yet. Clean short runs are not evidence of absence of bugs.
 - `rift-worker`'s decoders (YARA-X rule compilation, image decoding) are not fuzzed here. They run inside the confined worker, so a crash there is a failed job, not a breach, but it is still a reliability gap.
 - `store`, `session` and `vault` crash recovery is covered by unit tests that simulate interrupted writes, not by fault injection (that is Phase 7).
-- `rift-core` has not yet run on Android: only the PoC native library has. It will in Phase 2.
+- `rift-core` and `rift-protocol` unit tests pass on the API 36 emulator (arm64), but only as a test binary: they have not yet run inside the app (Phase 2).
 
 ## Could be improved
 

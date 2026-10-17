@@ -45,7 +45,7 @@ The original specification was reviewed and replaced by `docs/architecture.md`: 
 | X1 | Does the vault format detect damage? | Pass | `cargo test -p rift-core vault` |
 | X2 | Can TUF be verified offline? | Pass on host and on Android (API 30, 36 emulators) | [host](evidence/phase0-X2-host.md), [Android](evidence/phase0-X2-android.md) |
 | — | Android worker lifecycle: cold start, signals, timeout, stuck worker | Measured: app zygote required; kill denied; timeout fires; unbind retires a stuck worker | [evidence](evidence/phase0-android.md) |
-| X3 | Are URL lookups fast and correct? | Pass on host; phone open | [evidence](evidence/phase0-X3-host.md) |
+| X3 | Are URL lookups fast and correct? | Pass on host and API 36 emulator (p95 11.6 µs); phone open | [host](evidence/phase0-X3-host.md), [Android](evidence/phase0-X3-android.md) |
 
 ### 2.3 Phase 1 code (Rust workspace)
 
