@@ -56,3 +56,23 @@ jobs:
             ./target/release/linux-worker-lockdown controller --mode "$mode" | tee -a "$GITHUB_STEP_SUMMARY" || status=1
           done
           exit $status
+
+  # Phase 1 gate: every fuzz target runs for a fixed budget on each push.
+  # Findings are fixed in the crate and kept as unit tests, not as corpus files.
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      NIGHTLY: nightly-2026-10-17
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned nightly and cargo-fuzz
+        run: |
+          rustup toolchain install "$NIGHTLY" --profile minimal
+          cargo +"$NIGHTLY" install cargo-fuzz --version 0.13.2 --locked
+      - name: Run each target for 60 seconds
+        run: |
+          for target in $(cargo +"$NIGHTLY" fuzz list); do
+            echo "::group::$target"
+            cargo +"$NIGHTLY" fuzz run "$target" -- -max_total_time=60 -rss_limit_mb=2048
+            echo "::endgroup::"
+          done

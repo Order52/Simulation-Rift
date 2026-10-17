@@ -1,0 +1,63 @@
+# Fuzz targets for the parsers that see untrusted input (Phase 1 gate,
+# docs/architecture.md §22). Needs nightly and cargo-fuzz:
+#   cargo +nightly fuzz run <target> -- -max_total_time=60
+[package]
+name = "rift-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rift-core = { path = "../crates/rift-core" }
+rift-protocol = { path = "../crates/rift-protocol" }
+tempfile = "3.27.0"
+
+# Not part of the product workspace: it builds only on nightly.
+[workspace]
+
+[[bin]]
+name = "protocol_response"
+path = "fuzz_targets/protocol_response.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "url_canonicalize"
+path = "fuzz_targets/url_canonicalize.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "intel_table"
+path = "fuzz_targets/intel_table.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "navigation"
+path = "fuzz_targets/navigation.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "display_name"
+path = "fuzz_targets/display_name.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vault_index"
+path = "fuzz_targets/vault_index.rs"
+test = false
+doc = false
+bench = false
