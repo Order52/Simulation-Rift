@@ -15,6 +15,7 @@ pub const PROTOCOL_VERSION: u16 = 1;
 pub const MAX_FRAME_BYTES: usize = 64 * 1024;
 pub const MAX_RULE_NAME_BYTES: usize = 128;
 pub const MAX_PDF_PAGES: u32 = 100_000;
+pub const MAX_RULES: u32 = 1_000_000;
 /// Output ceiling for any rendered bitmap (16 MiB = 4 Mpx RGBA).
 pub const MAX_BITMAP_BYTES: u64 = 16 * 1024 * 1024;
 
@@ -30,6 +31,9 @@ pub struct Envelope<T> {
 pub enum Request {
     /// Ask a freshly locked-down worker to report its confinement.
     Hello,
+    /// Compile the rule source in the passed descriptor; `digest` is its
+    /// SHA-256, which later `Scan` requests must reference.
+    LoadRules { digest: [u8; 32] },
     /// Scan the passed descriptor with the rules identified by `rules_digest`.
     Scan {
         rules_digest: [u8; 32],
@@ -56,8 +60,17 @@ pub enum Request {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Ready(Confinement),
-    ScanResult { matches: Vec<RuleMatch> },
-    PdfInfo { pages: u32 },
+    RulesLoaded {
+        rule_count: u32,
+    },
+    /// `truncated`: more rules matched than the request's `max_matches`.
+    ScanResult {
+        matches: Vec<RuleMatch>,
+        truncated: bool,
+    },
+    PdfInfo {
+        pages: u32,
+    },
     Bitmap(BitmapHeader),
     Error(WorkerError),
 }
@@ -107,6 +120,8 @@ pub enum WorkerError {
     Timeout,
     Encrypted,
     EngineFailure,
+    /// `Scan` named rules that are not the ones loaded in this worker.
+    RulesNotLoaded,
 }
 
 /// Why a frame or response was rejected. Any of these ends the job as failed
@@ -237,7 +252,13 @@ fn validate(response: &Response, request: &Request) -> Result<(), ProtocolError>
         // An error report is a valid answer to any request.
         (_, Response::Error(_)) => Ok(()),
         (Request::Hello, Response::Ready(_)) => Ok(()),
-        (Request::Scan { max_matches, .. }, Response::ScanResult { matches }) => {
+        (Request::LoadRules { .. }, Response::RulesLoaded { rule_count }) => {
+            if *rule_count > MAX_RULES {
+                return Err(ProtocolError::OutOfBounds("rule count"));
+            }
+            Ok(())
+        }
+        (Request::Scan { max_matches, .. }, Response::ScanResult { matches, .. }) => {
             if matches.len() > usize::from(*max_matches) {
                 return Err(ProtocolError::OutOfBounds("match count"));
             }
@@ -427,6 +448,7 @@ mod tests {
                     .iter()
                     .map(|n| RuleMatch { rule: (*n).into() })
                     .collect(),
+                truncated: false,
             })
         };
         assert!(decode_response(&frame_body(&matches(&["rift_demo", "_x2"])), &req).is_ok());
@@ -444,6 +466,17 @@ mod tests {
                 "{bad:?}"
             );
         }
+    }
+
+    #[test]
+    fn rule_counts_are_bounded() {
+        let req = request(Request::LoadRules { digest: [1; 32] });
+        let ok = reply(Response::RulesLoaded { rule_count: 12 });
+        assert!(decode_response(&frame_body(&ok), &req).is_ok());
+        let huge = reply(Response::RulesLoaded {
+            rule_count: MAX_RULES + 1,
+        });
+        assert!(decode_response(&frame_body(&huge), &req).is_err());
     }
 
     #[test]
