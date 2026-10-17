@@ -13,10 +13,13 @@ const val FIXTURE_ORIGIN = "http://localhost:$FIXTURE_PORT"
 /** Results are plain `key=value` text files the host collects with `run-as`. */
 object Results {
     fun write(context: Context, name: String, text: String) {
-        val dir = File(context.filesDir, "results").apply { mkdirs() }
-        File(dir, "$name.txt").writeText(text)
+        file(context, "$name.txt").writeText(text)
         Log.i(TAG, "result $name:\n$text")
     }
+
+    /** A file in the results directory, which `pm clear` removes between runs. */
+    fun file(context: Context, name: String): File =
+        File(File(context.filesDir, "results").apply { mkdirs() }, name)
 }
 
 /**

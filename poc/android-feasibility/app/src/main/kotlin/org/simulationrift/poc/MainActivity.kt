@@ -41,8 +41,14 @@ class MainActivity : Activity() {
                 )
                 finish()
             }
-            "reset" -> thread { Results.write(this, "reset-$label", reset(crashBeforeDelete = false)); finish() }
-            "reset-crash" -> thread { reset(crashBeforeDelete = true) }
+            // A pending marker means an interrupted reset: only `recover` may run.
+            // This also stops Android's relaunch of the crashed activity (same
+            // intent) from repeating the crash.
+            "reset" -> thread {
+                Results.write(this, "reset-$label", if (marker.exists()) "reset=REFUSED recovery-pending\n" else reset(crashBeforeDelete = false))
+                finish()
+            }
+            "reset-crash" -> if (marker.exists()) finish() else thread { reset(crashBeforeDelete = true) }
             "recover" -> thread { Results.write(this, "recover-$label", recover()); finish() }
             "inventory" -> {
                 Results.write(this, "inventory-$label", inventory(dataDir))
@@ -102,17 +108,25 @@ class MainActivity : Activity() {
         return "pid $pid STILL ALIVE"
     }
 
-    /** Deletes every directory carrying this generation's WebView suffix. */
+    /**
+     * Deletes every directory carrying this generation's WebView suffix, plus
+     * all shared preferences. WebView writes some state at the app level, not
+     * under the suffix (A2 found `AwOriginVisitLoggerPrefs.xml`, a set of
+     * visited-origin hashes with a date). The controller stores nothing in
+     * SharedPreferences, so everything there is browser state: default-deny.
+     */
     private fun deleteGeneration(generation: Int): String = buildString {
         val suffix = Generation.suffix(generation)
         val roots = listOf(dataDir, cacheDir, codeCacheDir)
         val targets = roots.flatMap { root ->
             root.walkTopDown().maxDepth(2).filter { it.isDirectory && it.name.endsWith("_$suffix") }.toList()
-        }
+        }.distinct()
         targets.forEach { appendLine("deleted ${it.relativeTo(dataDir)} ok=${it.deleteRecursively()}") }
+        val prefs = File(dataDir, "shared_prefs")
+        prefs.listFiles()?.forEach { appendLine("deleted ${it.relativeTo(dataDir)} ok=${it.delete()}") }
         val leftovers = roots.flatMap { root ->
             root.walkTopDown().filter { it.path.contains("_$suffix") }.toList()
-        }
+        } + (prefs.listFiles()?.toList() ?: emptyList())
         appendLine("verify.leftovers=${leftovers.size}")
     }
 
@@ -225,7 +239,7 @@ class MainActivity : Activity() {
                 val pixels = IntArray(w * h).also { bitmap.getPixels(it, 0, w, 0, 0, w, h) }
                 val inked = pixels.count { it != Color.WHITE }
                 appendLine("$name.validation=OK inked_pixels=$inked of ${pixels.size}")
-                File(filesDir, "results/$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                Results.file(this@MainActivity, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             } finally {
                 SharedMemory.unmap(buffer)
             }
