@@ -12,8 +12,8 @@ use sha2::{Digest, Sha256};
 
 const RULES: &str = r#"rule marker { strings: $a = "RIFT-DEMO-MALWARE-MARKER" condition: $a }"#;
 
-fn threads() -> usize {
-    std::fs::read_dir("/proc/self/task").unwrap().count()
+fn threads() -> std::io::Result<usize> {
+    Ok(std::fs::read_dir("/proc/self/task")?.count())
 }
 
 fn run(worker: &mut Worker, body: Request, input: &[u8]) -> Response {
@@ -32,7 +32,7 @@ fn run(worker: &mut Worker, body: Request, input: &[u8]) -> Response {
 
 #[test]
 fn supervisor_deadline_jobs_start_no_threads() {
-    let before = threads();
+    let before = threads().unwrap();
     let mut worker = Worker::new(
         Confinement {
             seccomp: true,
@@ -70,5 +70,5 @@ fn supervisor_deadline_jobs_start_no_threads() {
     );
     assert!(matches!(decoded, Response::Bitmap(_)));
 
-    assert_eq!(threads(), before, "a job started a thread");
+    assert_eq!(threads().unwrap(), before, "a job started a thread");
 }
