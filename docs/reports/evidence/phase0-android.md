@@ -45,7 +45,7 @@ The 16 MiB scan is fast because no rule atom occurs in the zero-filled input. It
 
 ## Size (A5)
 
-`librift_poc_native.so` for arm64-v8a: 22,987,192 bytes as built, 14,052,968 after `llvm-strip` (5,057,996 gzip-compressed). The budget is ≤ 25 MB per ABI (§18). Release builds now strip symbols (`strip = "symbols"` in the workspace profile). Both ABIs have 16 KB-aligned LOAD segments (checked by `build.sh`), but no 16 KB page-size device or image was run.
+`librift_poc_native.so` as cargo first built it: 22,987,192 bytes for arm64-v8a, of which about 9 MB is the symbol table. The Android Gradle plugin strips native libraries when packaging, so the APKs tested above already contained the stripped library: **14,053,656 bytes for arm64-v8a and 18,290,320 for x86_64**. The libraries are stored uncompressed in the APK (needed for loading in place), so this is the size each ABI adds to the APK; gzip would bring arm64 to 5.1 MB for download. The budget is ≤ 25 MB per ABI (§18). Cargo release builds now also strip symbols (`strip = "symbols"`), so `build.sh` reports the shipped size; a rebuilt APK still loads the library and passes the worker test on API 30. Both ABIs have 16 KB-aligned LOAD segments (checked by `build.sh`), but no 16 KB page-size device or image was run.
 
 ## Not shown by this evidence
 

@@ -25,3 +25,6 @@ arithmetic_side_effects = "warn"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+# The symbol table is most of the Android library (23 MB -> 14 MB for arm64);
+# exported JNI symbols live in .dynsym and are kept.
+strip = "symbols"

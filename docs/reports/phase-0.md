@@ -1,18 +1,24 @@
 # Phase 0 report: feasibility of the highest-risk assumptions
 
-**Status:** in progress (17 Oct 2026). Each PoC is listed with its result, the evidence file, what remains unverified, and what could be improved. "Pass" means the pass criterion in `docs/architecture.md` §22 was met **in the stated environment only**.
+**Status:** in progress (17 Oct 2026; Android results added). Each PoC is listed with its result, the evidence file, what remains unverified, and what could be improved. "Pass" means the pass criterion in `docs/architecture.md` §22 was met **in the stated environment only**.
 
 ## Summary
 
 | PoC | Question | Result | Environment | Evidence |
 |---|---|---|---|---|
-| L2 | Does the self-lockdown hold for fd-only and read-only-directory workers, with YARA-X running inside? | **Pass**, with a design finding | Docker, kernel 7.0.12-linuxkit, aarch64, uid `nobody` | [evidence](evidence/phase0-L2-L3-docker.md) |
+| L2 | Does the self-lockdown hold for fd-only and read-only-directory workers, with YARA-X running inside? | **Pass**, with a design finding; Flatpak pending | Docker, kernel 7.0.12-linuxkit, aarch64, uid `nobody`; GitHub Actions, Ubuntu kernel 6.17 x86_64 | [Docker](evidence/phase0-L2-L3-docker.md), [CI](evidence/phase0-L2-L3-ci-ubuntu.md) |
 | L3 | Is the sealed-memfd output immutable? | **Pass** | same | same |
 | X1 | Does the vault format detect damage? | **Pass**, with a design finding | host (macOS arm64) | `cargo test -p rift-core vault` |
 | X2 | Can TUF be verified offline? | **Pass** on host, with a design finding; Android cross-compile pending | host | [evidence](evidence/phase0-X2-host.md) |
 | X3 | Are URL lookups fast and correct? | **Pass** on host; phone measurement pending | host | [evidence](evidence/phase0-X3-host.md) |
 | L1 | Is the WebKitGTK sandbox actually active, and can Rift detect it? | **Pass** (native package), with a design finding; Flatpak pending | Docker, Fedora 44, WebKitGTK 2.54.1, aarch64 | [evidence](evidence/phase0-L1-docker.md) |
-| A1–A7 | Android renderer, disposal, downloads, isolated worker, YARA-X, memfd | pending (SDK and emulator images downloading) | — | — |
+| A1 | Is the WebView renderer sandboxed on our floor? | **Pass** on API 30 and 36 | Android emulator, arm64, `google_apis` images | [evidence](evidence/phase0-android.md) |
+| A2 | Is disposal complete, including after a crash mid-reset? | **Pass**, with a design finding | same | same |
+| A3 | Which downloads can be captured? | **Measured**: URL downloads yes; POST, `blob:`, `data:` no | same | same |
+| A4 | Does PdfRenderer work in an isolated process? | **Pass** on API 30 and 36 (34/35 not run) | same | same |
+| A5 | Does YARA-X (pulley) build and run on Android? | **Pass** (arm64 run; x86_64 built only); adds 14 MB to the APK (arm64) | same | same |
+| A6 | Are workers cut off from files and the network? | **Pass**, with a hardening finding | same | same |
+| A7 | Does the RAM-backed seekable fd handoff work? | **Pass** (sealed memfd) | same | same |
 
 ## Findings that changed the design
 
@@ -35,6 +41,11 @@
    - In a native package the network process has no seccomp filter and no new namespaces, though it parses HTTP, TLS and cookies for every site. That supports shipping Flatpak first (architecture §9.2).
    - The first probe matched the `bwrap` launcher by command line and reported it as an unconfined web process. The check now uses `comm`, and runs for every new web process, since WebKit starts new ones as sites change.
 
+7. **WebView writes browsing state outside the per-generation directory (A2).** On API 36, WebView 133 writes `shared_prefs/AwOriginVisitLoggerPrefs.xml`, a set of hashes of visited origins with a date, at the app level, where `setDataDirectorySuffix` does not reach. Deleting only the suffixed directories would have left a record of where the user browsed. Reset now deletes all of `shared_prefs/`, Rift must never use SharedPreferences, and the post-reset check compares the inventory with an allowlist of Rift's own files (architecture §15).
+8. **Some downloads never reach Rift (A3).** `blob:` and `data:` downloads do not call `DownloadListener` at all, so Rift cannot even show "cannot be captured". POST responses do reach it, but cannot be re-fetched (HTTP 405). The product claim is limited to downloads served at a URL (architecture §8.5).
+9. **`isolated_app` still allows `AF_UNIX` sockets and executable memory (A6), and NoNewPrivs is 0 in the worker.** No network or file access was possible, so A6 passes, but the worker is less confined than the Linux one. A per-thread seccomp filter is the Phase 2 candidate, with its limits stated (architecture §8.6).
+10. **The native library adds 14 MB (arm64) to 18 MB (x86_64) per ABI to the APK (A5)**, against a 25 MB budget. It is stored uncompressed, so any further native code on Android, such as `tough` and `aws-lc-rs` for X2, must fit in the remaining ~11 MB (arm64). Cargo output was 23 MB before stripping; release builds now strip symbols, as the Android Gradle plugin already does when packaging.
+
 ## Verified
 
 - **L2:** with lockdown active, the worker cannot:
@@ -53,21 +64,30 @@
   - When `bwrap` cannot create namespaces, WebKit aborts instead of running unsandboxed.
   - When it can, the web process has NoNewPrivs=1, a seccomp filter, and new user, mount, pid and net namespaces, and the check allows browsing.
   - With the sandbox disabled through `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1` (negative control), the check refuses.
+- **Android A1–A7 (API 30 with WebView 91, API 36 with WebView 133, emulators):**
+  - The WebView renderer runs as `isolated_app` with no capabilities, NoNewPrivs=1 and a seccomp filter. From the page, `file://` and `content://` fetches, geolocation, clipboard reads, camera and microphone, `window.open` and `intent://` navigation all fail.
+  - Six kinds of site state (cookie, server cookie, localStorage, IndexedDB, Cache Storage, service worker) are present within a session and absent after reset. When the controller is killed mid-reset, the state is still on disk; the next launch finds the marker, deletes it and moves to a new generation, and the probe again finds nothing.
+  - URL downloads (GET, redirect, Content-Disposition, cookie-gated) are captured and re-fetched with matching hashes, and a hostile display name is normalized.
+  - PdfRenderer renders identical pixels from a sealed memfd in the isolated worker. YARA-X compiles and matches there. The worker cannot read app files or storage, open inet sockets, resolve DNS, or use the clipboard.
 - **X1:** round trip across multiple STREAM chunks; truncation at four offsets and bit flips at four offsets are detected; a swapped object fails the hash check; a wrong key and a wrong passphrase are rejected; the size limit is enforced on the stream; `Debug` never prints the key. Index writes are atomic. A missing index recovers the previous one; a corrupt index fails instead of rolling back.
 - **X2:** tough 0.24.0 with the filesystem transport rejects modified targets, unsigned metadata edits, a v1 replay after v2 was trusted, expired timestamps, an untrusted root, and timestamp metadata over 16 KiB.
 - **X3:** all 33 published Safe Browsing canonicalization examples pass, plus the three published expression examples. Per-URL decision latency against 1,000,000 entries on the host: p50 11.9 µs, p95 26.0 µs, p99 41.8 µs. Parsing and fully validating the 20 MB table takes 3.8 ms.
 
 ## Unverified (so far)
 
-- L2/L3 on x86_64 and on distribution kernels (Ubuntu, Fedora). CI covers Ubuntu x86_64 once it runs. Not yet tested inside Flatpak, where Flatpak's own seccomp filter also applies.
+- L2/L3 on Fedora kernels, and inside Flatpak, where Flatpak's own seccomp filter also applies. (Ubuntu x86_64 passes in CI; there the ptrace negative control is inconclusive because Yama already blocks it.)
 - X2 cross-compilation of tough and aws-lc-rs for Android ABIs, and its size cost.
 - X3 latency on a real phone. Memory cost: ~19 MiB per million URL entries when held in a `Vec`.
-- Everything Android (A1–A7).
+- Android on physical devices, OEM WebView builds, API 33/34/35, x86_64, and 16 KB page-size devices. API 30 was run only with the image's stock WebView 91.
+- Android worker cold start with `useAppZygote` (the PoC binds without it: 167 ms on API 30, 339 ms on API 36, against a 300 ms budget).
+- That unbinding ends a stuck Android worker.
 - L1 inside Flatpak (the shipping configuration), on a real desktop with a GPU, and with the Rust `webkit6` bindings instead of the Python probe. Whether the Flatpak sandbox bounds the network process.
 - The in-process YARA-X timeout on Android (the reason `Deadline::InProcess` exists), and the assumption that the app cannot kill its isolated worker process.
 
 ## Could be improved
 
+- The A1 harness picks the renderer as the newest `sandboxed_process`. It should diff the process list before and after the page loads.
+- The Android worker should get a per-thread seccomp filter (finding 9) once it is shown not to break ART.
 - Memory-map indicator tables instead of copying them, to reduce RSS for large packs. This needs one reviewed `unsafe` block or a vetted crate.
 - The worker seccomp allowlist is hand-written per architecture. It should be generated, then confirmed by running the real parsers (YARA-X, PDFium, image decoders) under `strict` mode in CI.
 - The vault index MAC key is derived from the identity's text encoding through HMAC. A dedicated HKDF context per purpose would be cleaner if more derived keys are added.

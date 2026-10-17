@@ -15,3 +15,7 @@ publish = false
 # changes build memory and speed, not the confinement behaviour under test.
 [profile.release.package.cranelift-codegen]
 opt-level = 1
+
+# Strip symbols as the product workspace does, so PoC A5 measures shipped size.
+[profile.release]
+strip = "symbols"
