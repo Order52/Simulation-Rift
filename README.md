@@ -2,7 +2,7 @@
 
 A fully local, modular workspace for Android and Linux. It lets you open unfamiliar links, download and inspect untrusted files, and keep the files you choose in encrypted storage, while reducing your device's exposure to that content.
 
-> **Status: early development (Phase 0, feasibility).** Nothing here is a usable or audited security product yet. Read [`docs/architecture.md`](docs/architecture.md) for the design. The evidence reports in [`docs/reports/`](docs/reports/) state what has actually been verified.
+> **Status: early development (Phase 0, feasibility).** Nothing here is a usable or audited security product yet. Read [`docs/architecture.md`](docs/architecture.md) for the design. The evidence reports in [`docs/reports/`](docs/reports/) state what has actually been verified. [`docs/reports/project-status.md`](docs/reports/project-status.md) summarizes what is finished, what is open, and the known limitations.
 
 ## What it is
 
