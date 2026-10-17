@@ -36,7 +36,7 @@
    - the Linux supervisor enforces scan deadlines by killing the worker (`rift_worker::Deadline::Supervisor`), with `RLIMIT_CPU` as backstop;
    - Android keeps YARA-X's timeout, since the app cannot kill its isolated process;
    - `lockdown::apply` refuses to run unless exactly one thread exists;
-   - `crates/rift-worker/tests/no_threads.rs` fails if a scan or image decode ever starts a thread.
+   - `crates/rift-worker/tests/no_threads.rs` fails if a scan or image decode ever starts a thread. It passes on Ubuntu x86_64 in CI (run 39058785140).
 6. **WebKitGTK's network process is not sandboxed, and the web-process check has to be precise (L1).**
    - In a native package the network process has no seccomp filter and no new namespaces, though it parses HTTP, TLS and cookies for every site. That supports shipping Flatpak first (architecture §9.2).
    - The first probe matched the `bwrap` launcher by command line and reported it as an unconfined web process. The check now uses `comm`, and runs for every new web process, since WebKit starts new ones as sites change.

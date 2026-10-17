@@ -7,7 +7,7 @@
 | Phase (architecture §22) | State |
 |---|---|
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X2 on Android, X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix. |
-| 1: Foundations | **Code written and tested on the host; gate not closed.** No fuzz targets yet and no Phase 1 report. The last CI run failed on Ubuntu (a clippy lint in a new Linux-only test); the fix is pushed with this report and its CI result is the first run of that test. |
+| 1: Foundations | **Code written and tested on the host; gate not closed.** No fuzz targets yet and no Phase 1 report. CI is green on Ubuntu and macOS ([run 39058785140](https://github.com/Order52/Simulation-Rift/actions/runs/39058785140)). |
 | 2: Android vertical slice | Not started (the Phase 0 PoC app is a test harness, not product code). |
 | 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
@@ -84,7 +84,7 @@ These were all found by tests, not by reading:
 
 - The architecture and the decision record.
 - PoCs A1–A7 on Android emulators (API 30, 36), and L1 (native), L2, L3, X1, plus X2 and X3 on the host.
-- The Phase 1 crates listed above: 78 unit and property tests pass on macOS (59 `rift-core`, 11 `rift-protocol`, 8 `rift-worker`), and `clippy -D warnings` is clean for Linux as well (checked in Docker with rustc 1.99.1). The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
+- The Phase 1 crates listed above: 78 unit and property tests pass on macOS (59 `rift-core`, 11 `rift-protocol`, 8 `rift-worker`), and `clippy -D warnings` is clean for Linux as well (checked in Docker with rustc 1.99.1). The Linux lockdown PoC and the Linux-only `no_threads` test (jobs start no threads under `Deadline::Supervisor`) pass in CI on x86_64 Ubuntu.
 
 **Not finished:**
 
@@ -95,7 +95,6 @@ These were all found by tests, not by reading:
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
 | Android device matrix | API 33/34/35, physical phones, OEM WebView builds, x86_64, a 16 KB page-size device. |
 | Android unknowns | That the app cannot signal its isolated worker; that the in-process YARA-X timeout fires; worker cold start with `useAppZygote` (300 ms budget). |
-| Linux `no_threads` test | Written and clippy-clean on Linux; first runs in CI with this change (cannot be built locally, see §4.1). |
 | Phase 1 gate | Fuzz targets (protocol decoding, URL canonicalization, intel tables, vault index), and a Phase 1 report. |
 | Phases 2–7 | Everything in §5. |
 
@@ -105,7 +104,7 @@ These were all found by tests, not by reading:
 
 | Limitation | Effect | Workaround |
 |---|---|---|
-| The Docker VM has ~6 GB with ~1.4 GB free; building YARA-X/Cranelift for Linux in Docker is killed (OOM) | Linux-only Rust tests cannot be run locally | Give Docker Desktop ≥ 8 GB (Settings → Resources) or stop unrelated containers; meanwhile rely on GitHub CI, which runs them on Ubuntu. |
+| The Docker VM has ~6 GB with ~1.4 GB free; building YARA-X/Cranelift for Linux in Docker is killed (OOM) | Linux-only Rust tests (`no_threads`) cannot be run locally; they run only in CI | Give Docker Desktop ≥ 8 GB (Settings → Resources) or stop unrelated containers; meanwhile rely on GitHub CI, which runs them on Ubuntu. |
 | No physical Android device | All Android evidence is from emulators with software GPU | Connect a phone with USB debugging and run `poc/android-feasibility/run-poc.sh <dir>` (not yet tried on a phone). Without `adb root`, everything except the A1 renderer `/proc` check should still run. |
 | Emulator images: only API 30 and 36 installed, no 16 KB page-size image | A1/A4 criteria name 33/34/35; 16 KB alignment checked only statically | `sdkmanager "system-images;android-35;google_apis;arm64-v8a"` and the `..._ps16k` variants, then rerun. |
 | API 30 image has WebView 91 | Old engine; not representative of updated devices | Update WebView from Play on a `google_apis_playstore` image, or use a phone. |
