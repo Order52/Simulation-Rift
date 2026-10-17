@@ -29,3 +29,6 @@ captures/
 *.profraw
 fuzz/artifacts/
 fuzz/corpus/
+
+# Python bytecode (PoC probes)
+__pycache__/
