@@ -1,0 +1,13 @@
+webview.package=com.google.android.webview 91.0.4472.114
+webview.multiprocess=true
+webview.safe_browsing=true
+webview.multi_profile_feature=false
+webview.proxy_override_feature=true
+host.process=org.simulationrift.poc:browser uid=10166 pid=8340
+host.generation=3
+page.cookie=absent
+page.server_cookie=absent
+page.localStorage=absent
+page.indexedDB=absent
+page.cacheStorage=absent
+page.serviceWorker=absent

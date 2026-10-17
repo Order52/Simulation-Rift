@@ -1,0 +1,68 @@
+app_webview_s1/BrowserMetrics-spare.pma 4194304
+app_webview_s1/Default/Cookies 24576
+app_webview_s1/Default/Cookies-journal 0
+app_webview_s1/Default/GPUCache/index 24
+app_webview_s1/Default/GPUCache/index-dir/the-real-index 48
+app_webview_s1/Default/IndexedDB/http_localhost_8765.indexeddb.leveldb/000003.log 1294
+app_webview_s1/Default/IndexedDB/http_localhost_8765.indexeddb.leveldb/CURRENT 16
+app_webview_s1/Default/IndexedDB/http_localhost_8765.indexeddb.leveldb/LOCK 0
+app_webview_s1/Default/IndexedDB/http_localhost_8765.indexeddb.leveldb/LOG 339
+app_webview_s1/Default/IndexedDB/http_localhost_8765.indexeddb.leveldb/MANIFEST-000001 23
+app_webview_s1/Default/Local Storage/leveldb/000003.log 111
+app_webview_s1/Default/Local Storage/leveldb/CURRENT 16
+app_webview_s1/Default/Local Storage/leveldb/LOCK 0
+app_webview_s1/Default/Local Storage/leveldb/LOG 287
+app_webview_s1/Default/Local Storage/leveldb/MANIFEST-000001 41
+app_webview_s1/Default/QuotaManager 57344
+app_webview_s1/Default/QuotaManager-journal 21032
+app_webview_s1/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/570cd95b-cc57-4345-b432-d838e0bbdb1d/fdb57e08f5550048_0 266
+app_webview_s1/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/570cd95b-cc57-4345-b432-d838e0bbdb1d/index 24
+app_webview_s1/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/570cd95b-cc57-4345-b432-d838e0bbdb1d/index-dir/the-real-index 48
+app_webview_s1/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/index.txt 89
+app_webview_s1/Default/Service Worker/Database/000003.log 616
+app_webview_s1/Default/Service Worker/Database/CURRENT 16
+app_webview_s1/Default/Service Worker/Database/LOCK 0
+app_webview_s1/Default/Service Worker/Database/LOG 291
+app_webview_s1/Default/Service Worker/Database/MANIFEST-000001 41
+app_webview_s1/Default/Service Worker/ScriptCache/2cc80dabc69f58b6_0 448
+app_webview_s1/Default/Service Worker/ScriptCache/index 24
+app_webview_s1/Default/Service Worker/ScriptCache/index-dir/the-real-index 48
+app_webview_s1/Default/Session Storage/000003.log 61
+app_webview_s1/Default/Session Storage/CURRENT 16
+app_webview_s1/Default/Session Storage/LOCK 0
+app_webview_s1/Default/Session Storage/LOG 275
+app_webview_s1/Default/Session Storage/MANIFEST-000001 41
+app_webview_s1/Default/Web Data 71680
+app_webview_s1/Default/Web Data-journal 0
+app_webview_s1/Default/databases/Databases.db 32768
+app_webview_s1/Default/databases/Databases.db-journal 0
+app_webview_s1/pref_store 112
+app_webview_s1/variations_seed_new 157
+app_webview_s1/variations_stamp 0
+app_webview_s1/webview_data.lock 36
+cache/webview_s1/Crashpad/settings.dat 40
+cache/webview_s1/Default/HTTP Cache/01618609ef8a6413_0 1444
+cache/webview_s1/Default/HTTP Cache/2bff01151c32ef8d_0 474
+cache/webview_s1/Default/HTTP Cache/Code Cache/js/index 24
+cache/webview_s1/Default/HTTP Cache/Code Cache/js/index-dir/the-real-index 48
+cache/webview_s1/Default/HTTP Cache/Code Cache/wasm/index 24
+cache/webview_s1/Default/HTTP Cache/Code Cache/wasm/index-dir/the-real-index 48
+cache/webview_s1/Default/HTTP Cache/ad0687f3b49047e0_0 1277
+cache/webview_s1/Default/HTTP Cache/d98888302b42379e_0 2072
+cache/webview_s1/Default/HTTP Cache/ef952141d450612e_0 801
+cache/webview_s1/Default/HTTP Cache/fdd408c190d70b5c_0 365
+cache/webview_s1/Default/HTTP Cache/index 24
+cache/webview_s1/Default/HTTP Cache/index-dir/the-real-index 72
+cache/webview_s1/font_unique_name_table.pb 29640
+files/canary-secret.txt 41
+files/large.bin 16777216
+files/marked.bin 38
+files/results/a1.txt 929
+files/results/a2-probe-same-session.txt 412
+files/results/a2-seed-round1.txt 342
+files/results/inventory-initial.txt 1836
+files/results/pdf_file.png 21928
+files/results/pdf_memfd.png 21928
+files/results/worker.txt 1810
+files/sample.pdf 712
+shared_prefs/WebViewChromiumPrefs.xml 127

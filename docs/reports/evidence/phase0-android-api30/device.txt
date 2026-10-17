@@ -1,0 +1,7 @@
+device.api=30
+device.release=11
+device.abi=arm64-v8a
+device.page_size=4096
+device.fingerprint=google/sdk_gphone_arm64/emulator_arm64:11/RSR1.240422.006/12134477:userdebug/dev-keys
+device.security_patch=2021-08-05
+apk.bytes=56689400

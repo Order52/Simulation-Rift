@@ -1,0 +1,19 @@
+webview.package=com.google.android.webview 91.0.4472.114
+webview.multiprocess=true
+webview.safe_browsing=true
+webview.multi_profile_feature=false
+webview.proxy_override_feature=true
+host.process=org.simulationrift.poc:browser uid=10166 pid=7787
+host.generation=1
+page.bridge.globals=webkitStorageInfo,onwebkitanimationend,onwebkitanimationiteration,onwebkitanimationstart,onwebkittransitionend,webkitCancelAnimationFrame,webkitRequestAnimationFrame
+page.secure_context=true
+page.webrtc.RTCPeerConnection=function
+page.window_open=BLOCKED
+navigation.blocked=intent://scan/#Intent;scheme=zxing;package=com.example;end
+page.fetch_file=DENIED TypeError
+page.fetch_content=DENIED TypeError
+page.geolocation=DENIED code=1
+page.clipboard_read=DENIED NotAllowedError
+permission.requested=android.webkit.resource.VIDEO_CAPTURE,android.webkit.resource.AUDIO_CAPTURE
+page.getUserMedia=DENIED NotAllowedError
+webview.renderer_handle=present

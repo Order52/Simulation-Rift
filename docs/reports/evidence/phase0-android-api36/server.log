@@ -1,0 +1,39 @@
+fixture: "GET /a1.html HTTP/1.1" 200 -
+fixture: code 404, message File not found
+fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /a2-seed.html HTTP/1.1" 200 -
+fixture: "GET /cacheable.js HTTP/1.1" 200 -
+fixture: code 404, message File not found
+fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /sw.js HTTP/1.1" 200 -
+fixture: "GET /a2-probe.html HTTP/1.1" 200 -
+fixture: code 404, message File not found
+fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /a2-probe.html HTTP/1.1" 200 -
+fixture: code 404, message File not found
+fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /a2-seed.html HTTP/1.1" 200 -
+fixture: "GET /cacheable.js HTTP/1.1" 200 -
+fixture: code 404, message File not found
+fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /sw.js HTTP/1.1" 200 -
+fixture: "GET /a2-probe.html HTTP/1.1" 200 -
+fixture: code 404, message File not found
+fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /files/plain.bin HTTP/1.1" 200 -
+fixture: "GET /files/plain.bin HTTP/1.1" 200 -
+fixture: "GET /files/disposition HTTP/1.1" 200 -
+fixture: "GET /files/disposition HTTP/1.1" 200 -
+fixture: "GET /redirect HTTP/1.1" 302 -
+fixture: "GET /files/plain.bin HTTP/1.1" 200 -
+fixture: "GET /files/plain.bin HTTP/1.1" 200 -
+fixture: "GET /login?next=/files/private.bin HTTP/1.1" 302 -
+fixture: "GET /files/private.bin HTTP/1.1" 200 -
+fixture: "GET /files/private.bin HTTP/1.1" 200 -
+fixture: "GET /a3-post.html HTTP/1.1" 200 -
+fixture: "POST /files/post-result HTTP/1.1" 200 -
+fixture: code 404, message File not found
+fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /files/post-result HTTP/1.1" 405 -
+fixture: "GET /a3-blob.html HTTP/1.1" 200 -
+fixture: "GET /a3-data.html HTTP/1.1" 200 -

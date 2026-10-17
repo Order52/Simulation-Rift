@@ -1,0 +1,7 @@
+recovery=marker-found generation=2
+browser.killed=not-running
+deleted cache/webview_s2 ok=true
+deleted app_webview_s2 ok=true
+deleted shared_prefs/WebViewChromiumPrefs.xml ok=true
+verify.leftovers=0
+generation.after=3

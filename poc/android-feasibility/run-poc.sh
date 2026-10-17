@@ -37,7 +37,9 @@ run() {
   name="$1"
   shift
   "$adb" shell run-as "$pkg" rm -f "files/results/$name.txt"
-  "$adb" shell am start -W -n "$pkg/.MainActivity" "$@" >/dev/null
+  # No -W: on API 30 it never returns for an activity that finishes without
+  # drawing. The result file is the completion signal.
+  "$adb" shell am start -n "$pkg/.MainActivity" "$@" >/dev/null
   i=0
   while [ "$i" -lt 120 ]; do
     if "$adb" shell run-as "$pkg" test -f "files/results/$name.txt"; then
@@ -81,7 +83,7 @@ run inventory-after-reset --es test inventory --es label after-reset
 run a2-probe-after-reset --es test browse --es mode a2-probe --es label after-reset
 # Interrupted reset: the controller dies after killing :browser, before deleting.
 run a2-seed-round2 --es test browse --es mode a2-seed --es label round2
-"$adb" shell am start -W -n "$pkg/.MainActivity" --es test reset-crash >/dev/null
+"$adb" shell am start -n "$pkg/.MainActivity" --es test reset-crash >/dev/null
 sleep 3
 run inventory-after-crash --es test inventory --es label after-crash
 run recover-round2 --es test recover --es label round2

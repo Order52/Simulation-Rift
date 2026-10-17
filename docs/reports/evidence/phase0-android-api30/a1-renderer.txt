@@ -1,0 +1,9 @@
+# processes (PID USER LABEL NAME)
+  7701 u0_a166      u:r:untrusted_app:s0:c166,c256,c512,c768 org.simulationrift.poc
+  7787 u0_a166      u:r:untrusted_app:s0:c166,c256,c512,c768 org.simulationrift.poc:browser
+  7845 u0_i9003     u:r:isolated_app:s0:c512,c768  com.google.android.webview:sandboxed_process0:org.chromium.content.app.Sandbo
+# renderer pid=7845 /proc status
+Uid:	99003	99003	99003	99003
+CapEff:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2

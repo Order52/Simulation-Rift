@@ -1,0 +1,53 @@
+app_webview_s1/BrowserMetrics-spare.pma 4194304
+app_webview_s1/Default/Cookies 24576
+app_webview_s1/Default/Cookies-journal 0
+app_webview_s1/Default/Local Storage/leveldb/000003.log 0
+app_webview_s1/Default/Local Storage/leveldb/CURRENT 16
+app_webview_s1/Default/Local Storage/leveldb/LOCK 0
+app_webview_s1/Default/Local Storage/leveldb/LOG 287
+app_webview_s1/Default/Local Storage/leveldb/MANIFEST-000001 41
+app_webview_s1/Default/PersistentOriginTrials/LOCK 0
+app_webview_s1/Default/PersistentOriginTrials/LOG 0
+app_webview_s1/Default/Session Storage/000003.log 241
+app_webview_s1/Default/Session Storage/CURRENT 16
+app_webview_s1/Default/Session Storage/LOCK 0
+app_webview_s1/Default/Session Storage/LOG 275
+app_webview_s1/Default/Session Storage/MANIFEST-000001 41
+app_webview_s1/Default/Shared Dictionary/cache/index 24
+app_webview_s1/Default/Shared Dictionary/cache/index-dir/the-real-index 48
+app_webview_s1/Default/Shared Dictionary/db 49152
+app_webview_s1/Default/Shared Dictionary/db-journal 0
+app_webview_s1/Default/Web Data 90112
+app_webview_s1/Default/Web Data-journal 0
+app_webview_s1/Default/shared_proto_db/000003.log 0
+app_webview_s1/Default/shared_proto_db/CURRENT 16
+app_webview_s1/Default/shared_proto_db/LOCK 0
+app_webview_s1/Default/shared_proto_db/LOG 275
+app_webview_s1/Default/shared_proto_db/MANIFEST-000001 41
+app_webview_s1/Default/shared_proto_db/metadata/000003.log 126
+app_webview_s1/Default/shared_proto_db/metadata/CURRENT 16
+app_webview_s1/Default/shared_proto_db/metadata/LOCK 0
+app_webview_s1/Default/shared_proto_db/metadata/LOG 293
+app_webview_s1/Default/shared_proto_db/metadata/MANIFEST-000001 41
+app_webview_s1/last-exit-info 80
+app_webview_s1/pref_store 134
+app_webview_s1/variations_seed_new 25132
+app_webview_s1/variations_stamp 0
+app_webview_s1/webview_data.lock 36
+cache/webview_s1/Default/HTTP Cache/Cache_Data/20ea50d37d713fc5_0 825
+cache/webview_s1/Default/HTTP Cache/Cache_Data/43f2dd092155faee_0 2096
+cache/webview_s1/Default/HTTP Cache/Cache_Data/index 24
+cache/webview_s1/Default/HTTP Cache/Cache_Data/index-dir/the-real-index 48
+cache/webview_s1/Default/HTTP Cache/Code Cache/js/index-dir/the-real-index 48
+cache/webview_s1/font_unique_name_table.pb 22996
+files/canary-secret.txt 41
+files/large.bin 16777216
+files/marked.bin 38
+files/profileInstalled 24
+files/results/a1.txt 911
+files/results/pdf_file.png 21928
+files/results/pdf_memfd.png 21928
+files/results/worker.txt 1811
+files/sample.pdf 712
+shared_prefs/AwOriginVisitLoggerPrefs.xml 411
+shared_prefs/WebViewChromiumPrefs.xml 127
