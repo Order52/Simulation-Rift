@@ -3,7 +3,7 @@ webview.multiprocess=true
 webview.safe_browsing=true
 webview.multi_profile_feature=true
 webview.proxy_override_feature=true
-host.process=org.simulationrift.poc:browser uid=10213 pid=8408
+host.process=org.simulationrift.poc:browser uid=10213 pid=4463
 host.generation=3
 page.cookie=absent
 page.server_cookie=absent

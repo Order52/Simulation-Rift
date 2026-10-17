@@ -6,5 +6,8 @@ package org.simulationrift.poc;
 interface IWorker {
     String probe(String canaryPath, int tcpPort);
     String renderPdf(in ParcelFileDescriptor pdf, int pageIndex, in Bundle output);
-    String yaraScan(String rules, in ParcelFileDescriptor input);
+    // timeoutMs 0 = none: only for testing how a stuck worker is retired.
+    String yaraScan(String rules, in ParcelFileDescriptor input, long timeoutMs);
+    int pid();
+    String zygotePreload();
 }

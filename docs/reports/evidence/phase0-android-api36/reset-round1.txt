@@ -1,5 +1,5 @@
 generation.before=1
-browser.killed=pid 7997 exited
+browser.killed=pid 3994 exited
 deleted cache/webview_s1 ok=true
 deleted app_webview_s1 ok=true
 deleted shared_prefs/WebViewChromiumPrefs.xml ok=true

@@ -1,8 +1,10 @@
 package org.simulationrift.poc
 
 import android.app.Service
+import android.app.ZygotePreload
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
@@ -24,7 +26,7 @@ import kotlin.math.min
  * Runs in an `isolatedProcess`: a random UID with no permissions and the
  * `isolated_app` SELinux domain. It only ever sees descriptors it is handed.
  */
-class WorkerService : Service() {
+open class WorkerService : Service() {
 
     private val binder = object : IWorker.Stub() {
         override fun probe(canaryPath: String, tcpPort: Int): String = buildString {
@@ -85,9 +87,38 @@ class WorkerService : Service() {
             }
         }
 
-        override fun yaraScan(rules: String, input: ParcelFileDescriptor): String =
-            input.use { Native.yaraScan(rules, it.fd) }
+        override fun yaraScan(rules: String, input: ParcelFileDescriptor, timeoutMs: Long): String =
+            input.use { Native.yaraScan(rules, it.fd, timeoutMs) }
+
+        override fun pid(): Int = Process.myPid()
+
+        override fun zygotePreload(): String = WorkerZygotePreload.status
     }
 
     override fun onBind(intent: Intent): IBinder = binder
+}
+
+/** The same worker, forked from the app zygote (`useAppZygote`) instead of the system zygote. */
+class ZygoteWorkerService : WorkerService()
+
+/**
+ * Runs once in the app zygote, before any worker is forked from it. Loading the
+ * native library here means each worker inherits it instead of loading it.
+ */
+class WorkerZygotePreload : ZygotePreload {
+    override fun doPreload(appInfo: ApplicationInfo) {
+        // A throw here would take down the zygote; record the outcome instead.
+        status = try {
+            System.loadLibrary("rift_poc_native")
+            "loaded"
+        } catch (e: Throwable) {
+            "FAILED ${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+
+    companion object {
+        /** Inherited by forked workers; "none" in workers not forked from the app zygote. */
+        @Volatile
+        var status: String = "none"
+    }
 }

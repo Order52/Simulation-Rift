@@ -9,6 +9,7 @@ fixture: "GET /sw.js HTTP/1.1" 200 -
 fixture: "GET /a2-probe.html HTTP/1.1" 200 -
 fixture: code 404, message File not found
 fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /sw.js HTTP/1.1" 304 -
 fixture: "GET /a2-probe.html HTTP/1.1" 200 -
 fixture: code 404, message File not found
 fixture: "GET /favicon.ico HTTP/1.1" 404 -
@@ -32,8 +33,8 @@ fixture: "GET /files/private.bin HTTP/1.1" 200 -
 fixture: "GET /files/private.bin HTTP/1.1" 200 -
 fixture: "GET /a3-post.html HTTP/1.1" 200 -
 fixture: "POST /files/post-result HTTP/1.1" 200 -
+fixture: "GET /files/post-result HTTP/1.1" 405 -
 fixture: code 404, message File not found
 fixture: "GET /favicon.ico HTTP/1.1" 404 -
-fixture: "GET /files/post-result HTTP/1.1" 405 -
 fixture: "GET /a3-blob.html HTTP/1.1" 200 -
 fixture: "GET /a3-data.html HTTP/1.1" 200 -

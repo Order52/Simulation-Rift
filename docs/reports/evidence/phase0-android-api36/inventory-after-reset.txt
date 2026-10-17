@@ -6,10 +6,12 @@ files/profileInstalled 24
 files/results/a1.txt 911
 files/results/a2-probe-same-session.txt 412
 files/results/a2-seed-round1.txt 374
-files/results/inventory-initial.txt 2538
-files/results/inventory-seeded.txt 4640
+files/results/inventory-initial.txt 2799
+files/results/inventory-seeded.txt 4901
+files/results/lifecycle.txt 1557
 files/results/pdf_file.png 21928
 files/results/pdf_memfd.png 21928
 files/results/reset-round1.txt 265
 files/results/worker.txt 1811
 files/sample.pdf 712
+files/slow-input.bin 262144

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JString};
-use jni::sys::{jint, jstring};
+use jni::sys::{jint, jlong, jstring};
 
 /// Scans larger than this are refused rather than truncated.
 const MAX_SCAN_BYTES: usize = 100 * 1024 * 1024;
@@ -153,11 +153,15 @@ pub fn yara_scan(rules: &str, mut input: impl Read, timeout: Option<Duration>) -
         scanner.set_timeout(timeout);
     }
     let scan_started = Instant::now();
-    let results = match scanner.scan(&data) {
+    let results = scanner.scan(&data);
+    let scan_ms = scan_started.elapsed().as_secs_f64() * 1e3;
+    let results = match results {
         Ok(r) => r,
+        Err(yara_x::ScanError::Timeout) => {
+            return format!("yara.status=TIMEOUT\nyara.scan_ms={scan_ms:.1}\n");
+        }
         Err(e) => return format!("yara.status=SCAN_ERROR\nyara.error={e}\n"),
     };
-    let scan_ms = scan_started.elapsed().as_secs_f64() * 1e3;
     let matched: Vec<&str> = results.matching_rules().map(|r| r.identifier()).collect();
     let mib_per_s = data.len() as f64 / (1024.0 * 1024.0) / (scan_ms / 1e3).max(1e-9);
     format!(
@@ -191,6 +195,7 @@ pub extern "system" fn Java_org_simulationrift_poc_Native_yaraScan<'l>(
     _class: JClass<'l>,
     rules: JString<'l>,
     fd: jint,
+    timeout_ms: jlong,
 ) -> jstring {
     let rules: String = env.get_string(&rules).map(Into::into).unwrap_or_default();
     // Java keeps ownership of `fd` (ParcelFileDescriptor); scan a duplicate.
@@ -204,8 +209,12 @@ pub extern "system" fn Java_org_simulationrift_poc_Native_yaraScan<'l>(
     } else {
         // SAFETY: `dup` is a fresh descriptor owned exclusively by this File.
         let file = unsafe { File::from_raw_fd(dup) };
-        // The isolated process cannot be killed by the app, so it times out itself.
-        yara_scan(&rules, file, Some(Duration::from_secs(15)))
+        // 0 means no timeout (used only to test how a stuck worker is retired).
+        let timeout = u64::try_from(timeout_ms)
+            .ok()
+            .filter(|&ms| ms > 0)
+            .map(Duration::from_millis);
+        yara_scan(&rules, file, timeout)
     };
     to_jstring(&mut env, report)
 }
@@ -228,6 +237,22 @@ mod tests {
             report.contains("yara.matches=rift_demo_marker\n"),
             "{report}"
         );
+    }
+
+    /// A condition that loops over every byte for every byte: far longer than
+    /// any timeout used here, on any input above a few KiB.
+    pub(crate) const SLOW_RULES: &str = r#"
+        rule rift_slow { condition: for all i in (0..filesize - 1) : (for all j in (0..filesize - 1) : (uint8(i) != 0x100 + j)) }
+    "#;
+
+    #[test]
+    fn timeout_stops_a_runaway_scan() {
+        let input = vec![0u8; 64 * 1024];
+        let started = Instant::now();
+        let report = yara_scan(SLOW_RULES, input.as_slice(), Some(Duration::from_secs(1)));
+        assert!(report.contains("yara.status=TIMEOUT"), "{report}");
+        // The heartbeat ticks once per second, so allow a few ticks of slack.
+        assert!(started.elapsed() < Duration::from_secs(5), "{report}");
     }
 
     #[test]

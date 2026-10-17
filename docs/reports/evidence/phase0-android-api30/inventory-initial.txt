@@ -32,9 +32,11 @@ cache/webview_s1/font_unique_name_table.pb 29640
 files/canary-secret.txt 41
 files/large.bin 16777216
 files/marked.bin 38
-files/results/a1.txt 929
+files/results/a1.txt 930
+files/results/lifecycle.txt 1567
 files/results/pdf_file.png 21928
 files/results/pdf_memfd.png 21928
-files/results/worker.txt 1810
+files/results/worker.txt 1809
 files/sample.pdf 712
+files/slow-input.bin 262144
 shared_prefs/WebViewChromiumPrefs.xml 127

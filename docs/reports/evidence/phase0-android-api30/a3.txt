@@ -3,7 +3,7 @@ webview.multiprocess=true
 webview.safe_browsing=true
 webview.multi_profile_feature=false
 webview.proxy_override_feature=true
-host.process=org.simulationrift.poc:browser uid=10166 pid=8340
+host.process=org.simulationrift.poc:browser uid=10166 pid=11010
 host.generation=3
 case.plain_get listener url=http://localhost:8765/files/plain.bin mime=application/octet-stream length=200000 disposition= display_name=plain.bin refetch=OK sha256=2abed8532d85add1b4bc8f69ffc031c7357ed6b69b47c68a7a1e2f7ae8c3f21f
 case.content_disposition listener url=http://localhost:8765/files/disposition mime=application/pdf length=1033 disposition=attachment; filename="../../evil‮gpj.pdf" display_name=evilgpj.pdf refetch=OK sha256=a3f8ce323af7b8692bcc096dca633643c5b0b59d70b90f4ce0ec4cc923f2c36c

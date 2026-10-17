@@ -41,7 +41,7 @@ run() {
   # drawing. The result file is the completion signal.
   "$adb" shell am start -n "$pkg/.MainActivity" "$@" >/dev/null
   i=0
-  while [ "$i" -lt 120 ]; do
+  while [ "$i" -lt 480 ]; do # 4 min: the lifecycle test waits on process deaths
     if "$adb" shell run-as "$pkg" test -f "files/results/$name.txt"; then
       "$adb" exec-out run-as "$pkg" cat "files/results/$name.txt" > "$out/$name.txt"
       return 0
@@ -57,6 +57,13 @@ run worker --es test worker
 for png in pdf_file pdf_memfd; do
   "$adb" exec-out run-as "$pkg" cat "files/results/$png.png" > "$out/$png.png" 2>/dev/null || true
 done
+
+# --- Worker lifecycle: cold start, signals, in-process timeout, stuck worker ---
+run lifecycle --es test lifecycle
+{
+  echo "# isolated processes still running after the lifecycle test (PID USER NAME)"
+  "$adb" shell ps -A -o PID,USER,NAME | grep -E " u0_i[0-9]+ .*$pkg" || echo "(none)"
+} > "$out/lifecycle-leftovers.txt"
 
 # --- A1: renderer sandbox, inspected from outside while the page is live ---
 "$adb" shell run-as "$pkg" rm -f files/results/a1.txt

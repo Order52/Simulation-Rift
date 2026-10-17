@@ -15,6 +15,7 @@ import android.os.SharedMemory
 import android.os.SystemClock
 import android.system.Os
 import android.system.OsConstants
+import android.util.Log
 import java.io.File
 import java.io.FileDescriptor
 import java.util.concurrent.CountDownLatch
@@ -27,12 +28,21 @@ import kotlin.concurrent.thread
  */
 class MainActivity : Activity() {
 
+    private companion object {
+        const val WORKER_SCAN_TIMEOUT_MS = 15_000L
+
+        /** Loops over every byte for every byte: runs far past any deadline here. */
+        const val SLOW_RULES =
+            "rule rift_slow { condition: for all i in (0..filesize - 1) : (for all j in (0..filesize - 1) : (uint8(i) != 0x100 + j)) }"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val test = intent.getStringExtra("test")
         val label = intent.getStringExtra("label") ?: "default"
         when (test) {
             "worker" -> thread { runWorkerTests(); finish() }
+            "lifecycle" -> thread { Results.write(this, "lifecycle", runLifecycleTests()); finish() }
             "browse" -> {
                 startActivity(
                     Intent(this, BrowserActivity::class.java)
@@ -168,10 +178,120 @@ class MainActivity : Activity() {
         }
         for ((name, file) in listOf("yara_marker" to marked, "yara_16mib" to large)) {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
-                worker.yaraScan(rules, pfd).lineSequence().filter { it.isNotBlank() }.forEach { out.appendLine("$name.$it") }
+                worker.yaraScan(rules, pfd, WORKER_SCAN_TIMEOUT_MS).lineSequence().filter { it.isNotBlank() }.forEach { out.appendLine("$name.$it") }
             }
         }
         Results.write(this, "worker", out.toString())
+    }
+
+    // ---- Worker lifecycle: cold start, signals, deadlines ----------------------
+
+    /**
+     * Answers the questions Phase 0 left open about the isolated worker:
+     * how long a fresh worker takes to start (with and without the app zygote),
+     * whether the app can signal it, whether YARA-X's own timeout fires there,
+     * and whether unbinding retires a worker stuck in a scan.
+     */
+    private fun runLifecycleTests(): String = buildString {
+        val samples = 5
+        for ((label, service) in listOf("system_zygote" to WorkerService::class.java, "app_zygote" to ZygoteWorkerService::class.java)) {
+            val times = (1..samples).map { i ->
+                val fresh = bindFresh(service, "${label}_$i") ?: return@map null
+                val (bound, connectMs) = fresh
+                val firstCall = SystemClock.elapsedRealtimeNanos()
+                val pid = bound.worker.pid()
+                val callMs = (SystemClock.elapsedRealtimeNanos() - firstCall) / 1_000_000.0
+                if (i == 1) appendLine("$label.zygote_preload=${bound.worker.zygotePreload()}")
+                appendLine("$label.sample$i connect_ms=%.1f first_call_ms=%.1f pid=$pid retired=${bound.retire()}".format(connectMs, callMs))
+                connectMs
+            }
+            val ok = times.filterNotNull().sorted()
+            appendLine("$label.connect_ms.median=" + (ok.getOrNull(ok.size / 2)?.let { "%.1f".format(it) } ?: "n/a") + " of ${ok.size}/$samples")
+        }
+
+        // Signals: the worker has another UID, so kill(2) should fail with EPERM.
+        bindFresh(WorkerService::class.java, "signal")?.first?.let { bound ->
+            val pid = bound.worker.pid()
+            appendLine("signal.kill0=" + attempt { Os.kill(pid, 0); "delivered" })
+            appendLine("signal.sigkill=" + attempt { Os.kill(pid, OsConstants.SIGKILL); "delivered" })
+            Process.killProcess(pid) // reports nothing; checked through the binder below
+            SystemClock.sleep(500)
+            appendLine("signal.alive_after=${bound.binder.pingBinder()}")
+            appendLine("signal.retired=${bound.retire()}")
+        } ?: appendLine("signal=BIND_FAILED")
+
+        val input = File(filesDir, "slow-input.bin").apply { writeBytes(ByteArray(256 * 1024)) }
+
+        // YARA-X's own deadline inside the isolated process (Deadline::InProcess).
+        bindFresh(WorkerService::class.java, "timeout")?.first?.let { bound ->
+            val started = SystemClock.elapsedRealtime()
+            val reply = ParcelFileDescriptor.open(input, ParcelFileDescriptor.MODE_READ_ONLY).use { bound.worker.yaraScan(SLOW_RULES, it, 2_000) }
+            appendLine("timeout.reply=" + reply.lines().filter { it.isNotBlank() }.joinToString(" "))
+            appendLine("timeout.wall_ms=${SystemClock.elapsedRealtime() - started}")
+            appendLine("timeout.retired=${bound.retire()}")
+        } ?: appendLine("timeout=BIND_FAILED")
+
+        // A worker stuck in a scan with no deadline: does unbinding retire it?
+        bindFresh(WorkerService::class.java, "stuck")?.first?.let { bound ->
+            var callOutcome = "still running"
+            val caller = thread {
+                callOutcome = try {
+                    ParcelFileDescriptor.open(input, ParcelFileDescriptor.MODE_READ_ONLY).use { bound.worker.yaraScan(SLOW_RULES, it, 0) }
+                        .lines().first()
+                } catch (e: Exception) {
+                    e.javaClass.simpleName
+                }
+            }
+            SystemClock.sleep(1_500)
+            appendLine("stuck.alive_while_scanning=${bound.binder.pingBinder()}")
+            appendLine("stuck.retired=${bound.retire(timeoutMs = 20_000)}")
+            caller.join(5_000)
+            appendLine("stuck.blocked_call=$callOutcome")
+        } ?: appendLine("stuck=BIND_FAILED")
+    }
+
+    /** A bound worker in its own process, and how to unbind it and wait for that process to die. */
+    private inner class BoundWorker(val worker: IWorker, val binder: IBinder, private val connection: ServiceConnection) {
+        private val died = CountDownLatch(1)
+
+        init {
+            binder.linkToDeath({ died.countDown() }, 0)
+        }
+
+        /** Unbinds, then reports how long the process took to die, or that it did not. */
+        fun retire(timeoutMs: Long = 10_000): String {
+            val started = SystemClock.elapsedRealtime()
+            unbindService(connection)
+            return if (died.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+                "died_after_unbind_ms=${SystemClock.elapsedRealtime() - started}"
+            } else {
+                "STILL_ALIVE_after_${timeoutMs}ms"
+            }
+        }
+    }
+
+    /** Binds a new isolated process (a distinct instance name, `[A-Za-z0-9_.]`, never reuses one). */
+    private fun bindFresh(serviceClass: Class<*>, instance: String): Pair<BoundWorker, Double>? {
+        val latch = CountDownLatch(1)
+        var bound: BoundWorker? = null
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                bound = BoundWorker(IWorker.Stub.asInterface(service), service, this)
+                latch.countDown()
+            }
+
+            override fun onServiceDisconnected(name: ComponentName) = Unit
+        }
+        val started = SystemClock.elapsedRealtimeNanos()
+        try {
+            bindIsolatedService(Intent(this, serviceClass), BIND_AUTO_CREATE, instance, mainExecutor, connection)
+        } catch (e: RuntimeException) {
+            Log.e(TAG, "bind $instance failed", e)
+            return null
+        }
+        if (!latch.await(10, TimeUnit.SECONDS)) return null
+        val ms = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000.0
+        return bound?.let { it to ms }
     }
 
     private fun bindWorker(): Pair<IWorker, Double>? {

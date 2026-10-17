@@ -15,9 +15,9 @@ app_webview_s2/Default/Local Storage/leveldb/LOG 287
 app_webview_s2/Default/Local Storage/leveldb/MANIFEST-000001 41
 app_webview_s2/Default/QuotaManager 57344
 app_webview_s2/Default/QuotaManager-journal 21032
-app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/cba7d493-12fd-48c4-8cc1-382c10a188bb/fdb57e08f5550048_0 266
-app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/cba7d493-12fd-48c4-8cc1-382c10a188bb/index 24
-app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/cba7d493-12fd-48c4-8cc1-382c10a188bb/index-dir/the-real-index 48
+app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/0d631151-7e13-407b-b084-2ced6b3cdea1/fdb57e08f5550048_0 266
+app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/0d631151-7e13-407b-b084-2ced6b3cdea1/index 24
+app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/0d631151-7e13-407b-b084-2ced6b3cdea1/index-dir/the-real-index 48
 app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/index.txt 89
 app_webview_s2/Default/Service Worker/Database/000003.log 616
 app_webview_s2/Default/Service Worker/Database/CURRENT 16
@@ -52,17 +52,19 @@ files/generation 1
 files/large.bin 16777216
 files/marked.bin 38
 files/reset-marker 11
-files/results/a1.txt 929
-files/results/a2-probe-after-reset.txt 406
-files/results/a2-probe-same-session.txt 412
-files/results/a2-seed-round1.txt 342
-files/results/a2-seed-round2.txt 342
-files/results/inventory-after-reset.txt 430
-files/results/inventory-initial.txt 1836
-files/results/inventory-seeded.txt 3871
+files/results/a1.txt 930
+files/results/a2-probe-after-reset.txt 407
+files/results/a2-probe-same-session.txt 413
+files/results/a2-seed-round1.txt 375
+files/results/a2-seed-round2.txt 375
+files/results/inventory-after-reset.txt 491
+files/results/inventory-initial.txt 1897
+files/results/inventory-seeded.txt 3932
+files/results/lifecycle.txt 1567
 files/results/pdf_file.png 21928
 files/results/pdf_memfd.png 21928
-files/results/reset-round1.txt 207
-files/results/worker.txt 1810
+files/results/reset-round1.txt 208
+files/results/worker.txt 1809
 files/sample.pdf 712
+files/slow-input.bin 262144
 shared_prefs/WebViewChromiumPrefs.xml 127

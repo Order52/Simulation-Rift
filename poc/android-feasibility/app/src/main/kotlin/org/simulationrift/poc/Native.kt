@@ -8,5 +8,6 @@ object Native {
 
     external fun probes(canaryPath: String, tcpPort: Int): String
 
-    external fun yaraScan(rules: String, fd: Int): String
+    /** [timeoutMs] 0 means no timeout. */
+    external fun yaraScan(rules: String, fd: Int, timeoutMs: Long): String
 }

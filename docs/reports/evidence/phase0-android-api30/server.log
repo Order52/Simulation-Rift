@@ -9,6 +9,7 @@ fixture: "GET /sw.js HTTP/1.1" 200 -
 fixture: "GET /a2-probe.html HTTP/1.1" 200 -
 fixture: code 404, message File not found
 fixture: "GET /favicon.ico HTTP/1.1" 404 -
+fixture: "GET /sw.js HTTP/1.1" 304 -
 fixture: "GET /a2-probe.html HTTP/1.1" 200 -
 fixture: code 404, message File not found
 fixture: "GET /favicon.ico HTTP/1.1" 404 -

@@ -10,7 +10,8 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="Rift PoC"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:zygotePreloadName=".WorkerZygotePreload">
 
         <!-- Trusted controller process. -->
         <activity
@@ -34,5 +35,12 @@
             android:name=".WorkerService"
             android:exported="false"
             android:isolatedProcess="true" />
+
+        <!-- The same worker, forked from the app zygote: measures cold start (§18). -->
+        <service
+            android:name=".ZygoteWorkerService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
     </application>
 </manifest>

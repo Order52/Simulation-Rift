@@ -13,9 +13,9 @@ app_webview_s2/Default/Local Storage/leveldb/LOG 287
 app_webview_s2/Default/Local Storage/leveldb/MANIFEST-000001 41
 app_webview_s2/Default/PersistentOriginTrials/LOCK 0
 app_webview_s2/Default/PersistentOriginTrials/LOG 0
-app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/10cf67ac-2419-47c9-b981-da71cb08ddc0/fdb57e08f5550048_0 269
-app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/10cf67ac-2419-47c9-b981-da71cb08ddc0/index 24
-app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/10cf67ac-2419-47c9-b981-da71cb08ddc0/index-dir/the-real-index 48
+app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/20af77f5-8c36-4244-8f38-ee698348a9b0/fdb57e08f5550048_0 269
+app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/20af77f5-8c36-4244-8f38-ee698348a9b0/index 24
+app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/20af77f5-8c36-4244-8f38-ee698348a9b0/index-dir/the-real-index 48
 app_webview_s2/Default/Service Worker/CacheStorage/330b14e63e93550776fc01b2dff3bf0b1016006c/index.txt 117
 app_webview_s2/Default/Service Worker/Database/000003.log 732
 app_webview_s2/Default/Service Worker/Database/CURRENT 16
@@ -24,7 +24,7 @@ app_webview_s2/Default/Service Worker/Database/LOG 291
 app_webview_s2/Default/Service Worker/Database/MANIFEST-000001 41
 app_webview_s2/Default/Service Worker/ScriptCache/2cc80dabc69f58b6_0 460
 app_webview_s2/Default/Service Worker/ScriptCache/index 24
-app_webview_s2/Default/Service Worker/ScriptCache/index-dir/the-real-index 72
+app_webview_s2/Default/Service Worker/ScriptCache/index-dir/the-real-index 48
 app_webview_s2/Default/Session Storage/000003.log 256
 app_webview_s2/Default/Session Storage/CURRENT 16
 app_webview_s2/Default/Session Storage/LOCK 0
@@ -51,6 +51,7 @@ app_webview_s2/Default/shared_proto_db/metadata/LOCK 0
 app_webview_s2/Default/shared_proto_db/metadata/LOG 293
 app_webview_s2/Default/shared_proto_db/metadata/MANIFEST-000001 41
 app_webview_s2/last-exit-info 80
+app_webview_s2/pref_store 134
 app_webview_s2/variations_seed_new 25132
 app_webview_s2/variations_stamp 0
 app_webview_s2/webview_data.lock 36
@@ -60,7 +61,7 @@ cache/webview_s2/Default/HTTP Cache/Cache_Data/82f6752e7283e357_0 389
 cache/webview_s2/Default/HTTP Cache/Cache_Data/8807a23bde952d43_0 498
 cache/webview_s2/Default/HTTP Cache/Cache_Data/ed9f5a27987ebbb4_0 1301
 cache/webview_s2/Default/HTTP Cache/Cache_Data/index 24
-cache/webview_s2/Default/HTTP Cache/Cache_Data/index-dir/the-real-index 48
+cache/webview_s2/Default/HTTP Cache/Cache_Data/index-dir/the-real-index 72
 cache/webview_s2/Default/HTTP Cache/Code Cache/js/index 24
 cache/webview_s2/Default/HTTP Cache/Code Cache/js/index-dir/the-real-index 48
 cache/webview_s2/Default/HTTP Cache/Code Cache/wasm/index 24
@@ -77,13 +78,15 @@ files/results/a2-probe-after-reset.txt 406
 files/results/a2-probe-same-session.txt 412
 files/results/a2-seed-round1.txt 374
 files/results/a2-seed-round2.txt 374
-files/results/inventory-after-reset.txt 456
-files/results/inventory-initial.txt 2538
-files/results/inventory-seeded.txt 4640
+files/results/inventory-after-reset.txt 517
+files/results/inventory-initial.txt 2799
+files/results/inventory-seeded.txt 4901
+files/results/lifecycle.txt 1557
 files/results/pdf_file.png 21928
 files/results/pdf_memfd.png 21928
 files/results/reset-round1.txt 265
 files/results/worker.txt 1811
 files/sample.pdf 712
+files/slow-input.bin 262144
 shared_prefs/AwOriginVisitLoggerPrefs.xml 411
 shared_prefs/WebViewChromiumPrefs.xml 127
