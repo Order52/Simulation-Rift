@@ -35,6 +35,12 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.9
+# Mozilla's CA root list as data, used by rift-core's downloads (rustls).
+# A permissive data licence; distributing it requires shipping its text,
+# which the release notices must include (Phase 7).
+exceptions = [
+  { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+]
 
 [bans]
 multiple-versions = "warn"

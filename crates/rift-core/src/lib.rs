@@ -3,6 +3,7 @@
 //! Everything here runs in the trusted controller process and treats all
 //! inputs from web content, files, workers and intelligence packs as untrusted.
 
+pub mod download;
 pub mod heuristics;
 pub mod intel;
 pub mod policy;

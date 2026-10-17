@@ -16,7 +16,7 @@ use crate::vault::{self, ObjectId, Sealed, VaultError, VaultKey};
 const OBJECTS: &str = "objects";
 const PENDING: &str = "pending";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ObjectStore {
     root: PathBuf,
 }

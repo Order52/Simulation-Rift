@@ -11,7 +11,7 @@ use crate::vault::{Sealed, VaultError};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DestinationError {
-    #[error("{0} is a loopback, private, link-local or otherwise non-public address")]
+    #[error("{0}, a loopback, private, link-local or otherwise non-public address")]
     NonPublic(IpAddr),
 }
 
