@@ -1,0 +1,11 @@
+# Phase 0 feasibility harnesses. These are evidence tools, not product code:
+# they are kept so every Phase 0 result in docs/reports/ is reproducible, and
+# they are deleted once the product implementation supersedes them.
+[workspace]
+resolver = "3"
+members = ["linux-worker-lockdown"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false

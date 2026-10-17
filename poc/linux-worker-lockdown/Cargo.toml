@@ -1,0 +1,13 @@
+[package]
+name = "linux-worker-lockdown"
+version = "0.0.0"
+description = "PoC L2/L3: seccomp-bpf + Landlock + rlimit worker lockdown and sealed-memfd output"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4.7"
+libc = "0.2.191"
+nix = { version = "0.31.3", features = ["fs", "mman", "process", "ptrace", "resource", "signal", "socket", "uio"] }
+seccompiler = "0.5.0"
