@@ -3,7 +3,7 @@
 # they are deleted once the product implementation supersedes them.
 [workspace]
 resolver = "3"
-members = ["linux-worker-lockdown"]
+members = ["android-native", "linux-worker-lockdown", "tuf-offline"]
 
 [workspace.package]
 edition = "2024"

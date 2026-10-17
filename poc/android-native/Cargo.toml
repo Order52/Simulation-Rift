@@ -1,0 +1,26 @@
+[package]
+name = "android-native"
+version = "0.0.0"
+description = "PoC A5/A6: YARA-X (pulley, no JIT) and native confinement probes for the Android isolated worker"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "rift_poc_native"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jni = "0.21.1"
+libc = "0.2.191"
+# Only the modules a consumer rule pack plausibly needs; pulley = interpreted,
+# so the worker never needs executable memory.
+yara-x = { version = "1.21.0", default-features = false, features = [
+    "pulley",
+    "constant-folding",
+    "exact-atoms",
+    "fast-regexp",
+    "hash-module",
+    "math-module",
+    "string-module",
+] }
