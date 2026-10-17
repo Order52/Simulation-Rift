@@ -20,6 +20,10 @@ import urllib.parse
 
 WEB_ROOT = pathlib.Path(__file__).resolve().parent / "web"
 REPORTS: dict[str, dict[str, str]] = {}
+HELLO = b"harmless download fixture\n" * 40
+PRIVATE = b"cookie-gated fixture\n" * 50
+SESSION_COOKIE = "rift_login=1"
+BIG = 101 * 1024 * 1024  # just over the 100 MiB per-object limit
 LOCK = threading.Lock()
 
 
@@ -56,6 +60,46 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if url.path == "/set-cookie":
             # A server-set cookie, so disposal is tested for both kinds.
             return self.send_bytes(b"ok", "text/plain", [("Set-Cookie", "rift_server_cookie=1; Max-Age=86400; Path=/")])
+        if url.path == "/files/hello.txt":
+            return self.send_bytes(HELLO, "text/plain", [("Content-Disposition", 'attachment; filename="hello.txt"')])
+        if url.path == "/files/hostile":
+            # Traversal plus a right-to-left override, as raw UTF-8 bytes.
+            name = 'attachment; filename="../../evil\u202egpj.pdf"'.encode("utf-8").decode("latin-1")
+            return self.send_bytes(b"%PDF-1.4 fixture", "application/pdf", [("Content-Disposition", name)])
+        if url.path == "/files/to-loopback":
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{self.server.server_address[1]}/files/hello.txt")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
+        if url.path == "/login":
+            self.send_response(302)
+            self.send_header("Set-Cookie", f"{SESSION_COOKIE}; Path=/; HttpOnly")
+            self.send_header("Location", query.get("next", "/"))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
+        if url.path == "/files/private.bin":
+            if SESSION_COOKIE not in (self.headers.get("Cookie") or ""):
+                self.send_response(403)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return None
+            return self.send_bytes(PRIVATE, "application/octet-stream", [("Content-Disposition", 'attachment; filename="private.bin"')])
+        if url.path == "/files/big":
+            # No Content-Length: the stream itself must be cut at the limit.
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", 'attachment; filename="big.bin"')
+            self.send_header("Connection", "close")
+            self.end_headers()
+            chunk = bytes(1024 * 1024)
+            try:
+                for _ in range(BIG // len(chunk)):
+                    self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the client stopped reading at its limit
+            return None
         if url.path == "/cacheable.js":
             body = b"window.cacheableLoaded = true;\n"
             self.send_response(200)

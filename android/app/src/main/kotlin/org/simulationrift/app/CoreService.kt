@@ -6,6 +6,7 @@ import android.os.Binder
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Process
+import org.simulationrift.core.DownloadInfo
 
 /**
  * Hosts [ICore] in the main process for `:browser`. The service is not
@@ -33,6 +34,18 @@ class CoreService : Service() {
         override fun typedAddress(input: String): String {
             checkCaller()
             return Core.typed(input)
+        }
+
+        override fun submitDownload(
+            generation: Long,
+            url: String,
+            cookie: String?,
+            userAgent: String,
+            referer: String?,
+            contentDisposition: String?,
+        ) {
+            checkCaller()
+            Core.submitDownload(generation, DownloadInfo(url, cookie, userAgent, referer, contentDisposition))
         }
 
         override fun requestReset(generation: Long) {

@@ -120,6 +120,47 @@ class SecurityTest {
         assertNotNull(device.findObject(By.textContains("no threat database")))
     }
 
+    // ---- S8 / S9 / S10: downloads go through the core (INV-13, §11.1) -----------
+
+    @Test
+    fun s08_oversizedDownloadStopsAtTheLimit() {
+        allowFixtureHost()
+        val d = download("/files/big")
+        assertTrue("${d.failure}", d.failure?.contains("larger than the 104857600-byte limit") == true)
+    }
+
+    @Test
+    fun s09_localDestinationsNeedAnExplicitPerHostAllowance() {
+        // Not allowed yet in a fresh session: localhost is refused.
+        resetAndAwait(activeGeneration())
+        val refused = download("/files/hello.txt")
+        assertTrue("${refused.failure}", refused.failure?.contains("resolves to 127.0.0.1") == true)
+        // Allowing "localhost" does not allow another name for the same machine.
+        allowFixtureHost()
+        val literal = download("/files/to-loopback", match = "127.0.0.1")
+        assertTrue("${literal.failure}", literal.failure?.contains("127.0.0.1 resolves to 127.0.0.1") == true)
+        val allowed = download("/files/hello.txt")
+        assertEquals(1040uL, allowed.file?.size)
+    }
+
+    @Test
+    fun s10_hostileFilenameIsDisplayOnly() {
+        allowFixtureHost()
+        val file = download("/files/hostile").file
+        assertNotNull(file)
+        assertEquals("evilgpj.pdf", file!!.displayName)
+        assertTrue(file.id.matches(Regex("[0-9a-f]{32}")))
+    }
+
+    @Test
+    fun s10b_cookieGatedDownloadIsRefetchedWithItsCookie() {
+        allowFixtureHost()
+        val file = download("/login?next=/files/private.bin", match = "/files/private.bin").file
+        assertNotNull(file)
+        assertEquals("private.bin", file!!.displayName)
+        assertEquals(1050uL, file.size)
+    }
+
     // ---- S15: unsupported engine configuration (INV-7) --------------------------
 
     @Test
@@ -161,6 +202,9 @@ class SecurityTest {
         assertEquals(emptyList<String>(), dataDirectories().filter { it.endsWith("_s$generation") })
         assertEquals(emptyList<String>(), File(context.dataDir, "shared_prefs").list().orEmpty().toList())
         assertFalse(Core.decide(generation, fixture("/probe.html")) is NavigationDecision.Proceed)
+
+        assertFalse(File(context.filesDir, "rift/sessions/$generation").exists())
+        assertTrue(Core.downloads.value.isEmpty())
 
         val after = visit("probe-after", "/probe.html?test=probe-after")
         for (key in STORES) assertEquals(key, "absent", after.getString(key))
@@ -216,6 +260,30 @@ class SecurityTest {
         throw AssertionError("page $path did not report $doneKey")
     }
 
+    private fun allowFixtureHost() {
+        Core.allowLocalHost("localhost")
+        val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+        while ("localhost" !in Core.localHosts.value) {
+            if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("allowance not applied")
+            SystemClock.sleep(20)
+        }
+    }
+
+    /** Navigates to a download URL and waits for the core's outcome for it. */
+    private fun download(path: String, match: String = path): Core.Download {
+        val before = Core.downloads.value.map { it.key }.toSet()
+        openBrowser(activeGeneration(), fixture(path))
+        val deadline = SystemClock.elapsedRealtime() + DOWNLOAD_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            Core.downloads.value.firstOrNull { it.key !in before && match in it.url && !it.running }?.let {
+                report("download", "$path -> ${it.file ?: it.failure}")
+                return it
+            }
+            SystemClock.sleep(100)
+        }
+        throw AssertionError("no finished download for $path: ${Core.downloads.value}")
+    }
+
     private fun browserPids(): List<Int> =
         context.getSystemService(ActivityManager::class.java).runningAppProcesses.orEmpty()
             .filter { it.processName == context.packageName + AndroidBrowserDisposal.BROWSER_PROCESS_SUFFIX }
@@ -242,6 +310,7 @@ class SecurityTest {
         const val UI_TIMEOUT_MS = 10_000L
         const val PAGE_TIMEOUT_MS = 20_000L
         const val CORE_TIMEOUT_MS = 15_000L
+        const val DOWNLOAD_TIMEOUT_MS = 120_000L
         val STORES = listOf("cookie", "server_cookie", "localStorage", "indexedDB", "cacheStorage", "serviceWorker")
     }
 }

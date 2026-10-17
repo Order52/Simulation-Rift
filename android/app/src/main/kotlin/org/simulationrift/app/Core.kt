@@ -8,7 +8,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.flow.update
+import org.simulationrift.core.DownloadFailure
+import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.Navigation
+import org.simulationrift.core.QuarantinedFile
 import org.simulationrift.core.Navigator
 import org.simulationrift.core.SessionFailure
 import org.simulationrift.core.Sessions
@@ -40,6 +45,11 @@ object Core {
         @Volatile var sandbox: SandboxReport? = null
     }
 
+    /** One download of the current session, as the home screen shows it. */
+    data class Download(val key: Long, val url: String, val file: QuarantinedFile? = null, val failure: String? = null) {
+        val running get() = file == null && failure == null
+    }
+
     private val _state = MutableStateFlow<State>(State.Opening)
     val state: StateFlow<State> = _state
 
@@ -47,13 +57,25 @@ object Core {
     private val _sandbox = MutableStateFlow<SandboxReport?>(null)
     val sandbox: StateFlow<SandboxReport?> = _sandbox
 
+    private val _downloads = MutableStateFlow<List<Download>>(emptyList())
+    val downloads: StateFlow<List<Download>> = _downloads
+
+    private val _localHosts = MutableStateFlow<List<String>>(emptyList())
+    val localHosts: StateFlow<List<String>> = _localHosts
+
+    // Transfers run here, never on the session worker, so a slow download
+    // cannot delay a reset (which cancels it instead).
+    private val transfers = Executors.newFixedThreadPool(2) { Thread(it, "rift-transfer") }
+    private val downloadKeys = AtomicLong()
+
     // Session work is serialized here. Disposal blocks until :browser is gone,
     // so it never runs on the UI thread or on a Binder thread.
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "rift-core") }
     private val started = AtomicBoolean(false)
     private lateinit var app: Context
 
-    private var sessions: Sessions? = null // only touched on [worker]
+    // Written only on [worker]; read by transfers (the Rust object is thread-safe).
+    @Volatile private var sessions: Sessions? = null
 
     // Read on Binder threads, so that a decision never waits for a reset that
     // holds the session lock. Written only on [worker].
@@ -91,6 +113,8 @@ object Core {
         val opened = sessions ?: return@execute
         _state.value = State.Resetting(current)
         currentGeneration = null // decisions for the old generation now block
+        _downloads.value = emptyList()
+        _localHosts.value = emptyList()
         try {
             opened.reset()
         } catch (e: SessionFailure) {
@@ -129,7 +153,23 @@ object Core {
         // Recovery happens only through a fresh open, which repeats cleanup.
         opened?.close()
         sessions = null
-        _state.value = State.Failed(e.message ?: e.javaClass.simpleName)
+        _state.value = State.Failed(describe(e))
+    }
+
+    // UniFFI renders errors as field lists, so the sentences are written here.
+    private fun describe(e: SessionFailure): String = when (e) {
+        is SessionFailure.CleanupFailed -> "Cleanup of session ${e.generation} failed: ${e.reason}"
+        is SessionFailure.Storage -> "Session storage failed: ${e.detail}"
+        is SessionFailure.NoActiveSession -> "No session is active."
+        is SessionFailure.AlreadyActive -> "A session is already active."
+        is SessionFailure.Poisoned -> "Session state is unusable after an internal error."
+    }
+
+    private fun describe(e: DownloadFailure): String = when (e) {
+        is DownloadFailure.NotCaptured -> e.reason
+        is DownloadFailure.QuotaExceeded -> "this session's download quota (${e.limit} bytes) is used up"
+        is DownloadFailure.SessionEnded -> "the session this download belonged to has ended"
+        is DownloadFailure.Poisoned -> "session state is unusable after an internal error"
     }
 
     // ---- Interface for :browser (via CoreService) ----------------------------
@@ -159,6 +199,33 @@ object Core {
     }
 
     fun typed(input: String): String = typedAddress(input)
+
+    fun submitDownload(generation: Long, info: DownloadInfo) {
+        val opened = sessions ?: return
+        if (generation != currentGeneration) return
+        val key = downloadKeys.incrementAndGet()
+        _downloads.update { it + Download(key, displaySafe(info.url)) }
+        transfers.execute {
+            val outcome = try {
+                Download(key, displaySafe(info.url), file = opened.download(generation.toULong(), info))
+            } catch (e: DownloadFailure) {
+                Download(key, displaySafe(info.url), failure = describe(e))
+            }
+            Log.i(TAG, "download $key in generation $generation: " + (outcome.file?.let { "stored ${it.size} bytes" } ?: "not captured: ${outcome.failure}"))
+            if (generation == currentGeneration) {
+                _downloads.update { list -> list.map { if (it.key == key) outcome else it } }
+            }
+        }
+    }
+
+    /** The user's per-session exception for one local host name (INV-13). */
+    fun allowLocalHost(host: String) = worker.execute {
+        val generation = currentGeneration ?: return@execute
+        val opened = sessions ?: return@execute
+        if (opened.allowLocalHost(generation.toULong(), host)) {
+            _localHosts.value = opened.localHosts(generation.toULong())
+        }
+    }
 
     fun rendererGone(generation: Long, crashed: Boolean) {
         Log.w(TAG, "renderer gone (crashed=$crashed) in generation $generation; ending the session")

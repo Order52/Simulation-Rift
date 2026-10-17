@@ -14,6 +14,7 @@ import android.os.Process
 import android.os.RemoteException
 import android.util.Log
 import android.view.View
+import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -92,6 +93,7 @@ class BrowserActivity : ComponentActivity() {
     private var notes by mutableStateOf<List<Fact>>(emptyList())
     private var canGoBack by mutableStateOf(false)
     private var canGoForward by mutableStateOf(false)
+    private var status by mutableStateOf<String?>(null)
 
     private val browserBinder = object : IBrowser.Stub() {
         /** Returns once finish() has run, so the activity is not restored after the kill. */
@@ -207,6 +209,22 @@ class BrowserActivity : ComponentActivity() {
         }
         webViewClient = Client()
         webChromeClient = Chrome()
+        // The engine only reports the download; the core fetches it again
+        // into encrypted quarantine (§8.5). Downloads generated inside the
+        // page (blob:, data:) never reach this listener (PoC A3).
+        setDownloadListener { url, userAgent, contentDisposition, _, _ ->
+            submitDownload(url, userAgent, contentDisposition)
+        }
+    }
+
+    private fun submitDownload(url: String, userAgent: String, contentDisposition: String?) {
+        val cookie = CookieManager.getInstance().getCookie(url)
+        try {
+            core?.submitDownload(generation, url, cookie, userAgent, webView?.url, contentDisposition)
+            status = "Download sent to Rift's quarantine; see the home screen."
+        } catch (e: RemoteException) {
+            exitProcess("core unreachable")
+        }
     }
 
     // ---- Navigation ------------------------------------------------------------
@@ -386,6 +404,7 @@ class BrowserActivity : ComponentActivity() {
                     modifier = Modifier.weight(1f).testTag("address"),
                 )
             }
+            status?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("status")) }
         }
     }
 

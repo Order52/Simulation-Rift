@@ -84,7 +84,10 @@ class MainActivity : ComponentActivity() {
             ) {
                 Text("Simulation Rift", style = MaterialTheme.typography.headlineMedium)
                 SessionCard(state)
-                if (active != null) BrowseCard(active.generation)
+                if (active != null) {
+                    BrowseCard(active.generation)
+                    DownloadsCard()
+                }
                 DiagnosticsCard(sandbox)
             }
         }
@@ -136,6 +139,48 @@ class MainActivity : ComponentActivity() {
                     Button(onClick = { browse(generation, typed.takeIf { it.isNotBlank() }) }, modifier = Modifier.testTag("browse")) {
                         Text("Browse")
                     }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun DownloadsCard() {
+        val downloads by Core.downloads.collectAsState()
+        val localHosts by Core.localHosts.collectAsState()
+        var host by remember { mutableStateOf("") }
+        Card(Modifier.fillMaxWidth().testTag("downloads")) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Quarantine (this session)", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Downloads are fetched again by Rift, encrypted with this session's key, and deleted at reset. " +
+                        "Downloads created inside a page (blob: and data:) cannot be captured.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (downloads.isEmpty()) Text("No downloads yet.")
+                downloads.forEach { d ->
+                    val file = d.file
+                    val text = when {
+                        file != null -> "${file.displayName} · ${file.size} bytes · sha256 ${file.sha256.take(16)}…\nfrom ${file.source}" +
+                            (file.contentType?.let { " · labelled $it" } ?: "")
+                        d.failure != null -> "Not captured: ${d.failure}\n${d.url}"
+                        else -> "Fetching ${d.url}…"
+                    }
+                    Text(text, modifier = Modifier.testTag("download-${d.key}"))
+                }
+                Text("Local network hosts allowed for downloads in this session: " + localHosts.ifEmpty { listOf("none") }.joinToString())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = host,
+                        onValueChange = { host = it },
+                        label = { Text("Host name") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("local-host"),
+                    )
+                    OutlinedButton(onClick = {
+                        Core.allowLocalHost(host)
+                        host = ""
+                    }) { Text("Allow") }
                 }
             }
         }

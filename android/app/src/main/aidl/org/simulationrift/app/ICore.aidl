@@ -25,6 +25,13 @@ interface ICore {
     /** The URL to decide for text typed in the address bar. */
     String typedAddress(String input);
 
+    /**
+     * The engine reported a download (§8.5). The core fetches it again itself
+     * into the session's encrypted quarantine; `cookie` is the engine's cookie
+     * header for `url` only. Results appear in the trusted home screen.
+     */
+    oneway void submitDownload(long generation, String url, String cookie, String userAgent, String referer, String contentDisposition);
+
     oneway void requestReset(long generation);
 
     /** The renderer died: the session is torn down (INV-7). */
