@@ -252,6 +252,7 @@ Everything else is a concrete type.
 
 - Contains the parsers: YARA-X (`pulley` feature, minimal modules), the `image` crate (PNG, JPEG via zune-jpeg, WebP) with `Limits`, and PDFium on Linux (`pdfium-render`, dynamically loaded `libpdfium`).
 - **Linux lockdown sequence:**
+  0. Refuse to continue unless the process has exactly one thread. seccomp (without TSYNC) and Landlock confine only the calling thread, so a thread a library started earlier would stay unconfined.
   1. Close every fd except the IPC socket.
   2. Set rlimits: `AS`, `CPU`, `NOFILE`, `FSIZE=0`, `NPROC=0`, `CORE=0`.
   3. Set `PR_SET_NO_NEW_PRIVS`.
@@ -260,6 +261,7 @@ Everything else is a concrete type.
   6. Report `Ready` with a self-check.
 
   The controller cross-checks `/proc/<pid>/status` for `Seccomp: 2` and `NoNewPrivs: 1` before it sends any input.
+- **Deadlines.** The Linux worker stays single-threaded, so it cannot use YARA-X's in-process timeout (it starts a timer thread, which the seccomp filter forbids; Phase 0 L2). The supervisor kills the worker when a job's deadline passes, and `RLIMIT_CPU` is the backstop. On Android the app cannot kill the isolated process directly, so the worker uses YARA-X's timeout there (`rift_worker::Deadline`).
 - **Android:** the same Rust job code is loaded via JNI inside the isolated service. On Android the lockdown relies on `isolated_app`. A self-applied seccomp filter is a hardening option once ART's syscall needs are characterized.
 - `unsafe` is confined to `lockdown` and FFI shims. Each block carries a `// SAFETY:` justification and is subject to review.
 - Workers are **retired** after a document closes, after N jobs, or after any error. They are never trusted to reset their own state.
@@ -356,7 +358,11 @@ Why: distribution WebKitGTK versions vary. Ubuntu 23.10+ restricts unprivileged 
 
 - WebKitGTK 6.0 API (`webkit6` crate).
 - Rift requires the WebProcess sandbox to be **actually active**, not just configured. WebKit has an open, reopened bug in which WebKitGTK runs processes unsandboxed with no warning when the Flatpak sandbox is unavailable [R12].
-- After starting a session, Rift inspects the WebProcess (`/proc/<pid>/status` Seccomp/NoNewPrivs and namespace links under `/proc/<pid>/ns`) and refuses to browse if it is not confined (INV-7) **[PoC L1]**.
+- After starting a session, Rift inspects the WebProcess (`/proc/<pid>/status` Seccomp/NoNewPrivs and namespace links under `/proc/<pid>/ns`) and refuses to browse if it is not confined (INV-7) **[PoC L1]**. Phase 0 refinements:
+  - Web processes are identified by `/proc/<pid>/comm` (the executed binary), never by command line, because the `bwrap` launcher carries the web-process path among its arguments.
+  - WebKit starts more web processes as tabs and sites change (process swap on navigation), so the check runs for every new web process before its page is shown, not once per session.
+  - The check is necessary, not redundant: WebKitGTK 2.54.1 aborted when `bwrap` could not create namespaces, but an environment variable silently disables the sandbox, and R12 shows a fallback path has existed before.
+  - The **network process is not sandboxed** by WebKitGTK (L1: no seccomp, no new namespaces). It parses HTTP, TLS and cookies for every site, so a bug there runs with the user's full privileges in a native package. This is a main reason for Flatpak first: there it is at least bounded by the Flatpak sandbox (to be verified in Phase 0 L1-Flatpak).
 - Permission requests (`permission-request` signal): deny all, including camera, microphone, geolocation, notifications, and clipboard read.
 - Downloads: the `decide-policy` and `download-started` handlers cancel the engine download and submit to the core transfer, as on Android. Engine downloads may be used later if they prove more compatible.
 - Optional hardening for later evaluation: disable JavaScriptCore's JIT for untrusted sessions. There is precedent in Edge's enhanced security mode [R23]. The mechanism is unsupported and is not relied on in V1.

@@ -6,12 +6,12 @@
 
 | PoC | Question | Result | Environment | Evidence |
 |---|---|---|---|---|
-| L2 | Does the self-lockdown hold for fd-only and read-only-directory workers? | **Pass** | Docker, kernel 7.0.12-linuxkit, aarch64, uid `nobody` | [evidence](evidence/phase0-L2-L3-docker.md) |
+| L2 | Does the self-lockdown hold for fd-only and read-only-directory workers, with YARA-X running inside? | **Pass**, with a design finding | Docker, kernel 7.0.12-linuxkit, aarch64, uid `nobody` | [evidence](evidence/phase0-L2-L3-docker.md) |
 | L3 | Is the sealed-memfd output immutable? | **Pass** | same | same |
 | X1 | Does the vault format detect damage? | **Pass**, with a design finding | host (macOS arm64) | `cargo test -p rift-core vault` |
 | X2 | Can TUF be verified offline? | **Pass** on host, with a design finding; Android cross-compile pending | host | [evidence](evidence/phase0-X2-host.md) |
 | X3 | Are URL lookups fast and correct? | **Pass** on host; phone measurement pending | host | [evidence](evidence/phase0-X3-host.md) |
-| L1 | Is the WebKitGTK sandbox actually active, and can Rift detect it? | pending | — | — |
+| L1 | Is the WebKitGTK sandbox actually active, and can Rift detect it? | **Pass** (native package), with a design finding; Flatpak pending | Docker, Fedora 44, WebKitGTK 2.54.1, aarch64 | [evidence](evidence/phase0-L1-docker.md) |
 | A1–A7 | Android renderer, disposal, downloads, isolated worker, YARA-X, memfd | pending (SDK and emulator images downloading) | — | — |
 
 ## Findings that changed the design
@@ -26,6 +26,15 @@
 
    The exceptions are scoped and justified in `deny.toml`. **Action:** remove them when a YARA-X release depends on Wasmtime ≥ 48.0.6, which fixes all seven. `bincode` (used by YARA-X for serialization) is unmaintained but not vulnerable. Rift never deserializes untrusted bincode.
 
+5. **YARA-X timeouts start a thread, which the Linux worker must never do (L2).** `Scanner::set_timeout` lazily spawns a global heartbeat thread. Under lockdown the `clone` is denied and the worker dies; the controller reported this as a failure, not a clean scan. Starting the thread before lockdown would have been a real hole: seccomp without TSYNC and Landlock confine only the calling thread. The design changes (architecture §7.3):
+   - the Linux supervisor enforces scan deadlines by killing the worker (`rift_worker::Deadline::Supervisor`), with `RLIMIT_CPU` as backstop;
+   - Android keeps YARA-X's timeout, since the app cannot kill its isolated process;
+   - `lockdown::apply` refuses to run unless exactly one thread exists;
+   - `crates/rift-worker/tests/no_threads.rs` fails if a scan or image decode ever starts a thread.
+6. **WebKitGTK's network process is not sandboxed, and the web-process check has to be precise (L1).**
+   - In a native package the network process has no seccomp filter and no new namespaces, though it parses HTTP, TLS and cookies for every site. That supports shipping Flatpak first (architecture §9.2).
+   - The first probe matched the `bwrap` launcher by command line and reported it as an unconfined web process. The check now uses `comm`, and runs for every new web process, since WebKit starts new ones as sites change.
+
 ## Verified
 
 - **L2:** with lockdown active, the worker cannot:
@@ -37,9 +46,13 @@
   - map executable memory;
   - allocate beyond the 512 MiB address-space limit.
 
-  Allowed work (reading the passed fd with a matching checksum, a 64 MiB allocation, sealed output) still succeeds. In `ro-dir` mode, Landlock alone produces the denials (`EACCES`, distinct from seccomp's `EPERM`), which shows it is an independent layer. In `strict` mode a forbidden syscall kills the worker with SIGSYS.
+  Allowed work still succeeds: reading the passed fd with a matching checksum, a 64 MiB allocation, sealed output, and **YARA-X compiling a rule and matching a marker inside the locked-down worker**, so the Pulley interpreter needs no executable memory, no threads, and no file access beyond its input. In `ro-dir` mode, Landlock alone produces the denials (`EACCES`, distinct from seccomp's `EPERM`), which shows it is an independent layer. In `strict` mode a forbidden syscall kills the worker with SIGSYS.
 - **L2 negative control:** every probe succeeds without lockdown, so the denials are caused by the lockdown and not by the environment. Without lockdown, the worker was able to `ptrace`-attach and freeze the controller (the first run deadlocked). That is concrete evidence of why the worker must never run unconfined.
 - **L3:** after sealing (`WRITE|GROW|SHRINK|SEAL`), writes fail for both the worker and the controller. The controller verifies the seals before reading.
+- **L1 (native WebKitGTK 2.54.1 in Docker):**
+  - When `bwrap` cannot create namespaces, WebKit aborts instead of running unsandboxed.
+  - When it can, the web process has NoNewPrivs=1, a seccomp filter, and new user, mount, pid and net namespaces, and the check allows browsing.
+  - With the sandbox disabled through `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1` (negative control), the check refuses.
 - **X1:** round trip across multiple STREAM chunks; truncation at four offsets and bit flips at four offsets are detected; a swapped object fails the hash check; a wrong key and a wrong passphrase are rejected; the size limit is enforced on the stream; `Debug` never prints the key. Index writes are atomic. A missing index recovers the previous one; a corrupt index fails instead of rolling back.
 - **X2:** tough 0.24.0 with the filesystem transport rejects modified targets, unsigned metadata edits, a v1 replay after v2 was trusted, expired timestamps, an untrusted root, and timestamp metadata over 16 KiB.
 - **X3:** all 33 published Safe Browsing canonicalization examples pass, plus the three published expression examples. Per-URL decision latency against 1,000,000 entries on the host: p50 11.9 µs, p95 26.0 µs, p99 41.8 µs. Parsing and fully validating the 20 MB table takes 3.8 ms.
@@ -49,7 +62,9 @@
 - L2/L3 on x86_64 and on distribution kernels (Ubuntu, Fedora). CI covers Ubuntu x86_64 once it runs. Not yet tested inside Flatpak, where Flatpak's own seccomp filter also applies.
 - X2 cross-compilation of tough and aws-lc-rs for Android ABIs, and its size cost.
 - X3 latency on a real phone. Memory cost: ~19 MiB per million URL entries when held in a `Vec`.
-- Everything Android (A1–A7) and WebKitGTK (L1).
+- Everything Android (A1–A7).
+- L1 inside Flatpak (the shipping configuration), on a real desktop with a GPU, and with the Rust `webkit6` bindings instead of the Python probe. Whether the Flatpak sandbox bounds the network process.
+- The in-process YARA-X timeout on Android (the reason `Deadline::InProcess` exists), and the assumption that the app cannot kill its isolated worker process.
 
 ## Could be improved
 
