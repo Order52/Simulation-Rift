@@ -132,6 +132,7 @@ fn run(cmd: &str, arg: &str, parent: Pid, input: Option<OwnedFd>) -> (String, Op
         "mmap_exec" => (sys(map_executable()), None),
         "alloc_mib" => (alloc(arg), None),
         "read_input" => (read_input(input), None),
+        "yara_scan" => (yara_scan(input), None),
         "memfd_output" => match sealed_output() {
             Ok((fd, report)) => (format!("ALLOWED {report}"), Some(fd)),
             Err(e) => (format!("DENIED {e}"), None),
@@ -206,6 +207,24 @@ fn read_input(input: Option<OwnedFd>) -> String {
             }
             Err(e) => return io(Err(e)),
         }
+    }
+}
+
+/// Runs the Android worker's YARA-X (Pulley) scan code under this lockdown.
+/// No in-process timeout: that would start a thread, which seccomp forbids;
+/// the controller's deadline and `RLIMIT_CPU` bound the scan instead.
+fn yara_scan(input: Option<OwnedFd>) -> String {
+    const RULES: &str =
+        r#"rule rift_demo_marker { strings: $a = "RIFT-DEMO-MALWARE-MARKER" condition: $a }"#;
+    let Some(fd) = input else {
+        return "DENIED no-descriptor".into();
+    };
+    let report = rift_poc_native::yara_scan(RULES, File::from(fd), None);
+    let summary = report.lines().collect::<Vec<_>>().join(" ");
+    if report.contains("yara.status=OK") {
+        format!("ALLOWED {summary}")
+    } else {
+        format!("DENIED {summary}")
     }
 }
 

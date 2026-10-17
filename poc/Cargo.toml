@@ -9,3 +9,9 @@ members = ["android-native", "linux-worker-lockdown", "tuf-offline"]
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
+
+# The Docker VM used for Linux PoCs is memory-constrained; an opt-level=3
+# build of cranelift-codegen gets OOM-killed there. Lower optimization only
+# changes build memory and speed, not the confinement behaviour under test.
+[profile.release.package.cranelift-codegen]
+opt-level = 1

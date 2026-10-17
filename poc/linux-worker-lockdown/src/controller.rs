@@ -26,13 +26,14 @@ struct Probe {
     cmd: &'static str,
     arg: String,
     expect_locked: Expect,
-    sends_input: bool,
+    input: Option<PathBuf>,
 }
 
 struct Fixture {
     dir: PathBuf,
     canary: PathBuf,
     input: PathBuf,
+    marked: PathBuf,
     input_checksum: String,
     readable_file: Option<PathBuf>,
 }
@@ -80,12 +81,15 @@ impl Fixture {
             .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)
             .collect();
         File::create(&input)?.write_all(&data)?;
+        let marked = dir.join("marked.bin");
+        std::fs::write(&marked, b"header RIFT-DEMO-MALWARE-MARKER trailer")?;
         let checksum = data.iter().fold(0u64, |h, &b| {
             (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)
         });
         Ok(Self {
             canary,
             input,
+            marked,
             input_checksum: format!("{} bytes checksum={checksum:016x}", data.len()),
             readable_file: first_regular_file(Path::new("/usr/share"), 4),
             dir,
@@ -119,7 +123,7 @@ fn probes(mode: &str, fx: &Fixture) -> Vec<Probe> {
         cmd,
         arg: arg.to_owned(),
         expect_locked,
-        sends_input: false,
+        input: None,
     };
     let path = |p: &Path| p.display().to_string();
     let mut list = vec![
@@ -143,7 +147,13 @@ fn probes(mode: &str, fx: &Fixture) -> Vec<Probe> {
             cmd: "read_input",
             arg: String::new(),
             expect_locked: Expect::Allowed,
-            sends_input: true,
+            input: Some(fx.input.clone()),
+        },
+        Probe {
+            cmd: "yara_scan",
+            arg: String::new(),
+            expect_locked: Expect::Allowed,
+            input: Some(fx.marked.clone()),
         },
         p("memfd_output", "", Expect::Allowed),
     ];
@@ -242,7 +252,7 @@ fn run_probes(mode: &str, fx: &Fixture) -> bool {
 
     println!("\n| probe | argument | expected | observed | result |\n|---|---|---|---|---|");
     for probe in probes(mode, fx) {
-        let input = probe.sends_input.then(|| File::open(&fx.input)).transpose();
+        let input = probe.input.as_ref().map(File::open).transpose();
         let input = match input {
             Ok(f) => f.map(OwnedFd::from),
             Err(e) => {

@@ -40,12 +40,28 @@ const OPEN_FILES_LIMIT: u64 = 16;
 /// Applies every layer; returns a human-readable report or the first failure.
 /// Any error means the worker must exit without touching input (fail closed).
 pub fn apply(opts: &Options) -> Result<String, String> {
+    require_single_thread()?;
     close_inherited_fds(opts.keep_fd)?;
     set_rlimits()?;
     nix::sys::prctl::set_no_new_privs().map_err(|e| format!("no_new_privs: {e}"))?;
     let landlock = apply_landlock(&opts.fs)?;
     apply_seccomp(opts)?;
     Ok(format!("landlock={landlock} seccomp=on"))
+}
+
+/// seccomp (without TSYNC) and Landlock confine only the calling thread, so a
+/// thread started earlier — by a library, for instance — would stay unconfined.
+fn require_single_thread() -> Result<(), String> {
+    let threads = std::fs::read_dir("/proc/self/task")
+        .map_err(|e| format!("list threads: {e}"))?
+        .count();
+    if threads == 1 {
+        Ok(())
+    } else {
+        Err(format!(
+            "{threads} threads exist; lockdown requires exactly one"
+        ))
+    }
 }
 
 fn close_inherited_fds(keep: RawFd) -> Result<(), String> {

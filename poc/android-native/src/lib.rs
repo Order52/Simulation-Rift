@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Read;
 use std::os::fd::FromRawFd;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JString};
@@ -126,7 +126,9 @@ fn map_exec_page() -> Result<(), i32> {
 
 /// Compiles `rules`, scans everything readable from `input`, and reports
 /// matches plus timings. Errors are reported, never treated as "no match".
-pub fn yara_scan(rules: &str, mut input: impl Read) -> String {
+/// `timeout` uses YARA-X's timer thread, so it must be `None` in a worker
+/// whose seccomp filter forbids `clone` (the Linux lockdown).
+pub fn yara_scan(rules: &str, mut input: impl Read, timeout: Option<Duration>) -> String {
     let started = Instant::now();
     let compiled = match yara_x::compile(rules) {
         Ok(c) => c,
@@ -147,7 +149,9 @@ pub fn yara_scan(rules: &str, mut input: impl Read) -> String {
     }
 
     let mut scanner = yara_x::Scanner::new(&compiled);
-    scanner.set_timeout(std::time::Duration::from_secs(15));
+    if let Some(timeout) = timeout {
+        scanner.set_timeout(timeout);
+    }
     let scan_started = Instant::now();
     let results = match scanner.scan(&data) {
         Ok(r) => r,
@@ -199,7 +203,9 @@ pub extern "system" fn Java_org_simulationrift_poc_Native_yaraScan<'l>(
         )
     } else {
         // SAFETY: `dup` is a fresh descriptor owned exclusively by this File.
-        yara_scan(&rules, unsafe { File::from_raw_fd(dup) })
+        let file = unsafe { File::from_raw_fd(dup) };
+        // The isolated process cannot be killed by the app, so it times out itself.
+        yara_scan(&rules, file, Some(Duration::from_secs(15)))
     };
     to_jstring(&mut env, report)
 }
@@ -216,7 +222,7 @@ mod tests {
     #[test]
     fn matches_marker_and_only_marker() {
         let input = b"padding RIFT-DEMO-MALWARE-MARKER padding".as_slice();
-        let report = yara_scan(RULES, input);
+        let report = yara_scan(RULES, input, None);
         assert!(report.contains("yara.status=OK"), "{report}");
         assert!(
             report.contains("yara.matches=rift_demo_marker\n"),
@@ -226,7 +232,7 @@ mod tests {
 
     #[test]
     fn invalid_rules_are_an_error_not_a_clean_result() {
-        let report = yara_scan("rule broken {", b"x".as_slice());
+        let report = yara_scan("rule broken {", b"x".as_slice(), None);
         assert!(report.contains("yara.status=COMPILE_ERROR"), "{report}");
     }
 }

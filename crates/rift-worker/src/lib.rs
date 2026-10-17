@@ -32,11 +32,24 @@ pub struct Outcome {
     pub pixels: Option<Vec<u8>>,
 }
 
+/// Who enforces a scan's `deadline_ms`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Deadline {
+    /// The supervisor kills the worker process when the deadline passes
+    /// (`RLIMIT_CPU` is the backstop). Required for the Linux worker: it is
+    /// single-threaded under seccomp, and YARA-X's timeout needs a timer thread.
+    Supervisor,
+    /// YARA-X's own timeout, which starts one timer thread on first use.
+    /// For Android, where the app cannot kill the isolated process directly.
+    InProcess,
+}
+
 /// One worker's state. Rules persist across jobs of the same worker; the
 /// worker itself is retired after a document closes or after any error.
 #[derive(Debug)]
 pub struct Worker {
     confinement: Confinement,
+    deadline: Deadline,
     rules: Option<LoadedRules>,
 }
 
@@ -48,9 +61,10 @@ struct LoadedRules {
 
 impl Worker {
     /// `confinement` is what the platform shim established before any input.
-    pub fn new(confinement: Confinement) -> Self {
+    pub fn new(confinement: Confinement, deadline: Deadline) -> Self {
         Self {
             confinement,
+            deadline,
             rules: None,
         }
     }
@@ -103,7 +117,9 @@ impl Worker {
                     .ok_or(WorkerError::RulesNotLoaded)?;
                 let data = read_bounded(input, MAX_SCAN_BYTES)?;
                 let mut scanner = yara_x::Scanner::new(&loaded.rules);
-                scanner.set_timeout(std::time::Duration::from_millis(u64::from(*deadline_ms)));
+                if self.deadline == Deadline::InProcess {
+                    scanner.set_timeout(std::time::Duration::from_millis(u64::from(*deadline_ms)));
+                }
                 let results = scanner.scan(&data).map_err(|e| match e {
                     yara_x::ScanError::Timeout => WorkerError::Timeout,
                     _ => WorkerError::EngineFailure,
@@ -237,7 +253,7 @@ mod tests {
     }
 
     fn loaded() -> Worker {
-        let mut worker = Worker::new(CONFINED);
+        let mut worker = Worker::new(CONFINED, Deadline::Supervisor);
         let outcome = run(
             &mut worker,
             Request::LoadRules {
@@ -262,7 +278,11 @@ mod tests {
 
     #[test]
     fn hello_reports_confinement() {
-        let outcome = run(&mut Worker::new(CONFINED), Request::Hello, None);
+        let outcome = run(
+            &mut Worker::new(CONFINED, Deadline::Supervisor),
+            Request::Hello,
+            None,
+        );
         assert_eq!(outcome.response.body, Response::Ready(CONFINED));
         assert_eq!(
             (outcome.response.job_id, outcome.response.generation),
@@ -272,7 +292,7 @@ mod tests {
 
     #[test]
     fn rules_must_match_their_digest() {
-        let mut worker = Worker::new(CONFINED);
+        let mut worker = Worker::new(CONFINED, Deadline::Supervisor);
         let outcome = run(
             &mut worker,
             Request::LoadRules { digest: [0; 32] },
@@ -298,7 +318,11 @@ mod tests {
 
     #[test]
     fn scanning_requires_the_named_rules() {
-        let outcome = run(&mut Worker::new(CONFINED), scan(10), Some(b"x"));
+        let outcome = run(
+            &mut Worker::new(CONFINED, Deadline::Supervisor),
+            scan(10),
+            Some(b"x"),
+        );
         assert_eq!(
             outcome.response.body,
             Response::Error(WorkerError::RulesNotLoaded)
@@ -350,7 +374,7 @@ mod tests {
 
     #[test]
     fn image_is_decoded_within_the_requested_box() {
-        let mut worker = Worker::new(CONFINED);
+        let mut worker = Worker::new(CONFINED, Deadline::Supervisor);
         let small = run(&mut worker, decode(256), Some(&png(40, 30)));
         let Response::Bitmap(header) = small.response.body else {
             panic!("{:?}", small.response.body)
@@ -371,7 +395,7 @@ mod tests {
 
     #[test]
     fn oversized_and_malformed_images_fail_safely() {
-        let mut worker = Worker::new(CONFINED);
+        let mut worker = Worker::new(CONFINED, Deadline::Supervisor);
         // Declared width beyond the decoder limit: refused before allocation.
         let wide = run(
             &mut worker,
@@ -397,7 +421,7 @@ mod tests {
     #[test]
     fn pdf_jobs_are_explicitly_unsupported_in_this_build() {
         let outcome = run(
-            &mut Worker::new(CONFINED),
+            &mut Worker::new(CONFINED, Deadline::Supervisor),
             Request::PdfInfo { deadline_ms: 1000 },
             Some(b"%PDF-1.4"),
         );
