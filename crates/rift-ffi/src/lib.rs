@@ -6,8 +6,10 @@
 //! internals stay on the Rust side.
 
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use rift_core::download::{self, DownloadPolicy, DownloadRequest};
 use rift_core::heuristics::HeuristicConfig;
 use rift_core::policy::{self, Decision, IntelState, NavigationContext};
 use rift_core::session::{RecoveryReport, SessionError, SessionManager, SessionPlatform};
@@ -206,10 +208,91 @@ impl From<RecoveryReport> for Recovery {
     }
 }
 
+/// What `:browser` reported about a download (§8.5).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DownloadInfo {
+    pub url: String,
+    /// The engine's cookies for `url`; sent only to that URL's origin.
+    pub cookie: Option<String>,
+    pub user_agent: String,
+    pub referer: Option<String>,
+    pub content_disposition: Option<String>,
+}
+
+/// A committed object in the session's quarantine.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct QuarantinedFile {
+    pub id: String,
+    /// Normalized display metadata; storage uses `id` only.
+    pub display_name: String,
+    pub size: u64,
+    pub sha256: String,
+    /// As the server labelled it, escaped for display.
+    pub content_type: Option<String>,
+    /// Where the bytes finally came from, escaped for display.
+    pub source: String,
+    pub redirects: u32,
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum DownloadFailure {
+    /// The download could not be captured safely (§8.5); nothing was stored.
+    #[error("{reason}")]
+    NotCaptured { reason: String },
+    #[error("this session's download quota ({limit} bytes) is used up")]
+    QuotaExceeded { limit: u64 },
+    /// The session ended before or during the download; the result is discarded.
+    #[error("the session this download belonged to has ended")]
+    SessionEnded,
+    #[error("session state is unusable after an internal error")]
+    Poisoned,
+}
+
+/// Bytes one session may hold in quarantine (§11.1).
+const SESSION_QUOTA: u64 = 500 * 1024 * 1024;
+
+/// Per-session state that dies with the session.
+#[derive(Debug)]
+struct SessionExtras {
+    generation: u64,
+    /// Set by reset; downloads stop at their next chunk (§15 step 1).
+    cancel: Arc<AtomicBool>,
+    local_hosts: Vec<String>,
+    files: Vec<QuarantinedFile>,
+    /// Committed bytes plus reservations of downloads in progress.
+    reserved: u64,
+}
+
+impl SessionExtras {
+    fn new(generation: u64) -> Self {
+        Self {
+            generation,
+            cancel: Arc::new(AtomicBool::new(false)),
+            local_hosts: Vec::new(),
+            files: Vec::new(),
+            reserved: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct State {
+    manager: SessionManager<Platform>,
+    extras: Option<SessionExtras>,
+}
+
+impl State {
+    fn current(&mut self, generation: u64) -> Option<&mut SessionExtras> {
+        self.extras
+            .as_mut()
+            .filter(|e| e.generation == generation && self.manager.is_current(generation))
+    }
+}
+
 /// Disposable sessions (§15, INV-8).
 #[derive(Debug, uniffi::Object)]
 pub struct Sessions {
-    manager: Mutex<SessionManager<Platform>>,
+    state: Mutex<State>,
     recovery: Recovery,
 }
 
@@ -225,7 +308,10 @@ impl Sessions {
     ) -> Result<Arc<Self>, SessionFailure> {
         let (manager, report) = SessionManager::open(root, Platform(platform))?;
         Ok(Arc::new(Self {
-            manager: Mutex::new(manager),
+            state: Mutex::new(State {
+                manager,
+                extras: None,
+            }),
             recovery: report.into(),
         }))
     }
@@ -236,29 +322,151 @@ impl Sessions {
 
     /// Starts a session and returns its generation.
     pub fn start(&self) -> Result<u64, SessionFailure> {
-        Ok(self.lock()?.start()?.generation())
+        let mut state = self.lock()?;
+        let generation = state.manager.start()?.generation();
+        state.extras = Some(SessionExtras::new(generation));
+        Ok(generation)
     }
 
-    /// Destroys the active session and returns its generation. Succeeds only
-    /// after disposal and deletion were verified.
+    /// Destroys the active session and returns its generation. Transfers
+    /// are cancelled first. Succeeds only after disposal and deletion were
+    /// verified.
     pub fn reset(&self) -> Result<u64, SessionFailure> {
-        Ok(self.lock()?.reset()?)
+        let mut state = self.lock()?;
+        if let Some(extras) = state.extras.take() {
+            extras.cancel.store(true, Ordering::SeqCst);
+        }
+        Ok(state.manager.reset()?)
     }
 
     pub fn current_generation(&self) -> Option<u64> {
-        self.lock().ok()?.active().map(|s| s.generation())
+        self.lock().ok()?.manager.active().map(|s| s.generation())
     }
 
     /// True only for the active generation; results tagged with anything
     /// else must be discarded. False if the state is unusable.
     pub fn is_current(&self, generation: u64) -> bool {
-        self.lock().is_ok_and(|m| m.is_current(generation))
+        self.lock().is_ok_and(|s| s.manager.is_current(generation))
+    }
+
+    /// Lets downloads in this session reach `host` even if it resolves to a
+    /// local or private address: the user's explicit exception (INV-13). It
+    /// applies to that exact name only and ends with the session.
+    pub fn allow_local_host(&self, generation: u64, host: String) -> bool {
+        let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+        if host.is_empty() {
+            return false;
+        }
+        let Ok(mut state) = self.lock() else {
+            return false;
+        };
+        let Some(extras) = state.current(generation) else {
+            return false;
+        };
+        if !extras.local_hosts.contains(&host) {
+            extras.local_hosts.push(host);
+        }
+        true
+    }
+
+    pub fn local_hosts(&self, generation: u64) -> Vec<String> {
+        self.lock()
+            .ok()
+            .and_then(|mut s| s.current(generation).map(|e| e.local_hosts.clone()))
+            .unwrap_or_default()
+    }
+
+    /// The session's committed quarantine objects, newest last.
+    pub fn quarantine(&self, generation: u64) -> Vec<QuarantinedFile> {
+        self.lock()
+            .ok()
+            .and_then(|mut s| s.current(generation).map(|e| e.files.clone()))
+            .unwrap_or_default()
+    }
+
+    /// Fetches a download the engine reported into this session's encrypted
+    /// quarantine (§8.5). Blocks for the whole transfer: call it off the UI
+    /// thread. The result is kept only if `generation` is still current.
+    pub fn download(
+        &self,
+        generation: u64,
+        info: DownloadInfo,
+    ) -> Result<QuarantinedFile, DownloadFailure> {
+        let poisoned = |_| DownloadFailure::Poisoned;
+        let (store, recipient, cancel, policy) = {
+            let mut state = self.state.lock().map_err(poisoned)?;
+            let session = state
+                .manager
+                .active()
+                .filter(|s| s.generation() == generation)
+                .map(|s| (s.quarantine().clone(), s.quarantine_key().recipient()))
+                .ok_or(DownloadFailure::SessionEnded)?;
+            let extras = state
+                .current(generation)
+                .ok_or(DownloadFailure::SessionEnded)?;
+            let room = SESSION_QUOTA.saturating_sub(extras.reserved);
+            let policy = DownloadPolicy {
+                local_hosts: extras.local_hosts.clone(),
+                max_bytes: room.min(DownloadPolicy::default().max_bytes),
+                ..DownloadPolicy::default()
+            };
+            if policy.max_bytes == 0 {
+                return Err(DownloadFailure::QuotaExceeded {
+                    limit: SESSION_QUOTA,
+                });
+            }
+            extras.reserved = extras.reserved.saturating_add(policy.max_bytes);
+            (session.0, session.1, extras.cancel.clone(), policy)
+        };
+
+        let request = DownloadRequest {
+            url: &info.url,
+            cookie: info.cookie.as_deref(),
+            user_agent: &info.user_agent,
+            referer: info.referer.as_deref(),
+            engine_disposition: info.content_disposition.as_deref(),
+        };
+        let result = download::download(&request, &policy, &store, &recipient, &cancel);
+
+        let mut state = self.state.lock().map_err(poisoned)?;
+        let Some(extras) = state.current(generation) else {
+            // Reset ran meanwhile: its directory, and anything committed in
+            // it, is already deleted. Never report it as part of a new session.
+            return Err(DownloadFailure::SessionEnded);
+        };
+        let downloaded = match result {
+            Ok(downloaded) => downloaded,
+            Err(error) => {
+                extras.reserved = extras.reserved.saturating_sub(policy.max_bytes);
+                return Err(DownloadFailure::NotCaptured {
+                    reason: rift_core::text::escape_for_display(&error.to_string()),
+                });
+            }
+        };
+        let unused = policy
+            .max_bytes
+            .saturating_sub(downloaded.object.sealed.size);
+        extras.reserved = extras.reserved.saturating_sub(unused);
+        let file = QuarantinedFile {
+            id: downloaded.object.id.to_hex(),
+            display_name: downloaded.display_name,
+            size: downloaded.object.sealed.size,
+            sha256: hex::encode(downloaded.object.sealed.sha256),
+            content_type: downloaded
+                .content_type
+                .as_deref()
+                .map(rift_core::text::escape_for_display),
+            source: rift_core::text::escape_for_display(&downloaded.final_url),
+            redirects: u32::try_from(downloaded.redirects).unwrap_or(u32::MAX),
+        };
+        extras.files.push(file.clone());
+        Ok(file)
     }
 }
 
 impl Sessions {
-    fn lock(&self) -> Result<MutexGuard<'_, SessionManager<Platform>>, SessionFailure> {
-        self.manager.lock().map_err(|_| SessionFailure::Poisoned)
+    fn lock(&self) -> Result<MutexGuard<'_, State>, SessionFailure> {
+        self.state.lock().map_err(|_| SessionFailure::Poisoned)
     }
 }
 
@@ -360,6 +568,80 @@ mod tests {
         let reopened = Sessions::open(root(&dir), disposal.clone()).unwrap();
         assert_eq!(reopened.recovery().interrupted_generation, Some(generation));
         assert!(reopened.start().unwrap() > generation);
+    }
+
+    /// Serves one fixed response per connection on 127.0.0.1.
+    fn serve(body: &'static [u8]) -> u16 {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 0 && line != "\r\n" {
+                    line.clear();
+                }
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Disposition: attachment; filename=\"r\u{202e}fdp.exe\"\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(body);
+            }
+        });
+        port
+    }
+
+    fn info(url: String) -> DownloadInfo {
+        DownloadInfo {
+            url,
+            cookie: None,
+            user_agent: "rift-test".into(),
+            referer: None,
+            content_disposition: None,
+        }
+    }
+
+    #[test]
+    fn downloads_belong_to_one_session_and_end_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        let url = format!("http://localhost:{}/report", serve(b"quarantined bytes"));
+
+        // INV-13: local destinations only after an explicit, per-host allowance.
+        assert!(matches!(
+            sessions.download(generation, info(url.clone())),
+            Err(DownloadFailure::NotCaptured { .. })
+        ));
+        assert!(sessions.allow_local_host(generation, "LocalHost".into()));
+        assert_eq!(
+            sessions.local_hosts(generation),
+            vec!["localhost".to_owned()]
+        );
+        let file = sessions.download(generation, info(url.clone())).unwrap();
+        assert_eq!(file.size, 17);
+        assert_eq!(file.display_name, "rfdp.exe");
+        assert_eq!(sessions.quarantine(generation), vec![file]);
+
+        // Results for an old generation are refused, and nothing carries over.
+        sessions.reset().unwrap();
+        let next = sessions.start().unwrap();
+        assert!(matches!(
+            sessions.download(generation, info(url.clone())),
+            Err(DownloadFailure::SessionEnded)
+        ));
+        assert!(sessions.quarantine(next).is_empty());
+        assert!(sessions.local_hosts(next).is_empty());
+        assert!(!sessions.allow_local_host(generation, "localhost".into()));
+        assert!(
+            !dir.path()
+                .join("sessions")
+                .join(generation.to_string())
+                .exists()
+        );
     }
 
     #[test]

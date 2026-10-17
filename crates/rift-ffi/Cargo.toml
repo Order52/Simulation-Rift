@@ -25,6 +25,7 @@ name = "uniffi-bindgen"
 required-features = ["bindgen"]
 
 [dependencies]
+hex = "0.4.3"
 rift-core = { path = "../rift-core" }
 thiserror = "2.0.21"
 uniffi = "0.32.2"
