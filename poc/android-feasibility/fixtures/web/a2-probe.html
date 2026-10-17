@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>A2 probe</title>
+<script>
+// A2: report which seeded state is still visible to a page.
+const out = (k, v) => console.log("RIFTPOC:" + k + "=" + v);
+(async () => {
+  out("cookie", document.cookie.includes("rift_js_cookie") ? "PRESENT" : "absent");
+  out("server_cookie", document.cookie.includes("rift_server_cookie") ? "PRESENT" : "absent");
+  out("localStorage", localStorage.getItem("rift") ? "PRESENT" : "absent");
+  const dbs = indexedDB.databases ? (await indexedDB.databases()).map(d => d.name) : [];
+  out("indexedDB", dbs.includes("rift-db") ? "PRESENT" : "absent");
+  out("cacheStorage", (await caches.keys()).includes("rift-cache") ? "PRESENT" : "absent");
+  out("serviceWorker", (await navigator.serviceWorker.getRegistrations()).length > 0 ? "PRESENT" : "absent");
+})().catch(e => out("probe_error", e)).finally(() => console.log("RIFTPOC:DONE"));
+</script>

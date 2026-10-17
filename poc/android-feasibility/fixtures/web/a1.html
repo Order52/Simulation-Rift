@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>A1 probes</title>
+<script>
+// A1: hostile-page probes. Results go to console.log only (no bridge exists).
+const out = (k, v) => console.log("RIFTPOC:" + k + "=" + v);
+const suspicious = Object.keys(window).filter(k => /android|bridge|native|rift|jsinterface|webkit/i.test(k));
+out("bridge.globals", suspicious.join(",") || "none");
+out("secure_context", window.isSecureContext);
+out("webrtc.RTCPeerConnection", typeof RTCPeerConnection);
+fetch("file:///etc/hosts").then(() => out("fetch_file", "ALLOWED")).catch(e => out("fetch_file", "DENIED " + e.name));
+fetch("content://settings/system").then(() => out("fetch_content", "ALLOWED")).catch(e => out("fetch_content", "DENIED " + e.name));
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+  navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    .then(() => out("getUserMedia", "ALLOWED")).catch(e => out("getUserMedia", "DENIED " + e.name));
+} else { out("getUserMedia", "UNAVAILABLE"); }
+navigator.geolocation.getCurrentPosition(
+  () => out("geolocation", "ALLOWED"), e => out("geolocation", "DENIED code=" + e.code), { timeout: 3000 });
+const popup = window.open("/a1.html#popup");
+out("window_open", popup ? "OPENED" : "BLOCKED");
+if (navigator.clipboard && navigator.clipboard.readText) {
+  navigator.clipboard.readText().then(() => out("clipboard_read", "ALLOWED")).catch(e => out("clipboard_read", "DENIED " + e.name));
+} else { out("clipboard_read", "UNAVAILABLE"); }
+location.href = "intent://scan/#Intent;scheme=zxing;package=com.example;end";
+// Keep the renderer alive long enough for the host to inspect it.
+setTimeout(() => console.log("RIFTPOC:DONE"), 10000);
+</script>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The only permission. Camera, microphone, location, storage, etc. are
+         deliberately absent so the OS denies them regardless of WebView callbacks. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:name=".PocApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:label="Rift PoC"
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- Trusted controller process. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Browser host: a separate process so it can be killed and its data
+             directory deleted for disposal. Same UID — not a security identity. -->
+        <activity
+            android:name=".BrowserActivity"
+            android:exported="false"
+            android:process=":browser" />
+
+        <!-- Untrusted-input worker: random isolated UID, isolated_app domain. -->
+        <service
+            android:name=".WorkerService"
+            android:exported="false"
+            android:isolatedProcess="true" />
+    </application>
+</manifest>

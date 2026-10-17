@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>A2 seed</title>
+<script src="/cacheable.js"></script>
+<script>
+// A2: seed every storage type a session could leave behind.
+const out = (k, v) => console.log("RIFTPOC:" + k + "=" + v);
+(async () => {
+  document.cookie = "rift_js_cookie=persisted; max-age=86400; path=/";
+  localStorage.setItem("rift", "persisted");
+  await new Promise((resolve, reject) => {
+    const req = indexedDB.open("rift-db", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("s");
+    req.onsuccess = () => { const tx = req.result.transaction("s", "readwrite"); tx.objectStore("s").put("persisted", "k"); tx.oncomplete = resolve; tx.onerror = reject; };
+    req.onerror = reject;
+  });
+  const cache = await caches.open("rift-cache");
+  await cache.put("/cache-entry", new Response("persisted"));
+  await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.ready;
+  out("seeded", "cookie,localStorage,indexedDB,cacheStorage,serviceWorker,httpCache");
+})().catch(e => out("seed_error", e)).finally(() => setTimeout(() => console.log("RIFTPOC:DONE"), 1000));
+</script>

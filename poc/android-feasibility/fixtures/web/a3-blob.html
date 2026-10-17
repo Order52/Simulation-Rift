@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8"><title>A3 blob download</title>
+<script>
+const url = URL.createObjectURL(new Blob(["generated in page"], { type: "application/octet-stream" }));
+const a = document.createElement("a"); a.href = url; a.download = "blob.bin"; document.body.appendChild(a); a.click();
+</script>
