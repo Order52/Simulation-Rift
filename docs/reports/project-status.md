@@ -7,7 +7,7 @@
 | Phase (architecture §22) | State |
 |---|---|
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix (physical phones, API 33–35, 16 KB pages). |
-| 1: Foundations | **Code written and tested on the host; gate not closed.** No fuzz targets yet and no Phase 1 report. CI is green on Ubuntu and macOS ([run 39058785140](https://github.com/Order52/Simulation-Rift/actions/runs/39058785140)). |
+| 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
 | 2: Android vertical slice | Not started (the Phase 0 PoC app is a test harness, not product code). |
 | 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
@@ -80,6 +80,8 @@ These were all found by tests, not by reading:
 10. The YARA-X native library adds 14 MB (arm64) to 18 MB (x86_64) per ABI, stored uncompressed, against a 25 MB budget. Anything else native on Android (for example `tough` and `aws-lc-rs` for X2) must fit in what remains.
 11. A worker forked from the system zygote misses the 300 ms cold-start budget on API 36 (median 304 ms); from the app zygote it takes 45 ms, so `useAppZygote` is required. The app cannot signal its worker, so the in-process YARA-X timeout is needed (and works), and unbinding is the kill switch.
 12. The X2 test script let one tamper test pass for the wrong reason (a missing file). Every rejection is now checked for its expected reason.
+13. Fuzzing (Phase 1): bracketed URL hosts were not canonicalized consistently, so the same URL could hash differently. Brackets are now accepted only as a whole IPv6 literal.
+14. Fuzzing (Phase 1): shortening a long download name could hide its real extension (`invoice<padding>.pdf.exe` shown as `…pdf`). Long names now keep the final extension.
 
 ## 3. Finished vs. not finished
 
@@ -87,7 +89,7 @@ These were all found by tests, not by reading:
 
 - The architecture and the decision record.
 - PoCs A1–A7 and the worker lifecycle test on Android emulators (API 30, 36); X2 on the host and on Android; L1 (native), L2, L3, X1; X3 on the host.
-- The Phase 1 crates listed above: 78 unit and property tests pass on macOS (59 `rift-core`, 11 `rift-protocol`, 8 `rift-worker`), and `clippy -D warnings` is clean for Linux as well (checked in Docker with rustc 1.99.1). The Linux lockdown PoC and the Linux-only `no_threads` test (jobs start no threads under `Deadline::Supervisor`) pass in CI on x86_64 Ubuntu.
+- The Phase 1 crates listed above: 81 unit and property tests pass on macOS (62 `rift-core`, 11 `rift-protocol`, 8 `rift-worker`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy -D warnings` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
 
 **Not finished:**
 
@@ -97,7 +99,7 @@ These were all found by tests, not by reading:
 | X3 on a phone | Run the lookup benchmark on a real arm64 phone. |
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
 | Android device matrix | API 33/34/35, physical phones, OEM WebView builds, x86_64, a 16 KB page-size device. |
-| Phase 1 gate | Fuzz targets (protocol decoding, URL canonicalization, intel tables, vault index), and a Phase 1 report. |
+| Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
 | Phases 2–7 | Everything in §5. |
 
 ## 4. Limitations and how to work around them
@@ -134,35 +136,32 @@ These were all found by tests, not by reading:
 1. X3 on a phone; L1 and L2 inside Flatpak on Fedora and Ubuntu.
 2. Run A1–A7 on API 33/34/35, a physical phone and a 16 KB page-size image.
 
-**Phase 1 close-out**
-3. Fuzz targets for the protocol, URL canonicalizer, intel tables and vault index, run in CI for a fixed budget.
-4. Phase 1 report: verified, unverified, could be improved.
-
 **Phase 2: Android vertical slice**
-5. Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.
-6. Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.
-7. Isolated worker preview (PDF, images, text) with validated output; reset and recovery as proven in A2.
-8. Security tests S1–S12 on the device matrix; Phase 2 report.
+3. Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.
+4. Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.
+5. Isolated worker preview (PDF, images, text) with validated output; reset and recovery as proven in A2.
+6. Security tests S1–S12 on the device matrix; Phase 2 report.
 
 **Phase 3: Scanner and signed intel**
-9. YARA-X scan jobs, verdict cache bound to rule and engine versions.
-10. TUF update and offline import; a demo intel pack; `tools/` pack builder. No real malware samples in the repository.
+7. YARA-X scan jobs, verdict cache bound to rule and engine versions.
+8. TUF update and offline import; a demo intel pack; `tools/` pack builder. No real malware samples in the repository.
 
 **Phase 4: Vault**
-11. Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.
+9. Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.
 
 **Phase 5: Linux**
-12. GTK4 + WebKitGTK Flatpak app on the shared core, with the worker lockdown and the fail-closed sandbox check.
+10. GTK4 + WebKitGTK Flatpak app on the shared core, with the worker lockdown and the fail-closed sandbox check.
 
 **Phase 6 and 7**
-13. Optional AI experiment, shipped only if it adds measured value.
-14. Hardening: fuzz campaigns, fault injection, privacy network captures, dependency review, release gates (§24), and an external security review before any release claim.
+11. Optional AI experiment, shipped only if it adds measured value.
+12. Hardening: fuzz campaigns, fault injection, privacy network captures, dependency review, release gates (§24), and an external security review before any release claim.
 
 ## 6. Reproducing the evidence
 
 | What | Command |
 |---|---|
 | Host tests | `cargo test --workspace` |
+| Fuzzing | `cargo +nightly fuzz run <target> -- -max_total_time=60` (needs cargo-fuzz; `cargo +nightly fuzz list` shows the targets) |
 | Lints and policy | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo deny check` |
 | Linux lockdown (L2/L3) | `poc/linux-worker-lockdown` in Docker or the `linux-worker-lockdown` CI job |
 | WebKitGTK check (L1) | `poc/linux-webkit-sandbox/run-in-docker.sh` |
