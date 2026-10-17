@@ -6,7 +6,7 @@
 
 | Phase (architecture §22) | State |
 |---|---|
-| 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X2 on Android, X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix. |
+| 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix (physical phones, API 33–35, 16 KB pages). |
 | 1: Foundations | **Code written and tested on the host; gate not closed.** No fuzz targets yet and no Phase 1 report. CI is green on Ubuntu and macOS ([run 39058785140](https://github.com/Order52/Simulation-Rift/actions/runs/39058785140)). |
 | 2: Android vertical slice | Not started (the Phase 0 PoC app is a test harness, not product code). |
 | 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
@@ -43,7 +43,8 @@ The original specification was reviewed and replaced by `docs/architecture.md`: 
 | L2 | Does the Linux worker lockdown hold? | Pass in Docker (aarch64) and GitHub CI (x86_64 Ubuntu); Flatpak open | [Docker](evidence/phase0-L2-L3-docker.md), [CI](evidence/phase0-L2-L3-ci-ubuntu.md) |
 | L3 | Is the sealed-memfd output immutable? | Pass | same |
 | X1 | Does the vault format detect damage? | Pass | `cargo test -p rift-core vault` |
-| X2 | Can TUF be verified offline? | Pass on host; Android cross-compile open | [evidence](evidence/phase0-X2-host.md) |
+| X2 | Can TUF be verified offline? | Pass on host and on Android (API 30, 36 emulators) | [host](evidence/phase0-X2-host.md), [Android](evidence/phase0-X2-android.md) |
+| — | Android worker lifecycle: cold start, signals, timeout, stuck worker | Measured: app zygote required; kill denied; timeout fires; unbind retires a stuck worker | [evidence](evidence/phase0-android.md) |
 | X3 | Are URL lookups fast and correct? | Pass on host; phone open | [evidence](evidence/phase0-X3-host.md) |
 
 ### 2.3 Phase 1 code (Rust workspace)
@@ -77,24 +78,25 @@ These were all found by tests, not by reading:
 8. `blob:` and `data:` downloads never reach `DownloadListener`, so the product claim is limited to downloads served at a URL.
 9. Android's `isolated_app` still allows `AF_UNIX` sockets and executable memory, so a per-thread seccomp filter is planned as defence in depth.
 10. The YARA-X native library adds 14 MB (arm64) to 18 MB (x86_64) per ABI, stored uncompressed, against a 25 MB budget. Anything else native on Android (for example `tough` and `aws-lc-rs` for X2) must fit in what remains.
+11. A worker forked from the system zygote misses the 300 ms cold-start budget on API 36 (median 304 ms); from the app zygote it takes 45 ms, so `useAppZygote` is required. The app cannot signal its worker, so the in-process YARA-X timeout is needed (and works), and unbinding is the kill switch.
+12. The X2 test script let one tamper test pass for the wrong reason (a missing file). Every rejection is now checked for its expected reason.
 
 ## 3. Finished vs. not finished
 
 **Finished (tested, with evidence):**
 
 - The architecture and the decision record.
-- PoCs A1–A7 on Android emulators (API 30, 36), and L1 (native), L2, L3, X1, plus X2 and X3 on the host.
+- PoCs A1–A7 and the worker lifecycle test on Android emulators (API 30, 36); X2 on the host and on Android; L1 (native), L2, L3, X1; X3 on the host.
 - The Phase 1 crates listed above: 78 unit and property tests pass on macOS (59 `rift-core`, 11 `rift-protocol`, 8 `rift-worker`), and `clippy -D warnings` is clean for Linux as well (checked in Docker with rustc 1.99.1). The Linux lockdown PoC and the Linux-only `no_threads` test (jobs start no threads under `Deadline::Supervisor`) pass in CI on x86_64 Ubuntu.
 
 **Not finished:**
 
 | Item | What is missing |
 |---|---|
-| X2 on Android | Cross-compile `tough` + `aws-lc-rs` for Android ABIs and record the size. |
+| X2 size in the product | The standalone Android binary is 4.8 MB (upper bound); measure tough + aws-lc-rs inside Rift's shared library. |
 | X3 on a phone | Run the lookup benchmark on a real arm64 phone. |
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
 | Android device matrix | API 33/34/35, physical phones, OEM WebView builds, x86_64, a 16 KB page-size device. |
-| Android unknowns | That the app cannot signal its isolated worker; that the in-process YARA-X timeout fires; worker cold start with `useAppZygote` (300 ms budget). |
 | Phase 1 gate | Fuzz targets (protocol decoding, URL canonicalization, intel tables, vault index), and a Phase 1 report. |
 | Phases 2–7 | Everything in §5. |
 
@@ -129,33 +131,32 @@ These were all found by tests, not by reading:
 ## 5. What is left to finish the project
 
 **Phase 0 close-out**
-1. X2 Android cross-compile and size; X3 on a phone; L1 and L2 inside Flatpak on Fedora and Ubuntu.
+1. X3 on a phone; L1 and L2 inside Flatpak on Fedora and Ubuntu.
 2. Run A1–A7 on API 33/34/35, a physical phone and a 16 KB page-size image.
-3. Measure the three Android unknowns (worker signal, in-process timeout, app-zygote cold start).
 
 **Phase 1 close-out**
-4. Fuzz targets for the protocol, URL canonicalizer, intel tables and vault index, run in CI for a fixed budget.
-5. Phase 1 report: verified, unverified, could be improved.
+3. Fuzz targets for the protocol, URL canonicalizer, intel tables and vault index, run in CI for a fixed budget.
+4. Phase 1 report: verified, unverified, could be improved.
 
 **Phase 2: Android vertical slice**
-6. Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.
-7. Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.
-8. Isolated worker preview (PDF, images, text) with validated output; reset and recovery as proven in A2.
-9. Security tests S1–S12 on the device matrix; Phase 2 report.
+5. Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.
+6. Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.
+7. Isolated worker preview (PDF, images, text) with validated output; reset and recovery as proven in A2.
+8. Security tests S1–S12 on the device matrix; Phase 2 report.
 
 **Phase 3: Scanner and signed intel**
-10. YARA-X scan jobs, verdict cache bound to rule and engine versions.
-11. TUF update and offline import; a demo intel pack; `tools/` pack builder. No real malware samples in the repository.
+9. YARA-X scan jobs, verdict cache bound to rule and engine versions.
+10. TUF update and offline import; a demo intel pack; `tools/` pack builder. No real malware samples in the repository.
 
 **Phase 4: Vault**
-12. Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.
+11. Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.
 
 **Phase 5: Linux**
-13. GTK4 + WebKitGTK Flatpak app on the shared core, with the worker lockdown and the fail-closed sandbox check.
+12. GTK4 + WebKitGTK Flatpak app on the shared core, with the worker lockdown and the fail-closed sandbox check.
 
 **Phase 6 and 7**
-14. Optional AI experiment, shipped only if it adds measured value.
-15. Hardening: fuzz campaigns, fault injection, privacy network captures, dependency review, release gates (§24), and an external security review before any release claim.
+13. Optional AI experiment, shipped only if it adds measured value.
+14. Hardening: fuzz campaigns, fault injection, privacy network captures, dependency review, release gates (§24), and an external security review before any release claim.
 
 ## 6. Reproducing the evidence
 
@@ -165,5 +166,5 @@ These were all found by tests, not by reading:
 | Lints and policy | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo deny check` |
 | Linux lockdown (L2/L3) | `poc/linux-worker-lockdown` in Docker or the `linux-worker-lockdown` CI job |
 | WebKitGTK check (L1) | `poc/linux-webkit-sandbox/run-in-docker.sh` |
-| TUF offline (X2) | `poc/tuf-offline/run-scenarios.sh poc/target/release/tuf-offline` (needs `tuftool`) |
+| TUF offline (X2) | `poc/tuf-offline/run-scenarios.sh poc/target/release/tuf-offline` (needs `tuftool`); on Android: build with `cargo ndk -t arm64-v8a -P 30 build --release -p tuf-offline`, then pass `poc/tuf-offline/adb-client.sh` as the client with `RIFT_X2_BINARY` set |
 | Android A1–A7 | `poc/android-feasibility/build.sh`, then `run-poc.sh <out-dir>` with one emulator or phone attached |

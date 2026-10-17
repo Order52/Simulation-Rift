@@ -9,7 +9,7 @@
 | L2 | Does the self-lockdown hold for fd-only and read-only-directory workers, with YARA-X running inside? | **Pass**, with a design finding; Flatpak pending | Docker, kernel 7.0.12-linuxkit, aarch64, uid `nobody`; GitHub Actions, Ubuntu kernel 6.17 x86_64 | [Docker](evidence/phase0-L2-L3-docker.md), [CI](evidence/phase0-L2-L3-ci-ubuntu.md) |
 | L3 | Is the sealed-memfd output immutable? | **Pass** | same | same |
 | X1 | Does the vault format detect damage? | **Pass**, with a design finding | host (macOS arm64) | `cargo test -p rift-core vault` |
-| X2 | Can TUF be verified offline? | **Pass** on host, with a design finding; Android cross-compile pending | host | [evidence](evidence/phase0-X2-host.md) |
+| X2 | Can TUF be verified offline, on Android too? | **Pass** on host and Android (arm64), with two design findings | host; Android emulators API 30 and 36 | [host](evidence/phase0-X2-host.md), [Android](evidence/phase0-X2-android.md) |
 | X3 | Are URL lookups fast and correct? | **Pass** on host; phone measurement pending | host | [evidence](evidence/phase0-X3-host.md) |
 | L1 | Is the WebKitGTK sandbox actually active, and can Rift detect it? | **Pass** (native package), with a design finding; Flatpak pending | Docker, Fedora 44, WebKitGTK 2.54.1, aarch64 | [evidence](evidence/phase0-L1-docker.md) |
 | A1 | Is the WebView renderer sandboxed on our floor? | **Pass** on API 30 and 36 | Android emulator, arm64, `google_apis` images | [evidence](evidence/phase0-android.md) |
@@ -45,6 +45,8 @@
 8. **Some downloads never reach Rift (A3).** `blob:` and `data:` downloads do not call `DownloadListener` at all, so Rift cannot even show "cannot be captured". POST responses do reach it, but cannot be re-fetched (HTTP 405). The product claim is limited to downloads served at a URL (architecture §8.5).
 9. **`isolated_app` still allows `AF_UNIX` sockets and executable memory (A6), and NoNewPrivs is 0 in the worker.** No network or file access was possible, so A6 passes, but the worker is less confined than the Linux one. A per-thread seccomp filter is the Phase 2 candidate, with its limits stated (architecture §8.6).
 10. **The native library adds 14 MB (arm64) to 18 MB (x86_64) per ABI to the APK (A5)**, against a 25 MB budget. It is stored uncompressed, so any further native code on Android, such as `tough` and `aws-lc-rs` for X2, must fit in the remaining ~11 MB (arm64). Cargo output was 23 MB before stripping; release builds now strip symbols, as the Android Gradle plugin already does when packaging.
+11. **A worker from the system zygote is too slow; the app zygote is required (worker lifecycle).** On the API 36 emulator the median time from `bindIsolatedService` to connected was 304 ms against a 300 ms budget; from the app zygote with the native library preloaded it was 45 ms. The same test showed that the app's `kill(2)` on its worker fails with `EPERM`, that YARA-X's in-process timeout fires on time under Pulley, and that unbinding ends a worker stuck mid-scan within milliseconds. Unbinding is therefore the controller's kill switch on Android (architecture §8.6).
+12. **The X2 scenario script could pass a tamper test for the wrong reason (X2).** tuftool writes targets as links to the input files. Copied repositories shared those files, and on a device the links dangled, so "target modified → rejected" passed because the file was missing. The script now replaces links with copies after publishing, and every rejection must carry its expected reason (hash mismatch, signature threshold, size limit, and so on).
 
 ## Verified
 
@@ -69,20 +71,18 @@
   - Six kinds of site state (cookie, server cookie, localStorage, IndexedDB, Cache Storage, service worker) are present within a session and absent after reset. When the controller is killed mid-reset, the state is still on disk; the next launch finds the marker, deletes it and moves to a new generation, and the probe again finds nothing.
   - URL downloads (GET, redirect, Content-Disposition, cookie-gated) are captured and re-fetched with matching hashes, and a hostile display name is normalized.
   - PdfRenderer renders identical pixels from a sealed memfd in the isolated worker. YARA-X compiles and matches there. The worker cannot read app files or storage, open inet sockets, resolve DNS, or use the clipboard.
+  - Worker lifecycle: the app cannot signal its worker (`EPERM`); YARA-X's own 2 s timeout stops a runaway rule at 2001 ms; unbinding ends a worker stuck mid-scan within milliseconds and leaves no isolated process behind; workers from the app zygote start in 26–45 ms (median).
 - **X1:** round trip across multiple STREAM chunks; truncation at four offsets and bit flips at four offsets are detected; a swapped object fails the hash check; a wrong key and a wrong passphrase are rejected; the size limit is enforced on the stream; `Debug` never prints the key. Index writes are atomic. A missing index recovers the previous one; a corrupt index fails instead of rolling back.
-- **X2:** tough 0.24.0 with the filesystem transport rejects modified targets, unsigned metadata edits, a v1 replay after v2 was trusted, expired timestamps, an untrusted root, and timestamp metadata over 16 KiB.
+- **X2:** tough 0.24.0 with the filesystem transport rejects modified targets, unsigned metadata edits, a v1 replay after v2 was trusted, expired timestamps, an untrusted root, and timestamp metadata over 16 KiB, each for its expected reason. The arm64 Android build (tough with aws-lc-rs, cross-compiled with no changes) passes the same scenarios on the API 30 and API 36 emulators.
 - **X3:** all 33 published Safe Browsing canonicalization examples pass, plus the three published expression examples. Per-URL decision latency against 1,000,000 entries on the host: p50 11.9 µs, p95 26.0 µs, p99 41.8 µs. Parsing and fully validating the 20 MB table takes 3.8 ms.
 
 ## Unverified (so far)
 
 - L2/L3 on Fedora kernels, and inside Flatpak, where Flatpak's own seccomp filter also applies. (Ubuntu x86_64 passes in CI; there the ptrace negative control is inconclusive because Yama already blocks it.)
-- X2 cross-compilation of tough and aws-lc-rs for Android ABIs, and its size cost.
+- X2 on x86_64 Android and physical phones; the size of tough and aws-lc-rs inside Rift's shared library (the standalone binary, 4.8 MB, is an upper bound).
 - X3 latency on a real phone. Memory cost: ~19 MiB per million URL entries when held in a `Vec`.
 - Android on physical devices, OEM WebView builds, API 33/34/35, x86_64, and 16 KB page-size devices. API 30 was run only with the image's stock WebView 91.
-- Android worker cold start with `useAppZygote` (the PoC binds without it: 167 ms on API 30, 339 ms on API 36, against a 300 ms budget).
-- That unbinding ends a stuck Android worker.
 - L1 inside Flatpak (the shipping configuration), on a real desktop with a GPU, and with the Rust `webkit6` bindings instead of the Python probe. Whether the Flatpak sandbox bounds the network process.
-- The in-process YARA-X timeout on Android (the reason `Deadline::InProcess` exists), and the assumption that the app cannot kill its isolated worker process.
 
 ## Could be improved
 
