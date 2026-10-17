@@ -8,6 +8,7 @@ pub mod intel;
 pub mod policy;
 pub mod session;
 pub mod store;
+pub mod text;
 pub mod transfer;
 pub mod urlcanon;
 pub mod vault;

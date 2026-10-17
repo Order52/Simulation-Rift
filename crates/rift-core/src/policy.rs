@@ -6,6 +6,7 @@
 
 use crate::heuristics::{self, Flag, HeuristicConfig, Severity};
 use crate::intel::UrlTable;
+use crate::text::escape_for_display;
 use crate::urlcanon::{self, CanonError};
 
 /// Freshness of the active intelligence snapshot, determined by the caller.
@@ -67,6 +68,73 @@ pub enum BlockReason {
     KnownMalicious(Vec<(String, u32)>),
 }
 
+impl Reason {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Heuristic(flag) => flag.code(),
+            Self::NotChecked(_) => "not-checked",
+        }
+    }
+
+    pub fn explain(&self) -> String {
+        match self {
+            Self::Heuristic(flag) => flag.explain(),
+            Self::NotChecked(error) => format!("This address could not be checked ({error})."),
+        }
+    }
+}
+
+impl Note {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Heuristic(flag) => flag.code(),
+            Self::IntelStale => "intel-stale",
+            Self::IntelMissing => "intel-missing",
+        }
+    }
+
+    pub fn explain(&self) -> String {
+        match self {
+            Self::Heuristic(flag) => flag.explain(),
+            Self::IntelStale => {
+                "The threat database is out of date; recently listed sites may be missed."
+                    .to_owned()
+            }
+            Self::IntelMissing => {
+                "No threat database is installed; only the built-in address checks ran.".to_owned()
+            }
+        }
+    }
+}
+
+impl BlockReason {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::SandboxUnavailable => "sandbox-unavailable",
+            Self::SchemeNotAllowed(_) => "scheme-not-allowed",
+            Self::InvalidUrl => "invalid-url",
+            Self::KnownMalicious(_) => "known-malicious",
+        }
+    }
+
+    pub fn explain(&self) -> String {
+        match self {
+            Self::SandboxUnavailable => {
+                "Browsing is unavailable: the browser engine's sandbox could not be confirmed on this device."
+                    .to_owned()
+            }
+            Self::SchemeNotAllowed(scheme) => format!(
+                "Rift opens only web addresses; \"{}:\" links are blocked.",
+                escape_for_display(scheme)
+            ),
+            Self::InvalidUrl => "This is not a valid web address.".to_owned(),
+            Self::KnownMalicious(_) => {
+                "This address is listed as malicious in the installed threat database.".to_owned()
+            }
+        }
+    }
+}
+
 /// Decides a main-frame navigation to `raw` (as typed or as reported by the engine).
 pub fn decide_navigation(raw: &[u8], ctx: &NavigationContext<'_>) -> Decision {
     if !ctx.sandbox_verified {
@@ -124,6 +192,18 @@ fn block(reason: BlockReason) -> Decision {
     Decision::Block {
         reason,
         inspect_anyway: false,
+    }
+}
+
+/// The URL to load for text typed in the address bar: unchanged if it names
+/// a scheme (the decision then judges that scheme), otherwise an `https://`
+/// address. Only the decision says whether it may load.
+pub fn typed_address(input: &str) -> String {
+    let trimmed = input.trim();
+    if explicit_scheme(trimmed.as_bytes()).is_some() {
+        trimmed.to_owned()
+    } else {
+        format!("https://{trimmed}")
     }
 }
 
@@ -279,6 +359,71 @@ mod tests {
                 inspect_anyway: false
             }
         );
+    }
+
+    #[test]
+    fn every_reason_has_a_distinct_code_and_a_sentence() {
+        let flag = Flag::LookalikeOf {
+            protected: "paypal.com".into(),
+        };
+        let reasons = [
+            Reason::Heuristic(flag.clone()).explain(),
+            Reason::NotChecked(CanonError::TooLong).explain(),
+            Note::IntelStale.explain(),
+            Note::IntelMissing.explain(),
+            BlockReason::SandboxUnavailable.explain(),
+            BlockReason::SchemeNotAllowed("intent".into()).explain(),
+            BlockReason::InvalidUrl.explain(),
+            BlockReason::KnownMalicious(Vec::new()).explain(),
+        ];
+        assert!(reasons.iter().all(|r| r.ends_with('.') && r.len() > 20));
+        assert!(reasons[0].contains("paypal.com"));
+        let codes = [
+            BlockReason::SandboxUnavailable.code(),
+            BlockReason::SchemeNotAllowed(String::new()).code(),
+            BlockReason::InvalidUrl.code(),
+            BlockReason::KnownMalicious(Vec::new()).code(),
+            Note::IntelStale.code(),
+            Note::IntelMissing.code(),
+            Reason::NotChecked(CanonError::NoHost).code(),
+            flag.code(),
+        ];
+        let unique: std::collections::BTreeSet<_> = codes.iter().collect();
+        assert_eq!(unique.len(), codes.len());
+    }
+
+    #[test]
+    fn web_supplied_text_cannot_reorder_an_explanation() {
+        let decision = decide("https://xn--pypal-4ve.com/", None, true);
+        let Decision::Confirm { reasons, .. } = decision else {
+            panic!("expected confirm, got {decision:?}");
+        };
+        for reason in reasons {
+            let text = reason.explain();
+            assert!(
+                !text.chars().any(crate::text::is_hidden_or_control),
+                "{text}"
+            );
+        }
+        let flag = Flag::MixedScriptLabel {
+            label: "p\u{202e}lap".into(),
+        };
+        assert!(flag.explain().contains("p\\u{202e}lap"));
+    }
+
+    #[test]
+    fn typed_addresses_default_to_https_without_hiding_schemes() {
+        assert_eq!(typed_address(" example.org/a "), "https://example.org/a");
+        assert_eq!(
+            typed_address("localhost:8080/x"),
+            "https://localhost:8080/x"
+        );
+        assert_eq!(typed_address("http://example.org/"), "http://example.org/");
+        assert_eq!(typed_address("javascript:alert(1)"), "javascript:alert(1)");
+        assert!(matches!(
+            decide(&typed_address("file:///etc/passwd"), None, true),
+            Decision::Block { .. }
+        ));
     }
 
     #[test]

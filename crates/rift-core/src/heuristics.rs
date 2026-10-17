@@ -8,6 +8,7 @@
 
 use unicode_security::{MixedScript, skeleton};
 
+use crate::text::escape_for_display;
 use crate::urlcanon::CanonicalUrl;
 
 /// Pack-provided configuration: thresholds and lists are data, not code.
@@ -88,6 +89,63 @@ impl Flag {
             | Self::LongUrl { .. }
             | Self::UrlShortener
             | Self::NoTls => Severity::Info,
+        }
+    }
+
+    /// Stable identifier, for tests and for UI that needs to tell flags apart.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::LookalikeOf { .. } => "lookalike",
+            Self::ProtectedNameInSubdomain { .. } => "protected-name-in-subdomain",
+            Self::MixedScriptLabel { .. } => "mixed-script",
+            Self::CredentialsInUrl => "credentials-in-url",
+            Self::InternationalizedHost { .. } => "internationalized-host",
+            Self::IpLiteralHost => "ip-address",
+            Self::NonDefaultPort(_) => "non-default-port",
+            Self::DeepSubdomain { .. } => "deep-subdomain",
+            Self::LongUrl { .. } => "long-url",
+            Self::UrlShortener => "url-shortener",
+            Self::NoTls => "no-tls",
+        }
+    }
+
+    /// The fact in one plain sentence for the trusted UI (§10.4). Parts that
+    /// come from the address are escaped, so they cannot reorder the wording.
+    pub fn explain(&self) -> String {
+        match self {
+            Self::LookalikeOf { protected } => format!(
+                "This address looks like {} but is a different site.",
+                escape_for_display(protected)
+            ),
+            Self::ProtectedNameInSubdomain { protected } => {
+                let protected = escape_for_display(protected);
+                format!("This address contains {protected}, but the site is not {protected}.")
+            }
+            Self::MixedScriptLabel { label } => format!(
+                "Part of this address (\"{}\") mixes alphabets, a common way to imitate another name.",
+                escape_for_display(label)
+            ),
+            Self::CredentialsInUrl => {
+                "This address puts a user name before the site name, which can hide the real site."
+                    .to_owned()
+            }
+            Self::InternationalizedHost { unicode } => format!(
+                "The site name uses international characters: {}.",
+                escape_for_display(unicode)
+            ),
+            Self::IpLiteralHost => {
+                "This address is a numeric IP address, not a site name.".to_owned()
+            }
+            Self::NonDefaultPort(port) => format!("This address uses the unusual port {port}."),
+            Self::DeepSubdomain { depth } => {
+                format!("The site name has {depth} levels of subdomains.")
+            }
+            Self::LongUrl { bytes } => format!("This address is unusually long ({bytes} bytes)."),
+            Self::UrlShortener => {
+                "This is a link shortener: the destination is unknown until the link is followed."
+                    .to_owned()
+            }
+            Self::NoTls => "The connection to this site is not encrypted.".to_owned(),
         }
     }
 }

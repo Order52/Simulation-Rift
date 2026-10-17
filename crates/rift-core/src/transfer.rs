@@ -6,6 +6,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use sha2::{Digest, Sha256};
 
+use crate::text::is_hidden_or_control;
 use crate::vault::{Sealed, VaultError};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -60,11 +61,6 @@ fn is_public_v6(ip: Ipv6Addr) -> bool {
         || (first == 0x0064 && ip.segments()[1] == 0xff9b)) // NAT64 can reach IPv4 private space
 }
 
-/// Characters that reorder or hide text and must never reach a filename display.
-const BIDI_AND_INVISIBLE: &[char] = &[
-    '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}',
-    '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{feff}',
-];
 const MAX_DISPLAY_NAME_CHARS: usize = 120;
 /// Longest final extension (after the last '.') kept visible when shortening.
 const MAX_KEPT_EXTENSION_CHARS: usize = 16;
@@ -74,10 +70,7 @@ const MAX_KEPT_EXTENSION_CHARS: usize = 16;
 /// able to impersonate another name or extension in the trusted UI.
 pub fn display_name(supplied: &str) -> String {
     let last = supplied.rsplit(['/', '\\']).next().unwrap_or_default();
-    let cleaned: String = last
-        .chars()
-        .filter(|c| !c.is_control() && !BIDI_AND_INVISIBLE.contains(c))
-        .collect();
+    let cleaned: String = last.chars().filter(|&c| !is_hidden_or_control(c)).collect();
     let trimmed = cleaned.trim_matches(|c: char| c.is_whitespace() || c == '.');
     if trimmed.is_empty() {
         "download".to_owned()
