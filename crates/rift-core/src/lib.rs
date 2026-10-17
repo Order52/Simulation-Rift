@@ -5,5 +5,6 @@
 
 pub mod heuristics;
 pub mod intel;
+pub mod policy;
 pub mod urlcanon;
 pub mod vault;
