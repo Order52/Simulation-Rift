@@ -6,3 +6,4 @@
 pub mod urlcanon;
 
 pub mod intel;
+pub mod vault;

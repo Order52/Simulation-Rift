@@ -491,6 +491,8 @@ Each finding carries: source, rule or indicator ID, object hash, engine version,
 - Roles: root and targets keys offline; snapshot and timestamp keys on the maintainer machine.
 - Expiry: timestamp 7 d, snapshot 14 d, targets 90 d, root 365 d.
 - Offline import is a TUF repository directory or archive verified through a file transport, using exactly the same code path.
+- **Staging paths are never derived from repository target names** (Phase 0 finding, X2). `tough::TargetName` normalizes `../../x` to `x` instead of rejecting it, and keeps absolute names absolute, so `dir.join(name.resolved())` can escape. Rift stages only names from a fixed allowlist of pack files, and only when the raw name is already in normal form.
+- Metadata size limits are set far below tough's defaults: timestamp 16 KiB, snapshot 64 KiB, targets 1 MiB, root 64 KiB.
 - Flow: fetch bounded metadata → verify signatures, thresholds, versions, expiry, hashes, and lengths → download targets into staging → validate the binary tables and JSON schema → compile rules in a worker (smoke test) → run fixture lookups → atomic pointer swap → retain the previous snapshot until no job references it.
 - Scans already in progress stay pinned to their starting snapshot.
 - If the installed data has expired and no update is possible, Rift keeps using it offline with a prominent **stale** warning. Clock problems are surfaced to the user; the expiry check is never bypassed.
@@ -515,6 +517,8 @@ No shared upstream API secret ships in the app. Scraped data is never substitute
 - **Index:** `vault/index.age`, a postcard-serialized `VaultIndex { format_version, generation, entries[] }`, encrypted to the same recipient. Each entry records the ObjectId, plaintext SHA-256, size, display name, detected type, source kind, an optional source URL, timestamps, and the last scan summary.
 - **Writes:** write `index.age.tmp`, fsync it, rename it over the old index, and fsync the directory. `index.age.prev` is kept for crash recovery.
 - After decrypting an object, the plaintext hash is checked against the index. This detects ciphertext swapped between objects.
+- **The index is authenticated, not just encrypted** (Phase 0 finding, X1). age recipient encryption is not sender-authenticated: anyone who knows the public recipient can produce a well-formed age file. The index plaintext therefore ends with an HMAC-SHA256 keyed from the vault identity. The MAC is verified *before* the index is parsed. Objects are trusted only through the hash and size recorded in this authenticated index.
+- If the current index is absent (a crash between the two renames), the previous index is used. If it is present but invalid, reading fails rather than silently falling back, which would amount to a rollback.
 - **Why age:** a reviewed specification, chunked STREAM construction with truncation detection, and a maintained Rust implementation. It replaces a custom libsodium format (ADR-07). The crate is pre-1.0, so it is pinned and covered by format regression fixtures.
 
 ### 14.2 Keys

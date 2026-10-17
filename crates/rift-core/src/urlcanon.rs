@@ -248,28 +248,43 @@ fn host_from_authority(authority: &[u8]) -> &[u8] {
         Some(at) => authority.get(at.saturating_add(1)..).unwrap_or_default(),
         None => authority,
     };
-    // Trailing dots are dropped from the host later anyway; removing them
-    // first keeps port detection identical on re-canonicalization ("0:." must
-    // not become host "0:" and then, on a second pass, port-stripped "0").
-    let host_port = match host_port.iter().rposition(|&b| b != b'.') {
-        Some(last) => host_port.get(..=last).unwrap_or(host_port),
-        None => host_port,
-    };
     if host_port.first() == Some(&b'[') {
         return match host_port.iter().position(|&b| b == b']') {
             Some(end) => host_port.get(..=end).unwrap_or(host_port),
             None => host_port,
         };
     }
-    match host_port.iter().rposition(|&b| b == b':') {
+    // Strip trailing dots and `:port` suffixes until nothing changes, so that
+    // canonical output never ends in something a second pass would strip
+    // (e.g. "0:." → "0:" → "0", or "::" → ":" → "").
+    let mut host = host_port;
+    loop {
+        let trimmed = strip_port(strip_trailing_dots(host));
+        if trimmed.len() == host.len() {
+            return host;
+        }
+        host = trimmed;
+    }
+}
+
+fn strip_trailing_dots(host: &[u8]) -> &[u8] {
+    match host.iter().rposition(|&b| b != b'.') {
+        Some(last) => host.get(..=last).unwrap_or(host),
+        None => &[],
+    }
+}
+
+/// Removes a trailing `:digits` (possibly empty) port.
+fn strip_port(host: &[u8]) -> &[u8] {
+    match host.iter().rposition(|&b| b == b':') {
         Some(colon)
-            if host_port
+            if host
                 .get(colon.saturating_add(1)..)
                 .is_some_and(|p| p.iter().all(u8::is_ascii_digit)) =>
         {
-            host_port.get(..colon).unwrap_or(host_port)
+            host.get(..colon).unwrap_or(host)
         }
-        _ => host_port,
+        _ => host,
     }
 }
 
@@ -280,9 +295,18 @@ fn canonical_host(raw: &[u8]) -> Result<(String, bool), CanonError> {
     }
     // Internationalized names become Punycode; undecodable bytes stay escaped.
     let ascii: Vec<u8> = match std::str::from_utf8(raw) {
+        // Only accept conversions that yield a plain LDH hostname: Punycode
+        // reorders characters, so a stray '%' could otherwise end up next to
+        // hex digits and decode differently on the next canonicalization.
         Ok(text) if !text.is_ascii() => match idna::domain_to_ascii(text) {
-            Ok(converted) => converted.into_bytes(),
-            Err(_) => raw.to_vec(),
+            Ok(converted)
+                if converted
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.') =>
+            {
+                converted.into_bytes()
+            }
+            _ => raw.to_vec(),
         },
         _ => raw.to_vec(),
     };
@@ -388,7 +412,7 @@ fn escape(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)] // tests may panic
+#[allow(clippy::arithmetic_side_effects)] // test arithmetic on known-small values
 mod tests {
     use super::*;
 

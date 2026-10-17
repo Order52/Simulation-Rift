@@ -177,7 +177,7 @@ fn array<const N: usize>(slice: &[u8]) -> Result<[u8; N], TableError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)] // tests may panic
+#[allow(clippy::arithmetic_side_effects)] // test arithmetic on known-small values
 mod tests {
     use super::*;
     use crate::urlcanon::{canonicalize, expression_hash};

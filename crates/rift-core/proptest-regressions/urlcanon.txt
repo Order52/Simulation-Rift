@@ -5,3 +5,5 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc f7c2001d16a4bc0ffd597dddf73c57e8855b63abe3e0ead373ea764ae6b75a6a # shrinks to input = [48, 58, 46, 32]
+cc 020b05559605ea55ffcbdb1a3e257973cb2b5a6e05191c9f107e8c687450f359 # shrinks to host = "%A%CB%a40", path = ""
+cc 131c0199230935d6f7370fca2b733eae295006727f180461c75fc1bb961e60a6 # shrinks to input = [58, 58]
