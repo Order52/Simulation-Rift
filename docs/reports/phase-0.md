@@ -1,0 +1,52 @@
+# Phase 0 report: feasibility of the highest-risk assumptions
+
+**Status:** in progress (17 Oct 2026). Each PoC is listed with its result, the evidence file, what remains unverified, and what could be improved. "Pass" means the pass criterion in `docs/architecture.md` §22 was met **in the stated environment only**.
+
+## Summary
+
+| PoC | Question | Result | Environment | Evidence |
+|---|---|---|---|---|
+| L2 | Does the self-lockdown hold for fd-only and read-only-directory workers? | **Pass** | Docker, kernel 7.0.12-linuxkit, aarch64, uid `nobody` | [evidence](evidence/phase0-L2-L3-docker.md) |
+| L3 | Is the sealed-memfd output immutable? | **Pass** | same | same |
+| X1 | Does the vault format detect damage? | **Pass**, with a design finding | host (macOS arm64) | `cargo test -p rift-core vault` |
+| X2 | Can TUF be verified offline? | **Pass** on host, with a design finding; Android cross-compile pending | host | [evidence](evidence/phase0-X2-host.md) |
+| X3 | Are URL lookups fast and correct? | **Pass** on host; phone measurement pending | host | [evidence](evidence/phase0-X3-host.md) |
+| L1 | Is the WebKitGTK sandbox actually active, and can Rift detect it? | pending | — | — |
+| A1–A7 | Android renderer, disposal, downloads, isolated worker, YARA-X, memfd | pending (SDK and emulator images downloading) | — | — |
+
+## Findings that changed the design
+
+1. **age recipient encryption is not sender-authenticated (X1).** Anyone who knows the vault's public recipient can produce a well-formed index file. The index is now HMAC-authenticated with a key derived from the vault identity, and the MAC is verified before parsing (architecture §14.1). A test forges an index using only the public recipient and confirms it is rejected.
+2. **`tough` normalizes hostile target names instead of rejecting them (X2).** `../../etc/passwd` becomes `etc/passwd`, and `/etc/passwd` stays absolute, so `dir.join(name.resolved())` can escape the staging directory. Rift stages only allowlisted flat names that are already in normal form (architecture §13.2).
+3. **Three idempotence bugs in URL canonicalization (X3)**, all found by property tests: port detection before trailing-dot removal, Punycode moving a literal `%` next to hex digits, and repeated empty-port stripping. All are fixed and kept as regression cases. Without idempotence, the same URL could hash differently depending on how many times it had been normalized.
+
+## Verified
+
+- **L2:** with lockdown active, the worker cannot:
+  - open a canary file, `/etc/passwd`, or list `/`;
+  - create files;
+  - open IPv4 or Unix sockets;
+  - spawn processes;
+  - ptrace or signal its parent;
+  - map executable memory;
+  - allocate beyond the 512 MiB address-space limit.
+
+  Allowed work (reading the passed fd with a matching checksum, a 64 MiB allocation, sealed output) still succeeds. In `ro-dir` mode, Landlock alone produces the denials (`EACCES`, distinct from seccomp's `EPERM`), which shows it is an independent layer. In `strict` mode a forbidden syscall kills the worker with SIGSYS.
+- **L2 negative control:** every probe succeeds without lockdown, so the denials are caused by the lockdown and not by the environment. Without lockdown, the worker was able to `ptrace`-attach and freeze the controller (the first run deadlocked). That is concrete evidence of why the worker must never run unconfined.
+- **L3:** after sealing (`WRITE|GROW|SHRINK|SEAL`), writes fail for both the worker and the controller. The controller verifies the seals before reading.
+- **X1:** round trip across multiple STREAM chunks; truncation at four offsets and bit flips at four offsets are detected; a swapped object fails the hash check; a wrong key and a wrong passphrase are rejected; the size limit is enforced on the stream; `Debug` never prints the key. Index writes are atomic. A missing index recovers the previous one; a corrupt index fails instead of rolling back.
+- **X2:** tough 0.24.0 with the filesystem transport rejects modified targets, unsigned metadata edits, a v1 replay after v2 was trusted, expired timestamps, an untrusted root, and timestamp metadata over 16 KiB.
+- **X3:** all 33 published Safe Browsing canonicalization examples pass, plus the three published expression examples. Per-URL decision latency against 1,000,000 entries on the host: p50 11.9 µs, p95 26.0 µs, p99 41.8 µs. Parsing and fully validating the 20 MB table takes 3.8 ms.
+
+## Unverified (so far)
+
+- L2/L3 on x86_64 and on distribution kernels (Ubuntu, Fedora). CI covers Ubuntu x86_64 once it runs. Not yet tested inside Flatpak, where Flatpak's own seccomp filter also applies.
+- X2 cross-compilation of tough and aws-lc-rs for Android ABIs, and its size cost.
+- X3 latency on a real phone. Memory cost: ~19 MiB per million URL entries when held in a `Vec`.
+- Everything Android (A1–A7) and WebKitGTK (L1).
+
+## Could be improved
+
+- Memory-map indicator tables instead of copying them, to reduce RSS for large packs. This needs one reviewed `unsafe` block or a vetted crate.
+- The worker seccomp allowlist is hand-written per architecture. It should be generated, then confirmed by running the real parsers (YARA-X, PDFium, image decoders) under `strict` mode in CI.
+- The vault index MAC key is derived from the identity's text encoding through HMAC. A dedicated HKDF context per purpose would be cleaner if more derived keys are added.
