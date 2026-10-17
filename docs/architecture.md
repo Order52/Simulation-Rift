@@ -330,12 +330,16 @@ The only stronger option is a separate APK, which means a separate UID. That is 
 
 **Known unsupported in V1:** POST-generated responses, `blob:` and `data:` downloads, and single-use URLs already consumed by the engine. These show "this download cannot be captured safely". Rift adds no JavaScript bridge to support them.
 
+PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and cookie-gated downloads reach the listener, and the core's re-fetch returns the same bytes. A POST form response reaches the listener, but a re-fetch with GET gets HTTP 405, so the core must detect a failed or mismatched re-fetch and show the message above rather than store an error page. `blob:` and `data:` downloads **never call `DownloadListener`**: they fail silently in the engine, and Rift cannot show a message for an event it never sees. The product claim is therefore "Rift captures downloads that arrive at a URL; downloads generated inside the page are not supported." 
+
 ### 8.6 Isolated worker service **[PoC A4–A6]**
 
 - The main process binds `WorkerService` (`BIND_AUTO_CREATE`; `bindIsolatedService` with a per-document instance name).
 - It passes the request bytes, input `ParcelFileDescriptor` (read-only, seekable, RAM-backed), and an output `SharedMemory` region.
 - PDF: platform `PdfRenderer` inside the service if PoC A4 passes on API 30–36. Otherwise bundled PDFium, the same as Linux.
 - After a result arrives, the controller copies the validated pixels into a `Bitmap` and unbinds. The worker process is retired after the document closes.
+- **What `isolated_app` does not deny (PoC A6).** The worker cannot open app files or external storage, create `AF_INET` sockets, or reach the clipboard. It **can** create `AF_UNIX` sockets and map executable memory. `pulley` itself needs neither, but ART's JIT in the same process needs executable memory, so a process-wide filter denying `PROT_EXEC` would break the runtime. The candidate hardening for Phase 2 is a seccomp filter installed by the native library on the thread that runs the parser only (no TSYNC), denying `socket`, executable mappings, `execve` and `ptrace`. It is weaker than the Linux worker's: threads share one address space, so code that has taken over the parser thread can still corrupt the others. It is adopted only if it is measured not to break ART, and is reported as defence in depth, not as a boundary.
+- **Deadlines:** the isolated process runs under a different UID, so the app is not expected to be able to signal it (not yet tested). The worker therefore enforces its own scan timeout (`Deadline::InProcess`, §7.3), and the controller also unbinds after a deadline. Whether unbinding reliably ends a stuck worker is a Phase 2 test.
 
 ### 8.7 Keys
 
@@ -555,8 +559,8 @@ CREATING ─▶ ACTIVE ─▶ RESETTING ─▶ DESTROYED
   1. Cancel transfers and retire workers.
   2. Drop the session key, which crypto-shreds quarantine.
   3. Ask `:browser` to finish, then `killProcess`. Wait for binder death.
-  4. Delete `app_webview_s<gen>` and the WebView cache directories for that generation.
-  5. Verify that no files remain in the inventory.
+  4. Delete `app_webview_s<gen>` and the WebView cache directories for that generation, **and every file in `shared_prefs/`**. PoC A2 found that WebView writes `AwOriginVisitLoggerPrefs.xml` (hashes of visited origins with a date) and `WebViewChromiumPrefs.xml` at the app level, outside the suffix. Rift therefore never stores its own state in SharedPreferences, so this directory can be deleted default-deny.
+  5. Verify the inventory against an **allowlist** of Rift's own files: anything else is a leftover, so a new kind of engine state is detected even before it is understood.
   6. Increment the generation.
 - **Linux reset:** the same steps, with WebKit's `WebKitNetworkSession` set to ephemeral (`webkit_network_session_new_ephemeral`), which keeps data in memory, and termination of the web process.
 - **Recovery on launch:** if the marker says ACTIVE or RESETTING, cleanup completes *before* any new session is presented as fresh **[PoC A2]**.
