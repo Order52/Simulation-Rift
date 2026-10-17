@@ -1,0 +1,33 @@
+[package]
+name = "rift-ffi"
+version = "0.1.0"
+description = "Simulation-Rift UniFFI bindings: the Android controller's interface to rift-core"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+# cdylib for the app; lib so the host tests and the bindgen binary can link it.
+crate-type = ["cdylib", "lib"]
+
+[lints]
+workspace = true
+
+[features]
+# Builds the uniffi-bindgen binary that generates the Kotlin bindings from the
+# compiled library. Never enabled for the library that ships.
+bindgen = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+required-features = ["bindgen"]
+
+[dependencies]
+rift-core = { path = "../rift-core" }
+thiserror = "2.0.21"
+uniffi = "0.32.2"
+
+[dev-dependencies]
+tempfile = "3.27.0"
