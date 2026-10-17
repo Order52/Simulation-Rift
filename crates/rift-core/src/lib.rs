@@ -6,6 +6,7 @@
 pub mod heuristics;
 pub mod intel;
 pub mod policy;
+pub mod session;
 pub mod store;
 pub mod transfer;
 pub mod urlcanon;
