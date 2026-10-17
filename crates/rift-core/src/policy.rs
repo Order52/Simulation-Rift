@@ -86,7 +86,7 @@ pub fn decide_navigation(raw: &[u8], ctx: &NavigationContext<'_>) -> Decision {
     };
     let url = match urlcanon::canonicalize(raw) {
         Ok(url) => url,
-        Err(CanonError::NoHost) => return block(BlockReason::InvalidUrl),
+        Err(CanonError::NoHost | CanonError::InvalidHost) => return block(BlockReason::InvalidUrl),
         // Unassessable is never silently "fine": the user must confirm.
         Err(error) => {
             return Decision::Confirm {

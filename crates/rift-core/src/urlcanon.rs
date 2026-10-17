@@ -27,6 +27,9 @@ pub enum CanonError {
     TooLong,
     #[error("URL has no host")]
     NoHost,
+    /// Brackets outside a well-formed IPv6 literal, as browsers also refuse.
+    #[error("URL host is not valid")]
+    InvalidHost,
 }
 
 /// A canonical URL. All components are ASCII; unsafe bytes are percent-escaped.
@@ -249,10 +252,15 @@ fn host_from_authority(authority: &[u8]) -> &[u8] {
         None => authority,
     };
     if host_port.first() == Some(&b'[') {
-        return match host_port.iter().position(|&b| b == b']') {
-            Some(end) => host_port.get(..=end).unwrap_or(host_port),
-            None => host_port,
-        };
+        // Only a port may follow the literal. Anything else stays attached so
+        // canonical_host rejects the host instead of silently dropping bytes.
+        if let Some(end) = host_port.iter().position(|&b| b == b']')
+            && let (literal, rest) = host_port.split_at(end.saturating_add(1))
+            && (rest.is_empty() || strip_port(rest).is_empty())
+        {
+            return literal;
+        }
+        return host_port;
     }
     // Strip trailing dots and `:port` suffixes until nothing changes, so that
     // canonical output never ends in something a second pass would strip
@@ -290,8 +298,15 @@ fn strip_port(host: &[u8]) -> &[u8] {
 
 fn canonical_host(raw: &[u8]) -> Result<(String, bool), CanonError> {
     if raw.first() == Some(&b'[') {
-        let lowered = raw.to_ascii_lowercase();
-        return Ok((escape(&lowered), true));
+        return match raw.strip_prefix(b"[").and_then(|r| r.strip_suffix(b"]")) {
+            Some(inner) if is_ipv6_literal(inner) => Ok((escape(&raw.to_ascii_lowercase()), true)),
+            _ => Err(CanonError::InvalidHost),
+        };
+    }
+    // '[' and ']' are forbidden in other hosts (WHATWG URL); accepting them
+    // would let a later pass read part of the host as an IPv6 literal.
+    if raw.iter().any(|&b| b == b'[' || b == b']') {
+        return Err(CanonError::InvalidHost);
     }
     // Internationalized names become Punycode; undecodable bytes stay escaped.
     let ascii: Vec<u8> = match std::str::from_utf8(raw) {
@@ -325,6 +340,15 @@ fn canonical_host(raw: &[u8]) -> Result<(String, bool), CanonError> {
         return Ok((format!("{a}.{b}.{c}.{d}"), true));
     }
     Ok((escape(&host), false))
+}
+
+/// The characters of an IPv6 address, including an embedded IPv4 suffix.
+/// The structure is left to the engine, which refuses malformed literals.
+fn is_ipv6_literal(inner: &[u8]) -> bool {
+    inner.contains(&b':')
+        && inner
+            .iter()
+            .all(|b| b.is_ascii_hexdigit() || matches!(b, b':' | b'.'))
 }
 
 /// Parses IPv4 the way `inet_aton` (and browsers) do: 1–4 parts, each
@@ -595,6 +619,38 @@ mod tests {
         );
         assert_eq!(canonicalize(b"http://.../path"), Err(CanonError::NoHost));
         assert_eq!(canonicalize(b""), Err(CanonError::NoHost));
+    }
+
+    #[test]
+    fn brackets_only_as_a_whole_ipv6_literal() {
+        for (input, host) in [
+            ("http://[2001:DB8::1]/", "[2001:db8::1]"),
+            ("http://[::ffff:1.2.3.4]:8080/x", "[::ffff:1.2.3.4]"),
+            ("http://user@[::1]:/", "[::1]"),
+        ] {
+            let url = canonicalize(input.as_bytes()).expect(input);
+            assert_eq!((url.host(), url.host_is_ip()), (host, true), "{input}");
+        }
+        let rejected: [&[u8]; 8] = [
+            b"http://[::1]evil.example/",
+            b"http://[::1]:80x/",
+            b"http://[evil.example]/",
+            b"http://[]/",
+            b"http://[::1/",
+            b"http://a[b].example/",
+            b"http://a%5Bb%5D.example/",
+            // Found by the url_canonicalize fuzz target: a leading dot hid the
+            // bracket on the first pass, and the second pass truncated the host.
+            b".[\x0e]\x02\xff\xff\xff\xff\xff\xff\xff\xff\x03",
+        ];
+        for input in rejected {
+            assert_eq!(
+                canonicalize(input),
+                Err(CanonError::InvalidHost),
+                "{}",
+                String::from_utf8_lossy(input)
+            );
+        }
     }
 
     mod properties {

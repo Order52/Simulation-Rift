@@ -66,6 +66,8 @@ const BIDI_AND_INVISIBLE: &[char] = &[
     '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{feff}',
 ];
 const MAX_DISPLAY_NAME_CHARS: usize = 120;
+/// Longest final extension (after the last '.') kept visible when shortening.
+const MAX_KEPT_EXTENSION_CHARS: usize = 16;
 
 /// Turns a server- or user-supplied filename into display metadata. Storage
 /// never uses it (objects are stored under random ids), but it must not be
@@ -75,16 +77,35 @@ pub fn display_name(supplied: &str) -> String {
     let cleaned: String = last
         .chars()
         .filter(|c| !c.is_control() && !BIDI_AND_INVISIBLE.contains(c))
-        .collect::<String>()
-        .trim_matches(|c: char| c.is_whitespace() || c == '.')
-        .chars()
-        .take(MAX_DISPLAY_NAME_CHARS)
         .collect();
-    if cleaned.is_empty() {
+    let trimmed = cleaned.trim_matches(|c: char| c.is_whitespace() || c == '.');
+    if trimmed.is_empty() {
         "download".to_owned()
     } else {
-        cleaned
+        shorten(trimmed)
     }
+}
+
+/// Fits a cleaned, trimmed name in [`MAX_DISPLAY_NAME_CHARS`]. The final
+/// extension decides how the file would be opened, so it stays visible:
+/// `report<padding>.pdf.exe` is shown as `report<padding>….exe`, never as
+/// `report<padding>.pdf`.
+fn shorten(name: &str) -> String {
+    if name.chars().count() <= MAX_DISPLAY_NAME_CHARS {
+        return name.to_owned();
+    }
+    let extension = name
+        .rfind('.')
+        .and_then(|dot| name.get(dot..))
+        .filter(|ext| ext.chars().count() <= MAX_KEPT_EXTENSION_CHARS.saturating_add(1))
+        .unwrap_or_default();
+    let stem_chars = MAX_DISPLAY_NAME_CHARS
+        .saturating_sub(1)
+        .saturating_sub(extension.chars().count());
+    let stem: String = name.chars().take(stem_chars).collect();
+    // The cut may land after a dot or space; trim so the result is stable.
+    let stem = stem.trim_end_matches(|c: char| c.is_whitespace() || c == '.');
+    format!("{stem}\u{2026}{extension}")
 }
 
 /// Streaming writer used for every object entering storage: it enforces the
@@ -233,6 +254,37 @@ mod tests {
             MAX_DISPLAY_NAME_CHARS
         );
         assert_eq!(display_name("résumé.pdf"), "résumé.pdf");
+    }
+
+    #[test]
+    fn shortening_keeps_the_real_extension_visible() {
+        let disguised = format!("invoice{}.pdf.exe", "_".repeat(200));
+        let shown = display_name(&disguised);
+        assert_eq!(shown.chars().count(), MAX_DISPLAY_NAME_CHARS);
+        assert!(shown.starts_with("invoice_"), "{shown}");
+        assert!(shown.ends_with("\u{2026}.exe"), "{shown}");
+        // An implausibly long "extension" is not kept; the head is.
+        let shown = display_name(&format!("a.{}", "b".repeat(300)));
+        assert!(
+            shown.starts_with("a.bbb") && shown.ends_with('\u{2026}'),
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn display_name_is_a_fixed_point() {
+        // Found by the display_name fuzz target: a cut just before a dot left
+        // a trailing "." that a second pass removed.
+        let found = format!("2{}#{}||||||I#II.\u{10}.0.", "I".repeat(65), "I".repeat(41));
+        for input in [
+            found.as_str(),
+            "x.pdf",
+            &"a. ".repeat(100),
+            &"a".repeat(500),
+        ] {
+            let once = display_name(input);
+            assert_eq!(display_name(&once), once, "{input:?}");
+        }
     }
 
     #[test]
