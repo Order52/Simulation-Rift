@@ -5,8 +5,6 @@ REPORT links loaded=1
 127.0.0.1 "GET /report?test=links&key=loaded&value=1 HTTP/1.1" 200 -
 127.0.0.1 code 404, message File not found
 127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
-127.0.0.1 code 404, message File not found
-127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
 127.0.0.1 "GET /links.html?go=https%3A%2F%2Fpaypa1.com%2Flogin HTTP/1.1" 200 -
 REPORT links loaded=1
 127.0.0.1 "GET /report?test=links&key=loaded&value=1 HTTP/1.1" 200 -
@@ -39,10 +37,13 @@ REPORT s1 done=1
 127.0.0.1 "GET /clear?test=s1 HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
 127.0.0.1 "GET /s1.html HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
 REPORT s1 bridge.globals=android
 127.0.0.1 "GET /report?test=s1&key=bridge.globals&value=android HTTP/1.1" 200 -
 REPORT s1 webkit.messageHandlers=undefined
 127.0.0.1 "GET /report?test=s1&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
 REPORT s1 chrome.webview=undefined
 127.0.0.1 "GET /report?test=s1&key=chrome.webview&value=undefined HTTP/1.1" 200 -
 REPORT s1 plain.objects.with.native.methods=none
@@ -51,6 +52,7 @@ REPORT s1 android.webview.members=MediaIntegrityError|MediaIntegrityTokenProvide
 127.0.0.1 "GET /report?test=s1&key=android.webview.members&value=MediaIntegrityError%7CMediaIntegrityTokenProvider%7CgetExperimentalMediaIntegrityTokenProvider HTTP/1.1" 200 -
 REPORT s1 media_integrity=REJECTED OperationError: API disabled by application.
 127.0.0.1 "GET /report?test=s1&key=media_integrity&value=REJECTED%20OperationError%3A%20API%20disabled%20by%20application. HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
 REPORT s1 done=1
 127.0.0.1 "GET /report?test=s1&key=done&value=1 HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
@@ -61,6 +63,7 @@ REPORT s2 secure_context=true
 127.0.0.1 "GET /report?test=s2&key=secure_context&value=true HTTP/1.1" 200 -
 REPORT s2 camera=DENIED NotAllowedError
 127.0.0.1 "GET /report?test=s2&key=camera&value=DENIED%20NotAllowedError HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
 REPORT s2 microphone=DENIED NotAllowedError
 127.0.0.1 "GET /report?test=s2&key=microphone&value=DENIED%20NotAllowedError HTTP/1.1" 200 -
 REPORT s2 geolocation=DENIED code=1
@@ -101,9 +104,11 @@ REPORT s2 done=1
 127.0.0.1 "GET /seed.html HTTP/1.1" 200 -
 127.0.0.1 "GET /report.js HTTP/1.1" 200 -
 127.0.0.1 "GET /cacheable.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=seed HTTP/1.1" 200 -
 127.0.0.1 "GET /set-cookie HTTP/1.1" 200 -
 127.0.0.1 code 404, message File not found
 127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 "GET /results?test=seed HTTP/1.1" 200 -
 127.0.0.1 "GET /sw.js HTTP/1.1" 200 -
 REPORT seed seeded=cookie,server_cookie,localStorage,indexedDB,cacheStorage,serviceWorker,httpCache
 127.0.0.1 "GET /report?test=seed&key=seeded&value=cookie%2Cserver_cookie%2ClocalStorage%2CindexedDB%2CcacheStorage%2CserviceWorker%2ChttpCache HTTP/1.1" 200 -
@@ -133,7 +138,19 @@ REPORT probe-before done=1
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /probe.html?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
@@ -145,8 +162,12 @@ REPORT probe-after cookie=absent
 127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
 REPORT probe-after server_cookie=absent
 127.0.0.1 "GET /report?test=probe-after&key=server_cookie&value=absent HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 REPORT probe-after localStorage=absent
 127.0.0.1 "GET /report?test=probe-after&key=localStorage&value=absent HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 REPORT probe-after indexedDB=absent
 127.0.0.1 "GET /report?test=probe-after&key=indexedDB&value=absent HTTP/1.1" 200 -
@@ -167,10 +188,10 @@ REPORT probe-after done=1
 127.0.0.1 "GET /report.js HTTP/1.1" 200 -
 REPORT s14 bridge.globals=android
 127.0.0.1 "GET /report?test=s14&key=bridge.globals&value=android HTTP/1.1" 200 -
-127.0.0.1 code 404, message File not found
-127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
 REPORT s14 webkit.messageHandlers=undefined
 127.0.0.1 "GET /report?test=s14&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
 REPORT s14 chrome.webview=undefined
 127.0.0.1 "GET /report?test=s14&key=chrome.webview&value=undefined HTTP/1.1" 200 -
 REPORT s14 plain.objects.with.native.methods=none
@@ -182,8 +203,8 @@ REPORT s14 media_integrity=REJECTED OperationError: API disabled by application.
 REPORT s14 done=1
 127.0.0.1 "GET /report?test=s14&key=done&value=1 HTTP/1.1" 200 -
 127.0.0.1 "GET /seed.html HTTP/1.1" 200 -
-127.0.0.1 "GET /report.js HTTP/1.1" 200 -
 127.0.0.1 "GET /cacheable.js HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
 127.0.0.1 "GET /set-cookie HTTP/1.1" 200 -
 127.0.0.1 code 404, message File not found
 127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -

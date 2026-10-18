@@ -1,0 +1,2 @@
+S14 FAIL (no new session after renderer death)
+S13 PASS (killed while RESETTING 5; recovery deleted it before session 6 started)

@@ -1,12 +1,12 @@
-killed main 20003
-RESETTING 7
-generation=7
-after recovery: main=20160 browser=20188
-10-18 03:31:44.308 20031 20112 I Rift    : browser process exiting: core died
-10-18 03:31:44.310   674  1834 I ActivityManager: Process org.simulationrift.app (pid 20003) has died: vis BTOP
-10-18 03:31:44.317   674  1845 I ActivityManager: Process org.simulationrift.app:browser (pid 20031) has died: fg  TOP 
-10-18 03:31:44.335   674   732 I ActivityManager: Start proc 20160:org.simulationrift.app/u0a214 for top-activity {org.simulationrift.app/org.simulationrift.app.MainActivity}
-10-18 03:31:44.712 20160 20179 I Rift    : generation 7 disposed
-10-18 03:31:44.721 20160 20179 I Rift    : session 8 active; recovered interrupted session 7
-10-18 03:31:44.753   674   732 I ActivityManager: Start proc 20188:org.simulationrift.app:browser/u0a214 for next-top-activity {org.simulationrift.app/org.simulationrift.app.BrowserActivity}
-after recovery: leftovers of 7: none
+killed main 8225
+RESETTING 8
+generation=8
+after recovery: main=8385 browser=
+10-18 09:24:38.883   665  2068 I ActivityManager: Process org.simulationrift.app (pid 8225) has died: vis BTOP
+10-18 09:24:38.883  8262  8336 I Rift    : browser process exiting: core died
+10-18 09:24:38.898   665  1920 I ActivityManager: Process org.simulationrift.app:browser (pid 8262) has died: fg  TOP 
+10-18 09:24:38.923   665   712 I ActivityManager: Start proc 8385:org.simulationrift.app/u0a214 for top-activity {org.simulationrift.app/org.simulationrift.app.MainActivity}
+10-18 09:24:39.695  8385  8409 I Rift    : generation 8 disposed
+10-18 09:24:40.133  8385  8409 I Rift    : session 9 active; recovered interrupted session 8
+10-18 09:24:40.572   665   712 I ActivityManager: Start proc 8426:org.simulationrift.app:browser/u0a214 for next-top-activity {org.simulationrift.app/org.simulationrift.app.BrowserActivity}
+after recovery: leftovers of 8: none

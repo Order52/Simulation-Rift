@@ -8,7 +8,7 @@
 |---|---|
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix (physical phones, API 33–35, 16 KB pages). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
-| 2: Android vertical slice | **Built; tested on one device** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery; S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on the API 36 emulator. **Gate open:** the device matrix (API 30/33/34/35, 16 KB pages, a phone) has not run. |
+| 2: Android vertical slice | **Built; tested on one device** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery; S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on the API 36 emulator and on API 35 with 16 KB pages; the R8 release build passes a smoke test. **Gate open:** API 33/34, x86_64 and a physical phone have not run. |
 | 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
 | 5: Linux app | Not started (worker lockdown and WebKit check proven in PoCs). |
@@ -89,6 +89,11 @@ These were all found by tests, not by reading:
 19. Isolated-service instance names may contain only letters, digits and `_` (`preview-1` is rejected).
 20. Workers forked from the app zygote showed `NoNewPrivs: 1` on the API 36 image (Phase 0 saw 0 for system-zygote workers). Recorded, not relied on.
 21. PdfRenderer loads PDFium lazily; with the parser-thread filter already installed the load fails, so the worker preloads it with a built-in PDF first.
+22. Release builds also write `files/profileinstaller_profileWrittenFor_lastUpdateTime.dat`; the first release reset failed closed on it, as designed, and it is now allowlisted.
+23. The app freezer can freeze a backgrounded `:browser`, so a synchronous shutdown call can fail; disposal kills and verifies regardless.
+24. On a refused engine (API 30) and before any page loaded, the trusted bar read "Not flagged · threat database current". It now says only what the core actually decided, and N4 checks it.
+25. WebView 91 starts a renderer process as soon as the provider loads, even with no WebView; it ends with `:browser` at reset.
+26. A test that loaded WebView in the main process created an unsuffixed `app_webview/`; the next reset failed closed on it. The main process must never touch WebView, and the inventory catches it if it does.
 
 ### 2.5 Phase 2 code (Android vertical slice)
 
@@ -98,9 +103,9 @@ These were all found by tests, not by reading:
 | `rift-core::download` | The core's re-fetch of downloads under INV-13: destination check on every resolved address of every redirect hop, streamed size limit, cookies only to their origin, cancellation at reset. `ureq` + `rustls` + bundled Mozilla roots. |
 | `rift-worker-ffi` | UniFFI interface of the worker, loaded only in the isolated process; no core code. |
 | `android/` | Compose shell; `:browser` WebView host with the §8.4 configuration; disposal by process death, directory deletion and an allowlist inventory; `PreviewService` (isolated, app zygote) and the controller's `Previewer`. Debug-only misbehaving workers for S3–S7. |
-| Tests | 19 instrumented tests plus host-driven S13 and S14 (`android/run-tests.sh`); fixtures in `android/fixtures`. |
+| Tests | 20 instrumented tests plus host-driven S13 and S14 (`android/run-tests.sh`); fixtures in `android/fixtures`. |
 
-Phase 2 findings, added to the list below: 15–21.
+Phase 2 findings, added to the list above: 15–26.
 
 ## 3. Finished vs. not finished
 
@@ -109,7 +114,7 @@ Phase 2 findings, added to the list below: 15–21.
 - The architecture and the decision record.
 - PoCs A1–A7 and the worker lifecycle test on Android emulators (API 30, 36); X2 on the host and on Android; L1 (native), L2, L3, X1; X3 on the host.
 - The Phase 1 crates listed above, and the Phase 2 additions: 105 host tests pass on macOS (75 `rift-core`, 7 `rift-ffi`, 11 `rift-protocol`, 8 `rift-worker`, 4 `rift-worker-ffi`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
-- The Phase 2 Android slice on the API 36 emulator: all 19 instrumented tests and S13/S14 pass ([evidence](evidence/phase2-android-api36/)).
+- The Phase 2 Android slice: all 20 instrumented tests and S13/S14 pass on the API 36 emulator ([evidence](evidence/phase2-android-api36/)), and the 19 that existed then pass on the API 35 16 KB page-size emulator ([evidence](evidence/phase2-android-api35-16k/)). The R8 release build passed a UI smoke test on API 36. On API 30 (WebView 91, below the minimum) browsing is refused as designed, so 17 tests that need a page fail; S3, S15 and S13 pass ([evidence](evidence/phase2-android-api30/)).
 
 **Not finished:**
 
@@ -120,7 +125,7 @@ Phase 2 findings, added to the list below: 15–21.
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
 | Android device matrix | API 33/34/35, physical phones, OEM WebView builds, x86_64, a 16 KB page-size device. |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
-| Phase 2 gate | The same suite on API 30/33/34/35, a 16 KB page-size image and a physical phone; a release build. |
+| Phase 2 gate | The same suite on API 33/34, x86_64 and a physical phone; the instrumented suite against a release-like build. |
 | Phases 3–7 | Everything in §5. |
 
 ## 4. Limitations and how to work around them
@@ -131,7 +136,7 @@ Phase 2 findings, added to the list below: 15–21.
 |---|---|---|
 | The Docker VM has ~6 GB with ~1.4 GB free; building YARA-X/Cranelift for Linux in Docker is killed (OOM) | Linux-only Rust tests (`no_threads`) cannot be run locally; they run only in CI | Give Docker Desktop ≥ 8 GB (Settings → Resources) or stop unrelated containers; meanwhile rely on GitHub CI, which runs them on Ubuntu. |
 | No physical Android device | All Android evidence is from emulators with software GPU | Connect a phone with USB debugging and run `poc/android-feasibility/run-poc.sh <dir>` (not yet tried on a phone). Without `adb root`, everything except the A1 renderer `/proc` check should still run. |
-| Emulator images: only API 30 and 36 installed, no 16 KB page-size image (downloads over this connection stalled) | A1/A4 criteria name 33/34/35; the Phase 2 gate needs the matrix; 16 KB alignment checked only statically | `sdkmanager "system-images;android-35;google_apis_ps16k;arm64-v8a"` (and 33, 34), create an AVD, then `android/run-tests.sh <dir>`. |
+| Emulator images: API 30, 35 (16 KB) and 36 installed; 33 and 34 not yet (large downloads over this connection are slow and stalled once) | The Phase 2 gate needs 33/34 too | `sdkmanager "system-images;android-35;google_apis_ps16k;arm64-v8a"` (and 33, 34), create an AVD, then `android/run-tests.sh <dir>`. |
 | API 30 image has WebView 91 | Old engine; not representative of updated devices | Update WebView from Play on a `google_apis_playstore` image, or use a phone. |
 | No Flatpak host | L1 and L2 unverified in the shipping configuration | Run on a Fedora or Ubuntu VM/desktop with `flatpak-builder`. |
 | `cargo` is not on PATH in non-login shells | Commands fail with "not found" | `export PATH="$HOME/.cargo/bin:$PATH"`. |
@@ -163,7 +168,7 @@ Phase 2 findings, added to the list below: 15–21.
 3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.
 4. ~~Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.~~ Done.
 5. ~~Previews (images and PDF in the isolated worker, text as escaped plain text); reset and recovery.~~ Done (P1, P2, S3–S7, S12, S13, S19).
-6. Security tests on the device matrix: **API 36 done; API 30/33/34/35, 16 KB pages and a phone open.** Also open: a release build. (The parser-thread seccomp filter is done.)
+6. Security tests on the device matrix: **API 36 and API 35 (16 KB pages) done; API 33/34, x86_64 and a phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
 
 **Phase 3: Scanner and signed intel**
 7. YARA-X scan jobs, verdict cache bound to rule and engine versions.

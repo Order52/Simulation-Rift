@@ -312,6 +312,7 @@ The only stronger option is a separate APK, which means a separate UID. That is 
   - `WebViewCompat.isMultiProcessEnabled()` returns true **[PoC A1]**.
   - Otherwise browsing shows "unsupported device configuration".
 - `setDataDirectorySuffix("s<generation>")` is called in `:browser` before any WebView use. A new generation gets a fresh directory even if deletion of the old one is still pending.
+- The main process never loads WebView, not even to ask about it (`isMultiProcessEnabled()` loads the provider). Doing so would create an unsuffixed `app_webview/` outside any session. Phase 2 found this through a test that did it; the reset inventory refused the leftover, as designed.
 - Settings:
   - JavaScript on (sites need it). `allowFileAccess=false`, `allowContentAccess=false`.
   - `mixedContentMode=NEVER_ALLOW`, `setSupportMultipleWindows(false)`, `javaScriptCanOpenWindowsAutomatically=false`, `setGeolocationEnabled(false)`, `saveFormData=false`.
@@ -578,9 +579,9 @@ CREATING ─▶ ACTIVE ─▶ RESETTING ─▶ DESTROYED
 - **Android reset:**
   1. Cancel transfers and retire workers.
   2. Drop the session key, which crypto-shreds quarantine.
-  3. Ask `:browser` to finish, then `killProcess`. Wait for binder death.
+  3. Ask `:browser` to finish, then `killProcess`. Wait for binder death. (The app freezer may have frozen a backgrounded `:browser`, so the finish request can fail; the kill and the checks below still decide.)
   4. Delete `app_webview_s<gen>` and the WebView cache directories for that generation, **and every file in `shared_prefs/`**. PoC A2 found that WebView writes `AwOriginVisitLoggerPrefs.xml` (hashes of visited origins with a date) and `WebViewChromiumPrefs.xml` at the app level, outside the suffix. Rift therefore never stores its own state in SharedPreferences, so this directory can be deleted default-deny.
-  5. Verify the inventory against an **allowlist** of Rift's own files: anything else is a leftover, so a new kind of engine state is detected even before it is understood. The Phase 2 allowlist is `files/rift/**` and `files/profileInstalled` (written by `androidx.profileinstaller`; it contains no browsing data).
+  5. Verify the inventory against an **allowlist** of Rift's own files: anything else is a leftover, so a new kind of engine state is detected even before it is understood. The Phase 2 allowlist is `files/rift/**`, `files/profileInstalled` and, in release builds, `files/profileinstaller_profileWrittenFor_lastUpdateTime.dat` (both written by `androidx.profileinstaller`; neither contains browsing data).
   6. Increment the generation.
 - **Linux reset:** the same steps, with WebKit's `WebKitNetworkSession` set to ephemeral (`webkit_network_session_new_ephemeral`), which keeps data in memory, and termination of the web process.
 - **Recovery on launch:** if the marker says ACTIVE or RESETTING, cleanup completes *before* any new session is presented as fresh **[PoC A2]**.

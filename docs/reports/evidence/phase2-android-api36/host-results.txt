@@ -1,2 +1,2 @@
-S14 PASS (renderer killed; app alive (pid 19834); session 5 torn down; 6 active)
-S13 PASS (killed while RESETTING 7; recovery deleted it before session 8 started)
+S14 PASS (renderer killed; app alive (pid 8035); session 6 torn down; 7 active)
+S13 PASS (killed while RESETTING 8; recovery deleted it before session 9 started)

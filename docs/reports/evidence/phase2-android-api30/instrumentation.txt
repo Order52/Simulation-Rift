@@ -1,0 +1,549 @@
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+org.simulationrift.app.SecurityTest:
+INSTRUMENTATION_STATUS: test=n1_externalAppLinksAreBlocked
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: block screen
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertNotNull(Assert.java:713)
+	at org.simulationrift.app.SecurityTest.n1_externalAppLinksAreBlocked(SecurityTest.kt:103)
+
+INSTRUMENTATION_STATUS: stream=
+Error in n1_externalAppLinksAreBlocked(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: block screen
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertNotNull(Assert.java:713)
+	at org.simulationrift.app.SecurityTest.n1_externalAppLinksAreBlocked(SecurityTest.kt:103)
+
+INSTRUMENTATION_STATUS: test=n1_externalAppLinksAreBlocked
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=n2_lookalikeAddressNeedsConfirmation
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: interstitial
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertNotNull(Assert.java:713)
+	at org.simulationrift.app.SecurityTest.n2_lookalikeAddressNeedsConfirmation(SecurityTest.kt:115)
+
+INSTRUMENTATION_STATUS: stream=
+Error in n2_lookalikeAddressNeedsConfirmation(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: interstitial
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertNotNull(Assert.java:713)
+	at org.simulationrift.app.SecurityTest.n2_lookalikeAddressNeedsConfirmation(SecurityTest.kt:115)
+
+INSTRUMENTATION_STATUS: test=n2_lookalikeAddressNeedsConfirmation
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=n3_unencryptedPagesAreMarked
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: page /s1.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.n3_unencryptedPagesAreMarked(SecurityTest.kt:123)
+
+INSTRUMENTATION_STATUS: stream=
+Error in n3_unencryptedPagesAreMarked(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: page /s1.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.n3_unencryptedPagesAreMarked(SecurityTest.kt:123)
+
+INSTRUMENTATION_STATUS: test=n3_unencryptedPagesAreMarked
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=p1_imagesAndPdfsArePreviewedByAnIsolatedWorker
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.p1_imagesAndPdfsArePreviewedByAnIsolatedWorker(SecurityTest.kt:174)
+
+INSTRUMENTATION_STATUS: stream=
+Error in p1_imagesAndPdfsArePreviewedByAnIsolatedWorker(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.p1_imagesAndPdfsArePreviewedByAnIsolatedWorker(SecurityTest.kt:174)
+
+INSTRUMENTATION_STATUS: test=p1_imagesAndPdfsArePreviewedByAnIsolatedWorker
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=5
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=p2_textIsShownAsEscapedPlainText
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=5
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/notes.txt: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.p2_textIsShownAsEscapedPlainText(SecurityTest.kt:197)
+
+INSTRUMENTATION_STATUS: stream=
+Error in p2_textIsShownAsEscapedPlainText(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/notes.txt: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.p2_textIsShownAsEscapedPlainText(SecurityTest.kt:197)
+
+INSTRUMENTATION_STATUS: test=p2_textIsShownAsEscapedPlainText
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s01_pageFindsNoNativeBridge
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: page /s1.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.s01_pageFindsNoNativeBridge(SecurityTest.kt:56)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s01_pageFindsNoNativeBridge(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: page /s1.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.s01_pageFindsNoNativeBridge(SecurityTest.kt:56)
+
+INSTRUMENTATION_STATUS: test=s01_pageFindsNoNativeBridge
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=7
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s02_pageIsDeniedDevicePermissions
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=7
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: page /s2.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.s02_pageIsDeniedDevicePermissions(SecurityTest.kt:75)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s02_pageIsDeniedDevicePermissions(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: page /s2.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.s02_pageIsDeniedDevicePermissions(SecurityTest.kt:75)
+
+INSTRUMENTATION_STATUS: test=s02_pageIsDeniedDevicePermissions
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=8
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s03_workerCannotReachAppFiles
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=8
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=s03_workerCannotReachAppFiles
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=9
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s04_workerCannotReachTheNetworkOrTheCore
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=9
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s04_workerCannotReachTheNetworkOrTheCore(SecurityTest.kt:231)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s04_workerCannotReachTheNetworkOrTheCore(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s04_workerCannotReachTheNetworkOrTheCore(SecurityTest.kt:231)
+
+INSTRUMENTATION_STATUS: test=s04_workerCannotReachTheNetworkOrTheCore
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=10
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s05_malformedWorkerRepliesAreRejected
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=10
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s05_malformedWorkerRepliesAreRejected(SecurityTest.kt:239)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s05_malformedWorkerRepliesAreRejected(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s05_malformedWorkerRepliesAreRejected(SecurityTest.kt:239)
+
+INSTRUMENTATION_STATUS: test=s05_malformedWorkerRepliesAreRejected
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=11
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s06_crashingOrHangingWorkerFailsOnlyItsJob
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=11
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s06_crashingOrHangingWorkerFailsOnlyItsJob(SecurityTest.kt:251)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s06_crashingOrHangingWorkerFailsOnlyItsJob(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s06_crashingOrHangingWorkerFailsOnlyItsJob(SecurityTest.kt:251)
+
+INSTRUMENTATION_STATUS: test=s06_crashingOrHangingWorkerFailsOnlyItsJob
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=12
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s07_unconfinedWorkerIsRefused
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=12
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s07_unconfinedWorkerIsRefused(SecurityTest.kt:279)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s07_unconfinedWorkerIsRefused(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s07_unconfinedWorkerIsRefused(SecurityTest.kt:279)
+
+INSTRUMENTATION_STATUS: test=s07_unconfinedWorkerIsRefused
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=13
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s08_oversizedDownloadStopsAtTheLimit
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=13
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/big: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s08_oversizedDownloadStopsAtTheLimit(SecurityTest.kt:133)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s08_oversizedDownloadStopsAtTheLimit(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/big: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s08_oversizedDownloadStopsAtTheLimit(SecurityTest.kt:133)
+
+INSTRUMENTATION_STATUS: test=s08_oversizedDownloadStopsAtTheLimit
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=14
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s09_localDestinationsNeedAnExplicitPerHostAllowance
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=14
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/hello.txt: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s09_localDestinationsNeedAnExplicitPerHostAllowance(SecurityTest.kt:141)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s09_localDestinationsNeedAnExplicitPerHostAllowance(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/hello.txt: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s09_localDestinationsNeedAnExplicitPerHostAllowance(SecurityTest.kt:141)
+
+INSTRUMENTATION_STATUS: test=s09_localDestinationsNeedAnExplicitPerHostAllowance
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=15
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s10_hostileFilenameIsDisplayOnly
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=15
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/hostile: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s10_hostileFilenameIsDisplayOnly(SecurityTest.kt:154)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s10_hostileFilenameIsDisplayOnly(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/hostile: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s10_hostileFilenameIsDisplayOnly(SecurityTest.kt:154)
+
+INSTRUMENTATION_STATUS: test=s10_hostileFilenameIsDisplayOnly
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=16
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s10b_cookieGatedDownloadIsRefetchedWithItsCookie
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=16
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /login?next=/files/private.bin: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.s10b_cookieGatedDownloadIsRefetchedWithItsCookie(SecurityTest.kt:163)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s10b_cookieGatedDownloadIsRefetchedWithItsCookie(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /login?next=/files/private.bin: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.s10b_cookieGatedDownloadIsRefetchedWithItsCookie(SecurityTest.kt:163)
+
+INSTRUMENTATION_STATUS: test=s10b_cookieGatedDownloadIsRefetchedWithItsCookie
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=17
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s12_resetDestroysEverySessionStore
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=17
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: page /seed.html did not report seeded
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.s12_resetDestroysEverySessionStore(SecurityTest.kt:335)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s12_resetDestroysEverySessionStore(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: page /seed.html did not report seeded
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.s12_resetDestroysEverySessionStore(SecurityTest.kt:335)
+
+INSTRUMENTATION_STATUS: test=s12_resetDestroysEverySessionStore
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=18
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s15_unverifiedSandboxRefusesBrowsing
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=18
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=s15_unverifiedSandboxRefusesBrowsing
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=19
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=s19_previewLeavesNoPlaintextOnDisk
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=org.simulationrift.app.SecurityTest
+INSTRUMENTATION_STATUS: current=19
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=19
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s19_previewLeavesNoPlaintextOnDisk(SecurityTest.kt:295)
+
+INSTRUMENTATION_STATUS: stream=
+Error in s19_previewLeavesNoPlaintextOnDisk(org.simulationrift.app.SecurityTest):
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s19_previewLeavesNoPlaintextOnDisk(SecurityTest.kt:295)
+
+INSTRUMENTATION_STATUS: test=s19_previewLeavesNoPlaintextOnDisk
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1,422.71
+There were 17 failures:
+1) n1_externalAppLinksAreBlocked(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: block screen
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertNotNull(Assert.java:713)
+	at org.simulationrift.app.SecurityTest.n1_externalAppLinksAreBlocked(SecurityTest.kt:103)
+2) n2_lookalikeAddressNeedsConfirmation(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: interstitial
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertNotNull(Assert.java:713)
+	at org.simulationrift.app.SecurityTest.n2_lookalikeAddressNeedsConfirmation(SecurityTest.kt:115)
+3) n3_unencryptedPagesAreMarked(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: page /s1.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.n3_unencryptedPagesAreMarked(SecurityTest.kt:123)
+4) p1_imagesAndPdfsArePreviewedByAnIsolatedWorker(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.p1_imagesAndPdfsArePreviewedByAnIsolatedWorker(SecurityTest.kt:174)
+5) p2_textIsShownAsEscapedPlainText(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/notes.txt: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.p2_textIsShownAsEscapedPlainText(SecurityTest.kt:197)
+6) s01_pageFindsNoNativeBridge(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: page /s1.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.s01_pageFindsNoNativeBridge(SecurityTest.kt:56)
+7) s02_pageIsDeniedDevicePermissions(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: page /s2.html did not report done
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.visit$default(SecurityTest.kt:393)
+	at org.simulationrift.app.SecurityTest.s02_pageIsDeniedDevicePermissions(SecurityTest.kt:75)
+8) s04_workerCannotReachTheNetworkOrTheCore(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s04_workerCannotReachTheNetworkOrTheCore(SecurityTest.kt:231)
+9) s05_malformedWorkerRepliesAreRejected(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s05_malformedWorkerRepliesAreRejected(SecurityTest.kt:239)
+10) s06_crashingOrHangingWorkerFailsOnlyItsJob(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s06_crashingOrHangingWorkerFailsOnlyItsJob(SecurityTest.kt:251)
+11) s07_unconfinedWorkerIsRefused(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s07_unconfinedWorkerIsRefused(SecurityTest.kt:279)
+12) s08_oversizedDownloadStopsAtTheLimit(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/big: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s08_oversizedDownloadStopsAtTheLimit(SecurityTest.kt:133)
+13) s09_localDestinationsNeedAnExplicitPerHostAllowance(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/hello.txt: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s09_localDestinationsNeedAnExplicitPerHostAllowance(SecurityTest.kt:141)
+14) s10_hostileFilenameIsDisplayOnly(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/hostile: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s10_hostileFilenameIsDisplayOnly(SecurityTest.kt:154)
+15) s10b_cookieGatedDownloadIsRefetchedWithItsCookie(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /login?next=/files/private.bin: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.s10b_cookieGatedDownloadIsRefetchedWithItsCookie(SecurityTest.kt:163)
+16) s12_resetDestroysEverySessionStore(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: page /seed.html did not report seeded
+	at org.simulationrift.app.SecurityTest.visit(SecurityTest.kt:403)
+	at org.simulationrift.app.SecurityTest.s12_resetDestroysEverySessionStore(SecurityTest.kt:335)
+17) s19_previewLeavesNoPlaintextOnDisk(org.simulationrift.app.SecurityTest)
+java.lang.AssertionError: no finished download for /files/picture.png: []
+	at org.simulationrift.app.SecurityTest.download(SecurityTest.kt:427)
+	at org.simulationrift.app.SecurityTest.download$default(SecurityTest.kt:416)
+	at org.simulationrift.app.SecurityTest.s19_previewLeavesNoPlaintextOnDisk(SecurityTest.kt:295)
+
+FAILURES!!!
+Tests run: 19,  Failures: 17
+
+
+INSTRUMENTATION_CODE: -1
