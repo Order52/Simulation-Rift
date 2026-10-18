@@ -35,8 +35,31 @@ cat "$out/device.txt"
 
 echo "== instrumented tests"
 "$adb" logcat -c
+# Process samples while the tests run, to show each isolated worker's
+# lifetime and parent (the app zygote) from outside the app.
+"$adb" shell 'while true; do t=$(date +%s.%N); ps -A -o USER,PID,PPID,NAME | grep simulationrift | sed "s/^/$t /"; sleep 0.2; done' \
+  > "$out/processes.log" 2>/dev/null &
+sampler=$!
 "$adb" shell am instrument -w -r -e class $pkg.SecurityTest $pkg.test/androidx.test.runner.AndroidJUnitRunner \
   | tr -d '\r' > "$out/instrumentation.txt" || true
+{ kill $sampler && wait $sampler; } 2>/dev/null || true
+"$adb" shell pkill -f "sleep 0.2" >/dev/null 2>&1 || true
+# Worker instances: name, user, first and last time seen, and whether the
+# parent was the app zygote.
+tr -d '\r' < "$out/processes.log" | awk '
+  $5 ~ /_zygote$/ { zygote[$3] = 1 }
+  $5 ~ /:(preview|probe)_[0-9]+$/ {
+    n = $5; sub(/.*:/, "", n)
+    if (!(n in first)) { first[n] = $1; user[n] = $2; parent[n] = $4; order[++count] = n }
+    last[n] = $1
+  }
+  END {
+    for (i = 1; i <= count; i++) {
+      n = order[i]
+      printf "%s user=%s from_app_zygote=%s seen_for_ms=%d\n", n, user[n], (parent[n] in zygote ? "yes" : "no"), (last[n] - first[n]) * 1000
+    }
+  }' > "$out/workers.txt"
+cat "$out/workers.txt"
 grep -E "^INSTRUMENTATION_STATUS: test=|^INSTRUMENTATION_STATUS_CODE" "$out/instrumentation.txt" \
   | paste - - | awk '{ sub("INSTRUMENTATION_STATUS: test=", ""); print }' \
   | awk '{ code=$NF; if (code == "1") next; print $1, (code == "0" ? "PASS" : "FAIL") }' > "$out/instrumented-results.txt"

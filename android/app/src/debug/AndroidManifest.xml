@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: test workers for S3–S7. Each isolated one has exactly
+     PreviewService's isolation attributes; release builds contain none of them. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <service
+            android:name=".ProbeWorkerService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
+        <service
+            android:name=".HangingPreviewService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
+        <service
+            android:name=".CrashingPreviewService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
+        <service
+            android:name=".OversizedPreviewService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
+        <service
+            android:name=".GarbagePreviewService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
+        <service
+            android:name=".ReplayingPreviewService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
+        <service
+            android:name=".NoSeccompPreviewService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
+        <!-- S7: the same worker without isolation. The controller must refuse it. -->
+        <service
+            android:name=".UnconfinedPreviewService"
+            android:exported="false"
+            android:process=":unconfined" />
+    </application>
+</manifest>

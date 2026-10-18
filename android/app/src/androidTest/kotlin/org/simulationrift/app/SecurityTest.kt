@@ -1,10 +1,13 @@
 package org.simulationrift.app
 
 import android.app.ActivityManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
+import android.os.IBinder
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -14,6 +17,8 @@ import androidx.test.uiautomator.Until
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -92,7 +97,7 @@ class SecurityTest {
     // ---- Navigation policy in the trusted UI (INV-6, §10.2–§10.4) ---------------
 
     @Test
-    fun s03_externalAppLinksAreBlocked() {
+    fun n1_externalAppLinksAreBlocked() {
         val generation = activeGeneration()
         openBrowser(generation, fixture("/links.html?go=" + java.net.URLEncoder.encode("intent://scan/#Intent;scheme=zxing;end", "UTF-8")))
         assertNotNull("block screen", device.wait(Until.findObject(By.text("Page blocked")), UI_TIMEOUT_MS))
@@ -104,7 +109,7 @@ class SecurityTest {
     }
 
     @Test
-    fun s04_lookalikeAddressNeedsConfirmation() {
+    fun n2_lookalikeAddressNeedsConfirmation() {
         val generation = activeGeneration()
         openBrowser(generation, fixture("/links.html?go=" + java.net.URLEncoder.encode("https://paypa1.com/login", "UTF-8")))
         assertNotNull("interstitial", device.wait(Until.findObject(By.res("interstitial")), UI_TIMEOUT_MS))
@@ -114,7 +119,7 @@ class SecurityTest {
     }
 
     @Test
-    fun s05_unencryptedPagesAreMarked() {
+    fun n3_unencryptedPagesAreMarked() {
         visit("s1", "/s1.html")
         assertNotNull(device.wait(Until.findObject(By.textContains("not encrypted")), UI_TIMEOUT_MS))
         assertNotNull(device.findObject(By.textContains("no threat database")))
@@ -159,6 +164,128 @@ class SecurityTest {
         assertNotNull(file)
         assertEquals("private.bin", file!!.displayName)
         assertEquals(1050uL, file.size)
+    }
+
+    // ---- S3–S7, S19: the isolated preview worker (§8.6) -----------------------------
+
+    @Test
+    fun p1_imagesAndPdfsArePreviewedByAnIsolatedWorker() {
+        allowFixtureHost()
+        val picture = previewOf(download("/files/picture.png").file!!.id).bitmap
+        assertNotNull(picture)
+        assertEquals(300 to 200, picture!!.width to picture.height)
+        // The fixture is a red-to-the-right, green-downward gradient.
+        assertTrue(android.graphics.Color.red(picture.getPixel(290, 5)) > 230)
+        assertTrue(android.graphics.Color.green(picture.getPixel(5, 195)) > 230)
+
+        val page = previewOf(download("/files/document.pdf").file!!.id).bitmap
+        assertNotNull(page)
+        // US Letter fitted into the 2048 x 2048 box; the fixture's blue box spans 72..192 pt from the top.
+        assertEquals(2048, page!!.height)
+        assertTrue("${page.width}", page.width in 1580..1584)
+        assertEquals(android.graphics.Color.BLUE, page.getPixel(page.width / 2, 132 * 2048 / 792))
+        assertEquals(android.graphics.Color.WHITE, page.getPixel(10, 10))
+
+        val broken = previewOf(download("/files/broken.png").file!!.id).failure
+        assertTrue("$broken", broken?.startsWith("the file could not be previewed") == true)
+        report("p1", "picture ${picture.width}x${picture.height}; page ${page.width}x${page.height}; broken: $broken")
+    }
+
+    @Test
+    fun s03_workerCannotReachAppFiles() {
+        val canary = File(context.filesDir, "canary.txt").apply { writeText("worker canary") }
+        try {
+            val probe = probeWorker(canary)
+            assertEquals("true", probe["isolated"])
+            assertTrue("${probe["seccomp"]}", probe["seccomp"] != null && probe["seccomp"] != "0")
+            for (key in listOf("read_canary", "list_app_files", "write_app_files", "list_external_storage")) {
+                assertTrue("$key: ${probe[key]}", probe[key]?.startsWith("DENIED") == true)
+            }
+            assertFalse(File(context.filesDir, "from-worker").exists())
+            report("s03", probe.entries.joinToString(" | ") { "${it.key}=${it.value}" })
+        } finally {
+            canary.delete()
+        }
+    }
+
+    @Test
+    fun s04_workerCannotReachTheNetworkOrTheCore() {
+        val probe = probeWorker(File(context.filesDir, "canary.txt"))
+        for (key in listOf("tcp_connect", "udp_socket", "dns", "clipboard", "bind_core")) {
+            assertTrue("$key: ${probe[key]}", probe[key]?.startsWith("DENIED") == true)
+        }
+        // isolated_app does not deny AF_UNIX sockets (§8.6, PoC A6); reported, not asserted.
+        report("s04", probe.entries.joinToString(" | ") { "${it.key}=${it.value}" })
+    }
+
+    @Test
+    fun s05_malformedWorkerRepliesAreRejected() {
+        allowFixtureHost()
+        val id = download("/files/picture.png").file!!.id
+        for (service in listOf(OversizedPreviewService::class.java, GarbagePreviewService::class.java, ReplayingPreviewService::class.java)) {
+            val failure = previewOf(id, service).failure
+            assertTrue("${service.simpleName}: $failure", failure?.contains("invalid reply") == true)
+            report("s05", "${service.simpleName}: $failure")
+        }
+        assertNotNull("control", previewOf(id).bitmap)
+    }
+
+    @Test
+    fun s06_crashingOrHangingWorkerFailsOnlyItsJob() {
+        allowFixtureHost()
+        val id = download("/files/picture.png").file!!.id
+        val crashed = previewOf(id, CrashingPreviewService::class.java).failure
+        assertTrue("$crashed", crashed?.contains("stopped unexpectedly") == true)
+
+        val started = SystemClock.elapsedRealtime()
+        Core.preview(id, HangingPreviewService::class.java)
+        // While the worker hangs, the UI thread keeps answering.
+        var slowestUiMs = 0L
+        while (Core.previews.value[id]?.running == true) {
+            val t = SystemClock.elapsedRealtime()
+            instrumentation.runOnMainSync {}
+            slowestUiMs = maxOf(slowestUiMs, SystemClock.elapsedRealtime() - t)
+            SystemClock.sleep(200)
+            if (SystemClock.elapsedRealtime() - started > PREVIEW_TIMEOUT_MS) throw AssertionError("hung preview never ended")
+        }
+        val hungMs = SystemClock.elapsedRealtime() - started
+        val hung = Core.previews.value[id]?.failure
+        assertTrue("$hung", hung?.contains("did not render in time") == true)
+        assertTrue("$hungMs ms", hungMs in 11_000..20_000)
+        assertTrue("UI blocked for $slowestUiMs ms", slowestUiMs < 500)
+        assertNotNull("next preview", previewOf(id).bitmap)
+        report("s06", "crash: $crashed; hang ended after $hungMs ms: $hung; slowest UI round trip $slowestUiMs ms")
+    }
+
+    @Test
+    fun s07_unconfinedWorkerIsRefused() {
+        allowFixtureHost()
+        val marker = File(context.filesDir, UnconfinedPreviewService.MARKER).apply { delete() }
+        val id = download("/files/picture.png").file!!.id
+        val unconfined = previewOf(id, UnconfinedPreviewService::class.java).failure
+        assertTrue("$unconfined", unconfined?.contains("not declared as an isolated process") == true)
+        assertFalse("input reached the unconfined worker", marker.exists())
+        val processes = context.getSystemService(ActivityManager::class.java).runningAppProcesses.orEmpty().map { it.processName }
+        assertFalse("$processes", processes.any { it.endsWith(":unconfined") })
+
+        val noSeccomp = previewOf(id, NoSeccompPreviewService::class.java).failure
+        assertTrue("$noSeccomp", noSeccomp?.contains("is not confined") == true)
+        report("s07", "non-isolated: $unconfined; no seccomp: $noSeccomp")
+    }
+
+    @Test
+    fun s19_previewLeavesNoPlaintextOnDisk() {
+        allowFixtureHost()
+        for (path in listOf("/files/picture.png", "/files/document.pdf")) {
+            assertNotNull(path, previewOf(download(path).file!!.id).bitmap)
+        }
+        val marker = "RIFT-PREVIEW-PLAINTEXT-MARKER".toByteArray()
+        val hits = context.dataDir.walkTopDown().filter { it.isFile && contains(it.readBytes(), marker) }
+            .map { it.relativeTo(context.dataDir).path }.toList()
+        // The session's engine directories are deleted at reset (S12); anything else is a leak.
+        val engine = Regex("(^|.*/)[^/]+_s[0-9]+/.*")
+        assertEquals(emptyList<String>(), hits.filterNot { engine.matches(it) })
+        report("s19", "plaintext marker found in: ${hits.ifEmpty { listOf("none") }}")
     }
 
     // ---- S15: unsupported engine configuration (INV-7) --------------------------
@@ -284,6 +411,40 @@ class SecurityTest {
         throw AssertionError("no finished download for $path: ${Core.downloads.value}")
     }
 
+    /** Starts a preview and waits for its outcome. */
+    private fun previewOf(id: String, service: Class<out android.app.Service> = PreviewService::class.java): Core.Preview {
+        Core.preview(id, service)
+        val deadline = SystemClock.elapsedRealtime() + PREVIEW_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            Core.previews.value[id]?.takeIf { !it.running }?.let { return it }
+            SystemClock.sleep(50)
+        }
+        throw AssertionError("preview of $id did not finish")
+    }
+
+    /** Asks a fresh worker-identical isolated process what it can reach. */
+    private fun probeWorker(canary: File): Map<String, String> {
+        val connected = CompletableFuture<IWorkerProbe>()
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                connected.complete(IWorkerProbe.Stub.asInterface(service))
+            }
+
+            override fun onServiceDisconnected(name: ComponentName) = Unit
+        }
+        val intent = Intent(context, ProbeWorkerService::class.java)
+        assertTrue(context.bindIsolatedService(intent, Context.BIND_AUTO_CREATE, "probe_${SystemClock.elapsedRealtimeNanos()}", context.mainExecutor, connection))
+        try {
+            val text = connected.get(10, TimeUnit.SECONDS).probe(canary.path, FIXTURE_PORT)
+            return text.lines().filter { '=' in it }.associate { it.substringBefore('=') to it.substringAfter('=') }
+        } finally {
+            context.unbindService(connection)
+        }
+    }
+
+    private fun contains(haystack: ByteArray, needle: ByteArray): Boolean =
+        (0..haystack.size - needle.size).any { i -> needle.indices.all { haystack[i + it] == needle[it] } }
+
     private fun browserPids(): List<Int> =
         context.getSystemService(ActivityManager::class.java).runningAppProcesses.orEmpty()
             .filter { it.processName == context.packageName + AndroidBrowserDisposal.BROWSER_PROCESS_SUFFIX }
@@ -311,6 +472,7 @@ class SecurityTest {
         const val PAGE_TIMEOUT_MS = 20_000L
         const val CORE_TIMEOUT_MS = 15_000L
         const val DOWNLOAD_TIMEOUT_MS = 120_000L
+        const val PREVIEW_TIMEOUT_MS = 30_000L
         val STORES = listOf("cookie", "server_cookie", "localStorage", "indexedDB", "cacheStorage", "serviceWorker")
     }
 }

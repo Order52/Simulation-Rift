@@ -15,8 +15,10 @@ import http.server
 import json
 import pathlib
 import sys
+import struct
 import threading
 import urllib.parse
+import zlib
 
 WEB_ROOT = pathlib.Path(__file__).resolve().parent / "web"
 REPORTS: dict[str, dict[str, str]] = {}
@@ -25,6 +27,50 @@ PRIVATE = b"cookie-gated fixture\n" * 50
 SESSION_COOKIE = "rift_login=1"
 BIG = 101 * 1024 * 1024  # just over the 100 MiB per-object limit
 LOCK = threading.Lock()
+# Embedded in the preview fixtures, so plaintext left on disk can be searched for.
+MARKER = b"RIFT-PREVIEW-PLAINTEXT-MARKER"
+
+
+def png(width: int, height: int) -> bytes:
+    """An RGB gradient with MARKER in a tEXt chunk."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    rows = b"".join(
+        b"\0" + bytes(v for x in range(width) for v in (x * 255 // width, y * 255 // height, 128))
+        for y in range(height)
+    )
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"tEXt", b"Comment\0" + MARKER)
+            + chunk(b"IDAT", zlib.compress(rows))
+            + chunk(b"IEND", b""))
+
+
+def pdf() -> bytes:
+    """One US-letter page with a filled box and MARKER as text; xref offsets exact."""
+    content = b"0 0 1 rg 72 600 468 120 re f BT /F1 18 Tf 72 500 Td (" + MARKER + b") Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R"
+        b" /Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{o:010d} 00000 n \n".encode() for o in offsets)
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+PICTURE = png(300, 200)
+DOCUMENT = pdf()
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -62,6 +108,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.send_bytes(b"ok", "text/plain", [("Set-Cookie", "rift_server_cookie=1; Max-Age=86400; Path=/")])
         if url.path == "/files/hello.txt":
             return self.send_bytes(HELLO, "text/plain", [("Content-Disposition", 'attachment; filename="hello.txt"')])
+        if url.path == "/files/picture.png":
+            return self.send_bytes(PICTURE, "image/png", [("Content-Disposition", 'attachment; filename="picture.png"')])
+        if url.path == "/files/document.pdf":
+            return self.send_bytes(DOCUMENT, "application/pdf", [("Content-Disposition", 'attachment; filename="document.pdf"')])
+        if url.path == "/files/broken.png":
+            # A PNG signature followed by garbage: the worker must fail cleanly.
+            return self.send_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 8, "image/png",
+                                   [("Content-Disposition", 'attachment; filename="broken.png"')])
         if url.path == "/files/hostile":
             # Traversal plus a right-to-left override, as raw UTF-8 bytes.
             name = 'attachment; filename="../../evil\u202egpj.pdf"'.encode("utf-8").decode("latin-1")
