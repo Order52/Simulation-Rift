@@ -76,3 +76,59 @@ jobs:
             cargo +"$NIGHTLY" fuzz run "$target" -- -max_total_time=60 -rss_limit_mb=2048
             echo "::endgroup::"
           done
+
+  # Phase 2 device matrix: the full Android suite (android/run-tests.sh) on
+  # x86_64 emulators, which Apple Silicon machines cannot run. KVM makes them
+  # hardware accelerated on GitHub's Linux runners.
+  android-emulator:
+    name: android (API ${{ matrix.api-level }}, x86_64)
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [33, 34]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NDK_VERSION: 29.0.14206865
+      EVIDENCE: ${{ github.workspace }}/evidence/phase2-android-api${{ matrix.api-level }}-x86_64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain, Android targets and cargo-ndk
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --version 4.1.2 --locked
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install the NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+      - name: Build (both ABIs, 16 KB alignment check)
+        run: sh android/build.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run the suite on the emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis
+          arch: x86_64
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: |
+            adb shell input keyevent 82
+            sh android/run-tests.sh "$EVIDENCE"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: phase2-android-api${{ matrix.api-level }}-x86_64
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: error
+      - name: Every test passed
+        run: |
+          cat "$EVIDENCE/device.txt" "$EVIDENCE/instrumented-results.txt" "$EVIDENCE/host-results.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -q "^OK (" "$EVIDENCE/instrumentation.txt"
+          ! grep -q FAIL "$EVIDENCE/instrumented-results.txt" "$EVIDENCE/host-results.txt"
