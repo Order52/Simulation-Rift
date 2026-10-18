@@ -6,9 +6,9 @@
 
 | Phase (architecture §22) | State |
 |---|---|
-| 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix (physical phones, API 33/34, x86_64). A1–A7 now also pass on a 16 KB page-size emulator (API 35). |
+| 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and A1–A7 on API 33/34 and a physical phone (the Phase 2 suite, which builds on them, passes on API 33/34). A1–A7 now also pass on a 16 KB page-size emulator (API 35). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
-| 2: Android vertical slice | **Built; tested on one device** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery; S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on the API 36 emulator and on API 35 with 16 KB pages; the R8 release build passes a smoke test. API 34 on x86_64 passes everything in CI. **Gate open:** API 33 (first CI run incomplete) and a physical phone. |
+| 2: Android vertical slice | **Built; tested on emulators** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery. S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on API 36 and on API 35 with 16 KB pages (arm64), and on API 33 and 34 (x86_64, in CI). API 30 refuses browsing as designed. The R8 release build passes a smoke test. **Gate open:** a physical phone. |
 | 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
 | 5: Linux app | Not started (worker lockdown and WebKit check proven in PoCs). |
@@ -123,9 +123,9 @@ Phase 2 findings, added to the list above: 15–26.
 | X2 size in the product | The standalone Android binary is 4.8 MB (upper bound); measure tough + aws-lc-rs inside Rift's shared library. |
 | X3 on a phone | Run the lookup benchmark on a real arm64 phone. |
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
-| Android device matrix | API 33, physical phones, OEM WebView builds, a 16 KB page-size device (the 16 KB emulator image passes; API 34 x86_64 passes in CI). |
+| Android device matrix | Physical phones, OEM WebView builds, a 16 KB page-size device. All emulator levels (30, 33–36, both ABIs, 16 KB pages) have run. |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
-| Phase 2 gate | The same suite on API 33/34, x86_64 and a physical phone; the instrumented suite against a release-like build. |
+| Phase 2 gate | The same suite on a physical phone; the instrumented suite against a release-like build. |
 | Phases 3–7 | Everything in §5. |
 
 ## 4. Limitations and how to work around them
@@ -136,7 +136,7 @@ Phase 2 findings, added to the list above: 15–26.
 |---|---|---|
 | The Docker VM has ~6 GB with ~1.4 GB free; building YARA-X/Cranelift for Linux in Docker is killed (OOM) | Linux-only Rust tests (`no_threads`) cannot be run locally; they run only in CI | Give Docker Desktop ≥ 8 GB (Settings → Resources) or stop unrelated containers; meanwhile rely on GitHub CI, which runs them on Ubuntu. |
 | No physical Android device | All Android evidence is from emulators with software GPU | Connect a phone with USB debugging and run `poc/android-feasibility/run-poc.sh <dir>` (not yet tried on a phone). Without `adb root`, everything except the A1 renderer `/proc` check should still run. |
-| Emulator images: API 30, 35 (16 KB) and 36 installed; 33 and 34 not yet (large downloads over this connection are slow and stalled once) | The Phase 2 gate needs 33/34 too | `sdkmanager "system-images;android-35;google_apis_ps16k;arm64-v8a"` (and 33, 34), create an AVD, then `android/run-tests.sh <dir>`. |
+| Apple Silicon cannot run x86_64 emulator images, and large image downloads over this connection are slow | x86_64 and API 33/34 could not run locally | The `android-emulator` CI job runs the suite on x86_64 API 33 and 34 with KVM and uploads the evidence. Local arm64 images: `sdkmanager --sdk_root=$HOME/Library/Android/sdk "system-images;android-NN;google_apis;arm64-v8a"`, create an AVD, then `android/run-tests.sh <dir>`. |
 | API 30 image has WebView 91 | Old engine; not representative of updated devices | Update WebView from Play on a `google_apis_playstore` image, or use a phone. |
 | No Flatpak host | L1 and L2 unverified in the shipping configuration | Run on a Fedora or Ubuntu VM/desktop with `flatpak-builder`. |
 | `cargo` is not on PATH in non-login shells | Commands fail with "not found" | `export PATH="$HOME/.cargo/bin:$PATH"`. |
@@ -168,7 +168,7 @@ Phase 2 findings, added to the list above: 15–26.
 3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.
 4. ~~Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.~~ Done.
 5. ~~Previews (images and PDF in the isolated worker, text as escaped plain text); reset and recovery.~~ Done (P1, P2, S3–S7, S12, S13, S19).
-6. Security tests on the device matrix: **API 36, API 35 (16 KB pages) and API 34 x86_64 (CI) done; API 33 and a phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
+6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done; a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
 
 **Phase 3: Scanner and signed intel**
 7. YARA-X scan jobs, verdict cache bound to rule and engine versions.

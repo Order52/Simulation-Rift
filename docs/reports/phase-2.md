@@ -1,6 +1,6 @@
 # Phase 2 report: Android vertical slice
 
-**Status:** built and tested on emulators (18 Oct 2026): the full suite passes on API 36 and on API 35 with 16 KB pages, and a shrunk release build passed a smoke test. **The gate is not met yet:** §22 asks for S1–S12 on the device matrix. API 34 on x86_64 now passes everything in CI, but API 33 and a physical phone are still missing (see Unverified). API 30 results are recorded below. S11 needs the scanner, so it moves to Phase 3. "Verified" means tested in the stated environment only. Nothing here claims complete isolation or the absence of vulnerabilities.
+**Status:** built and tested on emulators (18 Oct 2026): the full suite passes on API 36 and on API 35 with 16 KB pages, and a shrunk release build passed a smoke test. **The emulator part of the gate is met:** the full suite passes on API 33, 34 (both x86_64, in CI), 35 (16 KB pages) and 36, and API 30 refuses browsing as designed. **Still missing: a physical phone** (see Unverified). API 30 results are recorded below. S11 needs the scanner, so it moves to Phase 3. "Verified" means tested in the stated environment only. Nothing here claims complete isolation or the absence of vulnerabilities.
 
 Raw evidence was produced by `android/build.sh`, then `android/run-tests.sh <dir>`, on each emulator:
 
@@ -10,7 +10,7 @@ Raw evidence was produced by `android/build.sh`, then `android/run-tests.sh <dir
 | API 35 (Android 15, `sdk_gphone16k_arm64`, patch 2024-09-05) | 124.0.6367.219 | **16 KB** | [`evidence/phase2-android-api35-16k/`](evidence/phase2-android-api35-16k/) |
 | API 30 (Android 11) | 91.0.4472.114 (below the minimum of 100) | 4 KB | [`evidence/phase2-android-api30/`](evidence/phase2-android-api30/) |
 | API 34 (Android 14, `sdk_gphone64_x86_64`, patch 2023-09-05), **x86_64**, GitHub Actions with KVM | 113.0.5672.136 | 4 KB | [`evidence/phase2-android-api34-x86_64/`](evidence/phase2-android-api34-x86_64/) |
-| API 33 (Android 13, x86_64), GitHub Actions | 109.0.5414.123 | 4 KB | first run incomplete (below) |
+| API 33 (Android 13, `sdk_gphone64_x86_64`, patch 2024-03-01), **x86_64**, GitHub Actions with KVM | 109.0.5414.123 | 4 KB | [`evidence/phase2-android-api33-x86_64/`](evidence/phase2-android-api33-x86_64/) |
 
 All runs use the debug build, with `adb root` for S13/S14. The results table below gives the API 36 figures; API 35 was run before N4 was added and matched the rest test for test (19 + 2 pass; rendered previews 59–442 ms; hang ended at 12.2 s; reset 126 ms; same S3/S4 denials; clean inventory).
 
@@ -67,7 +67,8 @@ WebView 91 is below the supported minimum of 100, so `:browser` refuses to brows
 The `android-emulator` CI job builds both ABIs and runs `run-tests.sh` on x86_64 emulators. Apple Silicon machines cannot run those, but GitHub's Linux runners can, with KVM. Evidence is uploaded as a workflow artifact.
 
 - **API 34:** all 20 instrumented tests, S13 and S14 pass. Figures match the arm64 runs: hang ended at 12.3 s, reset 128 ms, the same S3/S4 denials, and a clean inventory.
-- **API 33, first run:** 19 of 20 instrumented tests and S14 passed. **N1 failed:** no block screen within 10 s. `:browser` had started only 4 s into the test, so the first engine start on a freshly booted emulator probably used up the timeout. This is not confirmed. S13 then hung: its wait for the RESETTING marker had no bound, the reset never started, and the job hit its 60-minute limit. The tests now wait up to 30 s for the engine's first report, N1 allows 20 s for its page, and S13's wait gives up after 20 s and reports a failure. The rerun is pending.
+- **API 33, first run (superseded):** 19 of 20 instrumented tests and S14 passed. **N1 failed:** no block screen within 10 s. `:browser` had started only 4 s into the test, so the first engine start on a freshly booted emulator probably used up the timeout. This is not confirmed. S13 then hung: its wait for the RESETTING marker had no bound, the reset never started, and the job hit its 60-minute limit. The tests now wait up to 30 s for the engine's first report, N1 allows 20 s for its page, and S13's wait gives up after 20 s and reports a failure.
+- **API 33, rerun with those changes:** all 20 instrumented tests, S13 and S14 pass. The hang ended at 12.9 s, reset took 289 ms, and the inventory was clean. Whether the longer engine wait was what fixed N1 cannot be told from one passing run.
 
 Before the trusted-bar fix (finding 10), the refused window's bar read "Not flagged · threat database current".
 
@@ -92,7 +93,7 @@ APK libraries (all LOAD segments 0x4000-aligned): `librift_ffi.so` 3.15 MB (arm6
 
 ## Verified (emulators only)
 
-- The full suite on API 36 (20 instrumented tests, S13, S14), on API 35 with 16 KB pages (19 tests, before N4 was added; S13, S14) and on API 34 x86_64 in CI (20, S13, S14).
+- The full suite on API 36 (20 instrumented tests, S13, S14), on API 35 with 16 KB pages (19 tests, before N4 was added; S13, S14) and on API 33 and API 34 x86_64 in CI (20, S13, S14).
 - On API 30 the refusal itself: browsing is refused with a reason, the worker probe (S3) and S15 pass, and S13 recovery works.
 - Every test in the table above marked Pass, with the evidence named there.
 - Host side: `cargo test --workspace` passes (rift-core 75 + 1 ignored network test, rift-ffi 7, rift-protocol 11, rift-worker 8, rift-worker-ffi 4; its fifth test, for the thread filter, runs on Linux and Android only and passed on the API 36 emulator as a native test binary). `clippy --all-targets` and `cargo fmt --check` are clean, and `cargo deny check` passes. The ignored test, `https_verifies_with_the_bundled_roots` (example.com accepted, wrong.host.badssl.com rejected), passed when run by hand.
@@ -101,7 +102,7 @@ APK libraries (all LOAD segments 0x4000-aligned): `librift_ffi.so` 3.15 MB (arm6
 
 ## Unverified
 
-- **The rest of the device matrix.** API 33 (one incomplete run; see above) and physical phones with OEM WebView builds. Until these run, the Phase 2 gate is not met. API 30 is covered only as far as its old WebView allows (below).
+- **Physical phones** with OEM WebView builds and vendor kernels. Every result here is from emulators. Until a phone runs the suite, the Phase 2 gate is not met. API 30 is covered only as far as its old WebView allows (below).
 - **Formats.** PNG, JPEG, WebP, PDF (first page) and UTF-8 text are previewed. UTF-16 text, and anything with a NUL byte in its first 8 KiB, counts as binary and shows "preview not supported".
 - **The renderer sandbox at runtime** is inferred from the API level and `isMultiProcessEnabled()`, as in Phase 0. The app cannot inspect the renderer's `/proc`. S14 found the renderer with `adb root`, which a release build cannot do.
 - **Hostile content against the worker's parsers.** S5 and S6 test misbehaving *workers* (simulated) and malformed fixtures, not real exploits. The `image` decoders and PDFium run with limits but have not been fuzzed in this setting.
