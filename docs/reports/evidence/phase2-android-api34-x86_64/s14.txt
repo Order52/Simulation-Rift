@@ -1,0 +1,7 @@
+main=7200 browser=7236 renderer=7269 generation=6
+10-18 06:40:31.811  7200  7222 I Rift    : generation 5 disposed
+10-18 06:40:31.855  7200  7222 I Rift    : session 6 active; recovered interrupted session 5
+10-18 06:40:37.071  7200  7216 W Rift    : renderer gone (crashed=true) in generation 6; ending the session
+10-18 06:40:37.140  7200  7222 I Rift    : generation 6 disposed
+10-18 06:40:37.156  7200  7222 I Rift    : session 7 active
+main_after=7200 browser_after=
