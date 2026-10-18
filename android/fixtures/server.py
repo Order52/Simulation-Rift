@@ -29,6 +29,9 @@ BIG = 101 * 1024 * 1024  # just over the 100 MiB per-object limit
 LOCK = threading.Lock()
 # Embedded in the preview fixtures, so plaintext left on disk can be searched for.
 MARKER = b"RIFT-PREVIEW-PLAINTEXT-MARKER"
+# Byte for byte rift_pack::DEMO_FILE: the demo database's hash and marker
+# rule match it (S21). Harmless text.
+DEMO_FILE = b"Simulation-Rift demo file. It is harmless. RIFT-DEMO-MARKER\n"
 
 
 def png(width: int, height: int) -> bytes:
@@ -116,6 +119,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Text with a CRLF, a terminal escape and a right-to-left override.
             body = "line one\r\nline two \x1b[31mred\x1b[0m \u202eesrever\n".encode("utf-8") + MARKER
             return self.send_bytes(body, "text/plain; charset=utf-8", [("Content-Disposition", 'attachment; filename="notes.txt"')])
+        if url.path == "/files/demo-file.txt":
+            return self.send_bytes(DEMO_FILE, "text/plain", [("Content-Disposition", 'attachment; filename="demo-file.txt"')])
+        if url.path == "/files/invoice.pdf":
+            # Executable header under a document name (a type mismatch, §12.1); not a real program.
+            return self.send_bytes(b"MZ\x90\x00" + b"\x00" * 60 + b"not a real program", "application/pdf",
+                                   [("Content-Disposition", 'attachment; filename="invoice.pdf"')])
         if url.path == "/files/broken.png":
             # A PNG signature followed by garbage: the worker must fail cleanly.
             return self.send_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 8, "image/png",

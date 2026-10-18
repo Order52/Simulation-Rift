@@ -108,19 +108,33 @@ class ProbeWorkerService : Service() {
 }
 
 /**
- * S4: PreviewService itself, which checks from inside the render path that
- * the parser-thread filter is in force: if it can still create an AF_UNIX
- * socket it answers garbage, which the controller rejects.
+ * S4: PreviewService itself, which checks from inside the render and scan
+ * paths that the parser-thread filter is in force: if it can still create an
+ * AF_UNIX socket it answers garbage, which the controller rejects.
  */
 class FilterCheckingPreviewService : PreviewService() {
-    override fun render(request: ByteArray, input: ParcelFileDescriptor, output: SharedMemory): ByteArray {
-        val unfiltered = try {
-            Os.close(Os.socket(OsConstants.AF_UNIX, OsConstants.SOCK_STREAM, 0))
-            true
-        } catch (e: android.system.ErrnoException) {
-            false
-        }
-        return if (unfiltered) byteArrayOf(0) else super.render(request, input, output)
+    override fun render(request: ByteArray, input: ParcelFileDescriptor, output: SharedMemory): ByteArray =
+        if (unfiltered()) byteArrayOf(0) else super.render(request, input, output)
+
+    override fun call(request: ByteArray, input: ParcelFileDescriptor): ByteArray =
+        if (unfiltered()) byteArrayOf(0) else super.call(request, input)
+
+    private fun unfiltered(): Boolean = try {
+        Os.close(Os.socket(OsConstants.AF_UNIX, OsConstants.SOCK_STREAM, 0))
+        true
+    } catch (e: android.system.ErrnoException) {
+        false
+    }
+}
+
+/** S6 for scans: compiles the rules, then never answers the scan. */
+class HangingScanService : PreviewService() {
+    private var loaded = false
+
+    override fun call(request: ByteArray, input: ParcelFileDescriptor): ByteArray {
+        if (loaded) while (true) Thread.sleep(60_000)
+        loaded = true
+        return super.call(request, input)
     }
 }
 

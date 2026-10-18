@@ -29,6 +29,9 @@ import org.junit.FixMethodOrder
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.MethodSorters
+import org.simulationrift.core.IntelStatus
+import org.simulationrift.core.ScanStatus
+import org.simulationrift.core.Verdict
 
 /**
  * Phase 2 security tests that run on the device (docs/architecture.md §23).
@@ -376,7 +379,120 @@ class SecurityTest {
         report("s12", "reset_ms=$resetMs generation=$generation->$next")
     }
 
+    // ---- Phase 3: scans and the signed threat database (§12, §13) -----------------
+
+    @Test
+    fun s16a_withoutADatabaseScansSayWhatIsMissing() {
+        assertTrue("${Core.intel.value}", awaitIntel { it is IntelStatus.Missing } is IntelStatus.Missing)
+        allowFixtureHost()
+        val plain = verdictOf(download("/files/hello.txt").file!!.id)
+        assertEquals(ScanStatus.NOT_FULLY_SCANNED, plain.status)
+        assertEquals(2, plain.gaps.size)
+        // The type check runs without a database: an executable named as a PDF.
+        val mismatch = verdictOf(download("/files/invoice.pdf").file!!.id)
+        assertEquals(ScanStatus.SUSPICIOUS, mismatch.status)
+        assertEquals(listOf("type"), mismatch.findings.map { it.check })
+        report("s16a", "plain: ${plain.label} ${plain.gaps}; invoice.pdf: ${mismatch.label} ${mismatch.findings.map { it.description }}")
+    }
+
+    @Test
+    fun s16b_tamperedUpdateIsRefused() {
+        val copy = File(context.cacheDir, "s16b").apply { deleteRecursively() }
+        copyAsset("intel-demo/repo", File(copy, "repo"))
+        val rules = File(copy, "repo/targets").listFiles().orEmpty().single { it.name.endsWith("rules.yar") }
+        val bytes = rules.readBytes()
+        val at = String(bytes, Charsets.US_ASCII).indexOf("MARKER")
+        bytes[at] = 'N'.code.toByte() // same length: tough's hash check must catch it
+        rules.writeBytes(bytes)
+        val root = context.assets.open("intel-demo/root.json").use { it.readBytes() }
+        Core.installIntel(root, File(copy, "repo"))
+        val message = awaitIntelMessage()
+        copy.deleteRecursively()
+        assertTrue(message, message.contains("refused") && message.contains("Hash mismatch"))
+        assertTrue("${Core.intel.value}", Core.intel.value is IntelStatus.Missing)
+        report("s16b", message)
+    }
+
+    @Test
+    fun s21a_signedDemoDatabaseFindsTheDemoFile() {
+        Core.installDemoIntel()
+        val installed = awaitIntel { it is IntelStatus.Installed } as? IntelStatus.Installed
+        assertNotNull("${Core.intel.value} ${Core.intelMessage.value}", installed)
+        assertTrue(installed!!.demo)
+        allowFixtureHost()
+        // Scans here run in the worker that checks the parser-thread filter
+        // is in force on the scan path; if it were not, the rules would not report.
+        Core.scanWorker = FilterCheckingPreviewService::class.java
+        try {
+            val demo = verdictOf(download("/files/demo-file.txt").file!!.id)
+            assertEquals(ScanStatus.KNOWN_MALICIOUS, demo.status)
+            assertEquals(listOf("file hash", "rules"), demo.findings.map { it.check })
+            assertTrue(demo.demo)
+            assertEquals(installed.snapshot, demo.snapshot)
+            val plain = verdictOf(download("/files/notes.txt").file!!.id)
+            assertEquals(ScanStatus.NOT_FLAGGED, plain.status)
+            assertEquals(emptyList<String>(), plain.gaps)
+            report("s21a", "database ${installed.snapshot}; demo-file.txt: ${demo.label} ${demo.findings.map { "${it.check}:${it.id}" }} ${demo.engine}; notes.txt: ${plain.label}")
+        } finally {
+            Core.scanWorker = PreviewService::class.java
+        }
+    }
+
+    @Test
+    fun s21b_hungScanWorkerCostsOnlyRuleCoverage() {
+        resetAndAwait(activeGeneration()) // a new session: no cached verdicts
+        allowFixtureHost()
+        Core.scanWorker = HangingScanService::class.java
+        try {
+            val started = SystemClock.elapsedRealtime()
+            val verdict = verdictOf(download("/files/demo-file.txt").file!!.id)
+            val elapsed = SystemClock.elapsedRealtime() - started
+            // The core's hash check still finds it; the missing rule scan is named.
+            assertEquals(ScanStatus.KNOWN_MALICIOUS, verdict.status)
+            assertEquals(listOf("file hash"), verdict.findings.map { it.check })
+            assertTrue("${verdict.gaps}", verdict.gaps.single().contains("did not scan in time"))
+            report("s21b", "hung scan ended after $elapsed ms: ${verdict.label}; ${verdict.gaps}")
+        } finally {
+            Core.scanWorker = PreviewService::class.java
+        }
+    }
+
     // ---- Helpers -------------------------------------------------------------------
+
+    private fun awaitIntel(done: (IntelStatus?) -> Boolean): IntelStatus? {
+        val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
+        while (!done(Core.intel.value) && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
+        return Core.intel.value
+    }
+
+    private fun awaitIntelMessage(): String {
+        val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            Core.intelMessage.value?.takeIf { it != "Checking the update…" }?.let { return it }
+            SystemClock.sleep(50)
+        }
+        throw AssertionError("no install outcome: ${Core.intelMessage.value}")
+    }
+
+    /** Waits for the scan that follows each download. */
+    private fun verdictOf(id: String): Verdict {
+        val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            Core.verdicts.value[id]?.let { return it }
+            SystemClock.sleep(50)
+        }
+        throw AssertionError("no verdict for $id: ${Core.verdicts.value}")
+    }
+
+    private fun copyAsset(path: String, target: File) {
+        val children = context.assets.list(path).orEmpty()
+        if (children.isEmpty()) {
+            target.parentFile?.mkdirs()
+            context.assets.open(path).use { input -> target.outputStream().use { input.copyTo(it) } }
+        } else {
+            for (child in children) copyAsset("$path/$child", File(target, child))
+        }
+    }
 
     private fun activeGeneration(): Long {
         val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
@@ -516,6 +632,7 @@ class SecurityTest {
         const val ENGINE_START_TIMEOUT_MS = 30_000L
         const val DOWNLOAD_TIMEOUT_MS = 120_000L
         const val PREVIEW_TIMEOUT_MS = 30_000L
+        const val SCAN_TIMEOUT_MS = 40_000L
         val STORES = listOf("cookie", "server_cookie", "localStorage", "indexedDB", "cacheStorage", "serviceWorker")
     }
 }

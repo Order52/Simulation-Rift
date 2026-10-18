@@ -14,6 +14,11 @@
             android:isolatedProcess="true"
             android:useAppZygote="true" />
         <service
+            android:name=".HangingScanService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:useAppZygote="true" />
+        <service
             android:name=".HangingPreviewService"
             android:exported="false"
             android:isolatedProcess="true"
