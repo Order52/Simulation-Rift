@@ -14,7 +14,30 @@ use rift_protocol::{
 };
 use rift_worker::{Deadline, Worker};
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+mod thread_filter;
+
 uniffi::setup_scaffolding!();
+
+/// Installs the parser-thread seccomp filter (§8.6) on the calling thread.
+/// The Android service calls it before it touches untrusted input, and
+/// fails the job if it cannot be installed.
+#[uniffi::export]
+pub fn confine_current_thread() -> Result<(), ConfineError> {
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    return thread_filter::confine_current_thread()
+        .map_err(|reason| ConfineError::Failed { reason });
+    #[cfg(not(any(target_os = "android", target_os = "linux")))]
+    Err(ConfineError::Failed {
+        reason: "seccomp is not available on this platform".into(),
+    })
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum ConfineError {
+    #[error("{reason}")]
+    Failed { reason: String },
+}
 
 /// What the Kotlin service has to do with a request it received.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]

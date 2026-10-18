@@ -19,4 +19,10 @@ workspace = true
 [dependencies]
 rift-protocol = { path = "../rift-protocol" }
 rift-worker = { path = "../rift-worker" }
+thiserror = "2.0.21"
 uniffi = "0.32.2"
+
+# Per-thread seccomp filter for the parser thread (architecture §8.6).
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+libc = "0.2.191"
+seccompiler = "0.5.0"
