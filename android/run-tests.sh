@@ -148,7 +148,8 @@ if [ -n "$bounds" ] && [ -n "$main" ]; then
   x=$((($1 + $3) / 2)); y=$((($2 + $4) / 2))
   # Tap Reset, then kill the controller as soon as the marker says RESETTING.
   "$adb" logcat -c
-  "$adb" shell "input tap $x $y & while ! grep -q RESETTING $marker; do :; done; kill -9 $main; echo killed main $main; cat $marker" \
+  # Bounded: if the tap never starts a reset, report that instead of spinning.
+  "$adb" shell "input tap $x $y & end=\$((\$(date +%s) + 20)); while ! grep -q RESETTING $marker; do [ \$(date +%s) -lt \$end ] || { echo no reset within 20 s; cat $marker; exit 0; }; done; kill -9 $main; echo killed main $main; cat $marker" \
     | tr -d '\r' > "$out/s13.txt"
   # :browser's binding to the core makes Android restart the main process at
   # once, and the restarted core recovers before presenting a session.

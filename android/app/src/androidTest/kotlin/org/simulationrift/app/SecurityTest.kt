@@ -100,7 +100,7 @@ class SecurityTest {
     fun n1_externalAppLinksAreBlocked() {
         val generation = activeGeneration()
         openBrowser(generation, fixture("/links.html?go=" + java.net.URLEncoder.encode("intent://scan/#Intent;scheme=zxing;end", "UTF-8")))
-        assertNotNull("block screen", device.wait(Until.findObject(By.text("Page blocked")), UI_TIMEOUT_MS))
+        assertNotNull("block screen", device.wait(Until.findObject(By.text("Page blocked")), PAGE_TIMEOUT_MS))
         assertNotNull(device.findObject(By.textContains("\"intent:\" links are blocked")))
         for (url in listOf("javascript:alert(1)", "file:///data/data/${context.packageName}/files", "content://settings/system", "market://details?id=x")) {
             val decision = Core.decide(generation, url)
@@ -409,6 +409,10 @@ class SecurityTest {
                 .putExtra(BrowserActivity.EXTRA_GENERATION, generation)
                 .putExtra(BrowserActivity.EXTRA_URL, url),
         )
+        // The first start of the engine on a freshly booted emulator can take
+        // most of the UI timeout by itself (n1 on API 33 in CI).
+        val deadline = SystemClock.elapsedRealtime() + ENGINE_START_TIMEOUT_MS
+        while (Core.sandbox.value == null && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
     }
 
     /** Opens a fixture page in the current session and waits for its report. */
@@ -509,6 +513,7 @@ class SecurityTest {
         const val UI_TIMEOUT_MS = 10_000L
         const val PAGE_TIMEOUT_MS = 20_000L
         const val CORE_TIMEOUT_MS = 15_000L
+        const val ENGINE_START_TIMEOUT_MS = 30_000L
         const val DOWNLOAD_TIMEOUT_MS = 120_000L
         const val PREVIEW_TIMEOUT_MS = 30_000L
         val STORES = listOf("cookie", "server_cookie", "localStorage", "indexedDB", "cacheStorage", "serviceWorker")
