@@ -1,6 +1,6 @@
 # Project status: Simulation-Rift
 
-**As of 18 Oct 2026.** This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
+**As of 18 Oct 2026.** For a short current snapshot, see [`../../STATUS.md`](../../STATUS.md). This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
 
 ## 1. Where the project stands
 
@@ -195,8 +195,8 @@ Phase 2 findings, added to the list above: 15–26.
 6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done; a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
 
 **Phase 3: Scanner and signed intel**
-7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store; scan jobs on Android after each download.~~ Done (host: S11, S17, S22; Android API 33/34: S21, hung worker). Open: pinning running scans to their snapshot, and concurrent scan workers.
-8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done (host and Android API 33/34: S16, S21). Open: the Android import screen with a production root, online updates, the production key policy. No real malware samples are in the repository.
+7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store; scan jobs on Android after each download.~~ Done (host: S11, S17, S22; Android API 33–35: S21, hung worker). Open: pinning running scans to their snapshot, and concurrent scan workers.
+8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done (host and Android API 33–35: S16, S21). Open: the Android import screen with a production root, online updates, the production key policy. No real malware samples are in the repository.
 
 **Phase 4: Vault**
 9. Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.
