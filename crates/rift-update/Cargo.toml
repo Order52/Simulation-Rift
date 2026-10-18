@@ -1,0 +1,26 @@
+[package]
+name = "rift-update"
+version = "0.1.0"
+description = "Simulation-Rift signed intelligence updates: TUF verification and offline import"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rift-core = { path = "../rift-core" }
+thiserror = "2.0.21"
+# tough's own runtime; Rift drives it from one current-thread runtime per update.
+tokio = { version = "1.53.3", default-features = false, features = ["rt"] }
+tough = { version = "0.24.0", default-features = false } # no HTTP transport
+url = "2.5.8"
+
+[dev-dependencies]
+jiff = "0.2.38"
+sha2 = "0.11.1"
+rift-pack = { path = "../../tools/rift-pack" }
+tempfile = "3.27.0"

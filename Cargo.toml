@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "tools/*"]
 # Phase 0 harnesses form their own workspace and never ship.
 exclude = ["poc"]
 
