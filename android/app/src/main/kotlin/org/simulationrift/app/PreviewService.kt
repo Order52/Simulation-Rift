@@ -10,6 +10,8 @@ import android.graphics.pdf.PdfRenderer
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.SharedMemory
+import android.system.Os
+import android.system.OsConstants
 import java.io.File
 import java.io.IOException
 import kotlin.math.floor
@@ -18,6 +20,7 @@ import kotlin.math.min
 import org.simulationrift.worker.Job
 import org.simulationrift.worker.PlatformResult
 import org.simulationrift.worker.WorkerEngine
+import org.simulationrift.worker.confineCurrentThread
 import org.simulationrift.worker.reject
 
 /**
@@ -42,7 +45,21 @@ open class PreviewService : Service() {
 
         override fun render(request: ByteArray, input: ParcelFileDescriptor, output: SharedMemory): ByteArray =
             try {
-                this@PreviewService.render(request, input, output)
+                // Defence in depth on the thread that parses (§8.6). Without
+                // it the job fails rather than running less confined.
+                val confined = try {
+                    if (engine.job(request) is Job.PdfPage) preloadPdfRenderer()
+                    confineCurrentThread()
+                    true
+                } catch (e: Exception) { // ConfineException, or the PDF preload failing
+                    android.util.Log.e(TAG, "parser thread not prepared; failing the job", e)
+                    false
+                }
+                if (confined) {
+                    this@PreviewService.render(request, input, output)
+                } else {
+                    engine.platformReply(request, PlatformResult.EngineFailure).frame
+                }
             } finally {
                 input.close()
                 output.close()
@@ -111,6 +128,33 @@ open class PreviewService : Service() {
     }
 
     companion object {
+        /**
+         * PdfRenderer loads PDFium (and FreeType) on first use, which maps
+         * executable code: that must happen before the thread filter forbids
+         * executable mappings. Rendering this built-in one-page document
+         * (trusted, not the user's file) does it.
+         */
+        private fun preloadPdfRenderer() {
+            val fd = Os.memfd_create("rift-pdf-preload", 0)
+            try {
+                val bytes = PRELOAD_PDF.toByteArray(Charsets.US_ASCII)
+                var offset = 0
+                while (offset < bytes.size) offset += Os.write(fd, bytes, offset, bytes.size - offset)
+                Os.lseek(fd, 0, OsConstants.SEEK_SET)
+                PdfRenderer(ParcelFileDescriptor.dup(fd)).use { renderer ->
+                    renderer.openPage(0).use { page ->
+                        val bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        bitmap.recycle()
+                    }
+                }
+            } finally {
+                Os.close(fd)
+            }
+        }
+
+        private const val PRELOAD_PDF = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>\nendobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n199\n%%EOF\n"
+
         /** The controller's input limit (rift-ffi MAX_PREVIEW_INPUT); more is a protocol violation. */
         private const val MAX_INPUT = 32 * 1024 * 1024
 

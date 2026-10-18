@@ -10,13 +10,17 @@ import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.os.SharedMemory
+import android.system.Os
+import android.system.OsConstants
 import java.io.File
+import java.io.FileDescriptor
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import org.simulationrift.worker.PlatformResult
 import org.simulationrift.worker.WorkerEngine
+import org.simulationrift.worker.confineCurrentThread
 
 // Debug builds only (src/debug): workers for the S3–S7 instrumented tests.
 // Each isolated one is declared exactly like PreviewService.
@@ -59,16 +63,64 @@ class ProbeWorkerService : Service() {
                     if (bound) "bound" else throw SecurityException("bindService returned false")
                 },
             )
-            appendLine("unix_socket=" + attempt { android.net.LocalSocket().use { "created" } })
+            appendLine("unix_socket=" + attempt { unixSocket() })
+            appendLine("exec_mapping=" + attempt { execMapping() })
+            // The same two on a thread with PreviewService's parser filter.
+            appendLine("unix_socket_filtered_thread=" + onFilteredThread { unixSocket() })
+            appendLine("exec_mapping_filtered_thread=" + onFilteredThread { execMapping() })
         }
     }
 
     override fun onBind(intent: Intent): IBinder = binder
 
+    private fun unixSocket(): String {
+        val fd = Os.socket(OsConstants.AF_UNIX, OsConstants.SOCK_STREAM, 0)
+        Os.close(fd)
+        return "created"
+    }
+
+    private fun execMapping(): String {
+        val address = Os.mmap(0, 4096, OsConstants.PROT_READ or OsConstants.PROT_EXEC, OsConstants.MAP_PRIVATE or OsConstants.MAP_ANONYMOUS, FileDescriptor(), 0)
+        Os.munmap(address, 4096)
+        return "mapped"
+    }
+
+    private fun onFilteredThread(block: () -> String): String {
+        var result = "not run"
+        val thread = Thread {
+            result = try {
+                confineCurrentThread()
+                attempt(block)
+            } catch (e: Throwable) {
+                "FILTER FAILED ${e.javaClass.simpleName}: ${e.message}"
+            }
+        }
+        thread.start()
+        thread.join()
+        return result
+    }
+
     private fun attempt(block: () -> String): String = try {
         "ALLOWED " + block()
     } catch (e: Throwable) {
         "DENIED ${e.javaClass.simpleName}: ${e.message}"
+    }
+}
+
+/**
+ * S4: PreviewService itself, which checks from inside the render path that
+ * the parser-thread filter is in force: if it can still create an AF_UNIX
+ * socket it answers garbage, which the controller rejects.
+ */
+class FilterCheckingPreviewService : PreviewService() {
+    override fun render(request: ByteArray, input: ParcelFileDescriptor, output: SharedMemory): ByteArray {
+        val unfiltered = try {
+            Os.close(Os.socket(OsConstants.AF_UNIX, OsConstants.SOCK_STREAM, 0))
+            true
+        } catch (e: android.system.ErrnoException) {
+            false
+        }
+        return if (unfiltered) byteArrayOf(0) else super.render(request, input, output)
     }
 }
 

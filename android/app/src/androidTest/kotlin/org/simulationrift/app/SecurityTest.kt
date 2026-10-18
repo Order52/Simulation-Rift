@@ -221,10 +221,15 @@ class SecurityTest {
     @Test
     fun s04_workerCannotReachTheNetworkOrTheCore() {
         val probe = probeWorker(File(context.filesDir, "canary.txt"))
-        for (key in listOf("tcp_connect", "udp_socket", "dns", "clipboard", "bind_core")) {
+        for (key in listOf("tcp_connect", "udp_socket", "dns", "clipboard", "bind_core", "unix_socket_filtered_thread", "exec_mapping_filtered_thread")) {
             assertTrue("$key: ${probe[key]}", probe[key]?.startsWith("DENIED") == true)
         }
-        // isolated_app does not deny AF_UNIX sockets (§8.6, PoC A6); reported, not asserted.
+        // isolated_app alone does not deny AF_UNIX sockets or executable
+        // mappings (§8.6, PoC A6); only the parser thread's filter does. Reported, not asserted.
+        // The product worker's own render path runs under that filter:
+        allowFixtureHost()
+        val id = download("/files/picture.png").file!!.id
+        assertNotNull(previewOf(id, FilterCheckingPreviewService::class.java).bitmap)
         report("s04", probe.entries.joinToString(" | ") { "${it.key}=${it.value}" })
     }
 
