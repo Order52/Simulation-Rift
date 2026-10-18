@@ -125,6 +125,22 @@ class SecurityTest {
         assertNotNull(device.findObject(By.textContains("no threat database")))
     }
 
+    @Test
+    fun n4_trustedBarClaimsNothingUnchecked() {
+        // Before the core has decided on a page, the bar must not summarize
+        // one; on an unsupported engine it must say browsing is refused.
+        val generation = activeGeneration()
+        context.startActivity(
+            Intent(context, BrowserActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(BrowserActivity.EXTRA_GENERATION, generation),
+        )
+        val supported = WebViewSandbox.evaluate(WebViewSandbox.facts(context)).verified
+        val expected = if (supported) "No page checked yet" else "Browsing refused on this device"
+        assertNotNull(expected, device.wait(Until.findObject(By.res("protection").text(expected)), UI_TIMEOUT_MS))
+        report("n4", "engine supported=$supported; bar: $expected")
+    }
+
     // ---- S8 / S9 / S10: downloads go through the core (INV-13, §11.1) -----------
 
     @Test

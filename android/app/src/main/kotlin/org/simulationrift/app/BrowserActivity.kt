@@ -90,7 +90,8 @@ class BrowserActivity : ComponentActivity() {
 
     private var screen by mutableStateOf<Screen>(Screen.Connecting)
     private var address by mutableStateOf("")
-    private var notes by mutableStateOf<List<Fact>>(emptyList())
+    /** The core's notes for the page shown; null until the core has decided on one. */
+    private var notes by mutableStateOf<List<Fact>?>(null)
     private var canGoBack by mutableStateOf(false)
     private var canGoForward by mutableStateOf(false)
     private var status by mutableStateOf<String?>(null)
@@ -409,6 +410,9 @@ class BrowserActivity : ComponentActivity() {
     }
 
     private fun protectionSummary(): String {
+        // Only a decision by the core may be summarized; anything else says so.
+        if (screen is Screen.Unsupported) return "Browsing refused on this device"
+        val notes = notes ?: return "No page checked yet"
         val warnings = notes.filter { it.code != "intel-missing" && it.code != "intel-stale" }
         val intel = when {
             notes.any { it.code == "intel-missing" } -> "no threat database"
