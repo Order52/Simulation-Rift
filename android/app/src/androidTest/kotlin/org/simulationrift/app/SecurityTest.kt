@@ -129,13 +129,19 @@ class SecurityTest {
     fun n4_trustedBarClaimsNothingUnchecked() {
         // Before the core has decided on a page, the bar must not summarize
         // one; on an unsupported engine it must say browsing is refused.
-        val generation = activeGeneration()
+        // A fresh session, so no earlier test's page is still on screen.
+        val generation = resetAndAwait(activeGeneration())
         context.startActivity(
             Intent(context, BrowserActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(BrowserActivity.EXTRA_GENERATION, generation),
         )
-        val supported = WebViewSandbox.evaluate(WebViewSandbox.facts(context)).verified
+        // The engine's verdict comes from :browser. Asking WebView here would
+        // load it in the main process, outside any session (which the reset
+        // inventory then rightly refuses).
+        val deadline = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
+        while (Core.sandbox.value == null && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
+        val supported = Core.sandbox.value?.verified ?: throw AssertionError("no sandbox report from :browser")
         val expected = if (supported) "No page checked yet" else "Browsing refused on this device"
         assertNotNull(expected, device.wait(Until.findObject(By.res("protection").text(expected)), UI_TIMEOUT_MS))
         report("n4", "engine supported=$supported; bar: $expected")
