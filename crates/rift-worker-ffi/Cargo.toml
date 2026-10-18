@@ -1,0 +1,22 @@
+[package]
+name = "rift-worker-ffi"
+version = "0.1.0"
+description = "Simulation-Rift worker bindings: rift-worker inside the Android isolated service"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+# Loaded only by the isolated worker process: it links the parsers and the
+# protocol, never rift-core, so no core or vault code is mapped there.
+crate-type = ["cdylib", "lib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+rift-protocol = { path = "../rift-protocol" }
+rift-worker = { path = "../rift-worker" }
+uniffi = "0.32.2"

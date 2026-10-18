@@ -109,6 +109,7 @@ pub struct BitmapHeader {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PixelFormat {
+    /// 8 bits per channel in R, G, B, A byte order, straight (not premultiplied) alpha.
     Rgba8,
 }
 
