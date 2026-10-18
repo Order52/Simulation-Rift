@@ -18,6 +18,12 @@ use rift_protocol::{Envelope, PROTOCOL_VERSION, Request, Response};
 
 uniffi::setup_scaffolding!();
 
+mod scan;
+pub use scan::{
+    Intel, IntelFailure, IntelStatus, PendingIntel, ScanFailure, ScanFinding, ScanJob, ScanStart,
+    ScanStatus, Verdict,
+};
+
 /// One explainable fact for the trusted UI: `code` is stable, `text` is a
 /// sentence in which any web-supplied part has been escaped.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -265,6 +271,9 @@ struct SessionExtras {
     objects: Vec<StoredObject>,
     /// Committed bytes plus reservations of downloads in progress.
     reserved: u64,
+    /// Scan verdicts; they go with the session, like the files they describe.
+    cache: rift_core::scan::VerdictCache,
+    verdicts: Vec<(String, Verdict)>,
 }
 
 impl SessionExtras {
@@ -276,6 +285,8 @@ impl SessionExtras {
             files: Vec::new(),
             objects: Vec::new(),
             reserved: 0,
+            cache: rift_core::scan::VerdictCache::new(1024),
+            verdicts: Vec::new(),
         }
     }
 }
@@ -452,15 +463,20 @@ impl PreviewJob {
         reply: &[u8],
         request: &Envelope<Request>,
     ) -> Result<Response, PreviewFailure> {
-        let mut reader = reply;
-        let body = rift_protocol::read_frame(&mut reader).map_err(|e| bad_reply(&e.to_string()))?;
-        if !reader.is_empty() {
-            return Err(bad_reply("trailing bytes after the reply"));
-        }
-        rift_protocol::decode_response(&body, request)
-            .map(rift_protocol::Validated::into_inner)
-            .map_err(|e| bad_reply(&e.to_string()))
+        decode_reply(reply, request).map_err(|detail| bad_reply(&detail))
     }
+}
+
+/// One complete reply frame, validated against the request it answers.
+fn decode_reply(reply: &[u8], request: &Envelope<Request>) -> Result<Response, String> {
+    let mut reader = reply;
+    let body = rift_protocol::read_frame(&mut reader).map_err(|e| e.to_string())?;
+    if !reader.is_empty() {
+        return Err("trailing bytes after the reply".into());
+    }
+    rift_protocol::decode_response(&body, request)
+        .map(rift_protocol::Validated::into_inner)
+        .map_err(|e| e.to_string())
 }
 
 fn bad_reply(detail: &str) -> PreviewFailure {
@@ -701,37 +717,13 @@ impl Sessions {
         max_width: u32,
         max_height: u32,
     ) -> Result<Preview, PreviewFailure> {
-        // Decrypted under the lock (the key never leaves the session), so a
-        // reset waits for this bounded local read instead of racing it.
-        let input = {
-            let mut state = self.state.lock().map_err(|_| PreviewFailure::Poisoned)?;
-            let object = state
-                .current(generation)
-                .ok_or(PreviewFailure::SessionEnded)?
-                .objects
-                .iter()
-                .find(|o| o.id.to_hex() == id)
-                .copied()
-                .ok_or(PreviewFailure::NotFound)?;
-            if object.sealed.size > MAX_PREVIEW_INPUT {
+        let (_, input) = match self.read_quarantined(generation, &id, MAX_PREVIEW_INPUT)? {
+            (file, Content::Whole(input)) => (file, input),
+            (_, Content::Head(_)) => {
                 return Err(PreviewFailure::TooLarge {
                     limit: MAX_PREVIEW_INPUT,
                 });
             }
-            let session = state.manager.active().ok_or(PreviewFailure::SessionEnded)?;
-            let mut input = Vec::new();
-            session
-                .quarantine()
-                .read(
-                    object.id,
-                    session.quarantine_key(),
-                    &object.sealed,
-                    &mut input,
-                )
-                .map_err(|e| PreviewFailure::Storage {
-                    detail: e.to_string(),
-                })?;
-            input
         };
         let Some(kind) = sniff(&input) else {
             // Plain text is decoded here, in memory-safe code with a bound,
@@ -774,6 +766,101 @@ impl Sessions {
 impl Sessions {
     fn lock(&self) -> Result<MutexGuard<'_, State>, SessionFailure> {
         self.state.lock().map_err(|_| SessionFailure::Poisoned)
+    }
+
+    /// Decrypts and verifies quarantined file `id`. Content over `limit` is
+    /// still read through (so its integrity is checked) but only its first
+    /// bytes are kept. Runs under the lock (the key never leaves the
+    /// session), so a reset waits for this bounded local read.
+    fn read_quarantined(
+        &self,
+        generation: u64,
+        id: &str,
+        limit: u64,
+    ) -> Result<(QuarantinedFile, Content), ReadFailure> {
+        let mut state = self.state.lock().map_err(|_| ReadFailure::Poisoned)?;
+        let extras = state.current(generation).ok_or(ReadFailure::SessionEnded)?;
+        let index = extras
+            .objects
+            .iter()
+            .position(|o| o.id.to_hex() == id)
+            .ok_or(ReadFailure::NotFound)?;
+        let (Some(object), Some(file)) = (
+            extras.objects.get(index).copied(),
+            extras.files.get(index).cloned(),
+        ) else {
+            return Err(ReadFailure::NotFound);
+        };
+        let session = state.manager.active().ok_or(ReadFailure::SessionEnded)?;
+        let storage = |e: rift_core::vault::VaultError| ReadFailure::Storage(e.to_string());
+        let content = if object.sealed.size > limit {
+            let mut head = Head(Vec::new());
+            session
+                .quarantine()
+                .read(
+                    object.id,
+                    session.quarantine_key(),
+                    &object.sealed,
+                    &mut head,
+                )
+                .map_err(storage)?;
+            Content::Head(head.0)
+        } else {
+            let mut whole = Vec::new();
+            session
+                .quarantine()
+                .read(
+                    object.id,
+                    session.quarantine_key(),
+                    &object.sealed,
+                    &mut whole,
+                )
+                .map_err(storage)?;
+            Content::Whole(whole)
+        };
+        Ok((file, content))
+    }
+}
+
+/// A quarantined file's plaintext: all of it, or only its first bytes.
+enum Content {
+    Whole(Vec<u8>),
+    Head(Vec<u8>),
+}
+
+/// Keeps the first [`HEAD_BYTES`] written and discards the rest.
+struct Head(Vec<u8>);
+const HEAD_BYTES: usize = 64;
+
+impl std::io::Write for Head {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let room = HEAD_BYTES.saturating_sub(self.0.len());
+        self.0
+            .extend_from_slice(buf.get(..room.min(buf.len())).unwrap_or_default());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+enum ReadFailure {
+    SessionEnded,
+    NotFound,
+    Storage(String),
+    Poisoned,
+}
+
+impl From<ReadFailure> for PreviewFailure {
+    fn from(failure: ReadFailure) -> Self {
+        match failure {
+            ReadFailure::SessionEnded => PreviewFailure::SessionEnded,
+            ReadFailure::NotFound => PreviewFailure::NotFound,
+            ReadFailure::Storage(detail) => PreviewFailure::Storage { detail },
+            ReadFailure::Poisoned => PreviewFailure::Poisoned,
+        }
     }
 }
 
@@ -875,6 +962,167 @@ mod tests {
         let reopened = Sessions::open(root(&dir), disposal.clone()).unwrap();
         assert_eq!(reopened.recovery().interrupted_generation, Some(generation));
         assert!(reopened.start().unwrap() > generation);
+    }
+
+    /// A signed demo repository, as a maintainer would publish it.
+    fn demo_repository(dir: &std::path::Path) -> (Vec<u8>, String) {
+        let keys = dir.join("keys");
+        let pack = dir.join("pack");
+        std::fs::create_dir_all(&keys).unwrap();
+        std::fs::create_dir(&pack).unwrap();
+        rift_pack::generate_keys(&keys).unwrap();
+        let root = dir.join("root.json");
+        let now = jiff::Timestamp::now();
+        let year = now
+            .checked_add(jiff::SignedDuration::from_hours(24 * 365))
+            .unwrap();
+        let one = std::num::NonZeroU64::MIN;
+        rift_pack::init_root(&keys, one, year, &root).unwrap();
+        rift_pack::write_demo_pack(&pack, now).unwrap();
+        let repo = dir.join("repo");
+        let release = rift_pack::Release::standard(one, now).unwrap();
+        rift_pack::publish(&root, &keys, &pack, &repo, &release).unwrap();
+        (
+            std::fs::read(root).unwrap(),
+            repo.to_string_lossy().into_owned(),
+        )
+    }
+
+    #[test]
+    fn scans_combine_the_core_hash_check_with_a_validated_worker() {
+        use rift_worker_ffi::WorkerEngine;
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        let get = |body: &'static [u8]| {
+            sessions
+                .download(
+                    generation,
+                    info(format!("http://localhost:{}/", serve(body))),
+                )
+                .unwrap()
+        };
+        let demo = get(rift_pack::DEMO_FILE);
+        let clean = get(b"an ordinary report");
+        let other = get(b"another ordinary report");
+
+        // No database: nothing runs, and the verdict says what is missing.
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        assert_eq!(intel.status(0), IntelStatus::Missing);
+        let Ok(ScanStart::Done { verdict }) =
+            sessions
+                .clone()
+                .scan(generation, demo.id.clone(), intel.clone())
+        else {
+            panic!("expected a decision without a worker");
+        };
+        assert_eq!(verdict.status, ScanStatus::NotFullyScanned);
+        assert_eq!(verdict.gaps.len(), 2);
+
+        // Install: verified, then the rules must compile in a confined worker.
+        let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
+        let pending = intel
+            .clone()
+            .verify_offline(trusted_root.clone(), repo.clone())
+            .unwrap();
+        assert!(matches!(pending.install(0), Err(IntelFailure::NotChecked)));
+        let unconfined = WorkerEngine::new(false, false);
+        assert!(matches!(
+            pending.accept_hello(unconfined.handle(pending.hello_frame(), None).frame),
+            Err(IntelFailure::Unconfined { .. })
+        ));
+        let checker = WorkerEngine::new(true, false);
+        pending
+            .accept_hello(checker.handle(pending.hello_frame(), None).frame)
+            .unwrap();
+        pending
+            .accept_load(
+                checker
+                    .handle(pending.load_frame(), Some(pending.rules()))
+                    .frame,
+            )
+            .unwrap();
+        assert!(matches!(
+            pending.install(0),
+            Ok(IntelStatus::Installed { demo: true, .. })
+        ));
+
+        // The demo file: hash (core) and rule (worker) both find it.
+        let Ok(ScanStart::Run { job }) =
+            sessions
+                .clone()
+                .scan(generation, demo.id.clone(), intel.clone())
+        else {
+            panic!("expected a worker job");
+        };
+        assert_eq!(job.input(), rift_pack::DEMO_FILE);
+        let worker = WorkerEngine::new(true, false);
+        let hello = worker.handle(job.hello_frame(), None).frame;
+        job.accept_hello(hello.clone()).unwrap();
+        job.accept_load(worker.handle(job.load_frame(), Some(job.rules())).frame)
+            .unwrap();
+        // A reply to another request is refused.
+        assert!(matches!(
+            job.finish(hello),
+            Err(ScanFailure::BadReply { .. })
+        ));
+        let verdict = job
+            .finish(worker.handle(job.scan_frame(), Some(job.input())).frame)
+            .unwrap();
+        assert_eq!(verdict.status, ScanStatus::KnownMalicious);
+        let checks: Vec<&str> = verdict.findings.iter().map(|f| f.check.as_str()).collect();
+        assert_eq!(checks, ["file hash", "rules"]);
+        assert!(verdict.demo);
+        assert_eq!(verdict.engine, rift_protocol::SCAN_ENGINE);
+        assert_eq!(
+            sessions.verdict(generation, demo.id.clone()),
+            Some(verdict.clone())
+        );
+        // Same bytes, same database and engine: the verdict is current.
+        assert!(matches!(
+            sessions.clone().scan(generation, demo.id.clone(), intel.clone()),
+            Ok(ScanStart::Done { verdict: v }) if v == verdict
+        ));
+
+        // A clean file is "not flagged", never "safe".
+        let Ok(ScanStart::Run { job }) =
+            sessions
+                .clone()
+                .scan(generation, clean.id.clone(), intel.clone())
+        else {
+            panic!("expected a worker job");
+        };
+        let worker = WorkerEngine::new(true, false);
+        job.accept_hello(worker.handle(job.hello_frame(), None).frame)
+            .unwrap();
+        job.accept_load(worker.handle(job.load_frame(), Some(job.rules())).frame)
+            .unwrap();
+        let verdict = job
+            .finish(worker.handle(job.scan_frame(), Some(job.input())).frame)
+            .unwrap();
+        assert_eq!(
+            (verdict.status, verdict.label.as_str()),
+            (ScanStatus::NotFlagged, "Not flagged")
+        );
+
+        // A worker that dies costs coverage, not the hash check.
+        let Ok(ScanStart::Run { job }) =
+            sessions
+                .clone()
+                .scan(generation, other.id.clone(), intel.clone())
+        else {
+            panic!("expected a worker job");
+        };
+        let verdict = job
+            .failed("the scan worker stopped unexpectedly".into())
+            .unwrap();
+        assert_eq!(verdict.status, ScanStatus::NotFullyScanned);
+        assert!(verdict.gaps[0].contains("stopped unexpectedly"));
+
+        // Verdicts end with the session.
+        let next = sessions.reset().unwrap();
+        assert_eq!(sessions.verdict(next, demo.id), None);
     }
 
     /// Serves one fixed response per connection on 127.0.0.1.

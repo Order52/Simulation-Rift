@@ -28,9 +28,12 @@ required-features = ["bindgen"]
 hex = "0.4.3"
 rift-core = { path = "../rift-core" }
 rift-protocol = { path = "../rift-protocol" }
+rift-update = { path = "../rift-update" }
 thiserror = "2.0.21"
 uniffi = "0.32.2"
 
 [dev-dependencies]
+jiff = "0.2.38"
+rift-pack = { path = "../../tools/rift-pack" }
 rift-worker-ffi = { path = "../rift-worker-ffi" }
 tempfile = "3.27.0"

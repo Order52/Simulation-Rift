@@ -2731,8 +2731,11 @@ name = "rift-ffi"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "jiff",
  "rift-core",
+ "rift-pack",
  "rift-protocol",
+ "rift-update",
  "rift-worker-ffi",
  "tempfile",
  "thiserror 2.0.21",

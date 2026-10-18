@@ -231,6 +231,38 @@ pub fn assess(evidence: &Evidence<'_>) -> Verdict {
     }
 }
 
+/// Executable content under a name that promises a document, image or
+/// text: the case §12.1 flags. Other mismatches are not reported, because
+/// many formats share containers (ZIP, OLE) and would only add noise.
+pub fn type_mismatch(display_name: &str, content: &[u8]) -> Option<(String, String)> {
+    let detected = if content.starts_with(b"MZ") {
+        "a Windows executable"
+    } else if content.starts_with(b"\x7fELF") {
+        "a Linux or Android executable"
+    } else if [
+        b"\xfe\xed\xfa\xce",
+        b"\xfe\xed\xfa\xcf",
+        b"\xce\xfa\xed\xfe",
+        b"\xcf\xfa\xed\xfe",
+        b"\xca\xfe\xba\xbe",
+    ]
+    .iter()
+    .any(|magic| content.starts_with(*magic))
+    {
+        "a macOS executable"
+    } else {
+        return None;
+    };
+    let extension = display_name.rsplit_once('.')?.1.to_ascii_lowercase();
+    const HARMLESS_LOOKING: [&str; 16] = [
+        "pdf", "txt", "png", "jpg", "jpeg", "gif", "webp", "doc", "docx", "xls", "xlsx", "ppt",
+        "pptx", "csv", "rtf", "mp4",
+    ];
+    HARMLESS_LOOKING
+        .contains(&extension.as_str())
+        .then(|| (extension, detected.to_owned()))
+}
+
 /// Finished verdicts by key, bounded; the oldest entry goes first.
 #[derive(Debug)]
 pub struct VerdictCache {
@@ -437,6 +469,19 @@ mod tests {
         let mut other_engine = evidence(OTHER, Some(&old), clean());
         other_engine.engine = "yara-x 1.22.0";
         assert!(cache.current(&assess(&other_engine).key).is_none());
+    }
+
+    #[test]
+    fn executables_named_as_documents_are_flagged() {
+        assert_eq!(
+            type_mismatch("invoice.PDF", b"MZ\x90\x00"),
+            Some(("pdf".into(), "a Windows executable".into()))
+        );
+        assert!(type_mismatch("photo.jpg", b"\x7fELF\x02").is_some());
+        assert!(type_mismatch("notes.txt", b"\xcf\xfa\xed\xfe").is_some());
+        assert_eq!(type_mismatch("setup.exe", b"MZ"), None);
+        assert_eq!(type_mismatch("invoice.pdf", b"%PDF-1.7"), None);
+        assert_eq!(type_mismatch("no-extension", b"MZ"), None);
     }
 
     #[test]
