@@ -1,7 +1,7 @@
-main=17259 browser=17288 renderer=17330 generation=5
-10-18 03:24:37.968 17259 17279 I Rift    : generation 4 disposed
-10-18 03:24:37.983 17259 17279 I Rift    : session 5 active; recovered interrupted session 4
-10-18 03:24:43.548 17259 17272 W Rift    : renderer gone (crashed=true) in generation 5; ending the session
-10-18 03:24:43.577 17259 17279 I Rift    : generation 5 disposed
-10-18 03:24:43.586 17259 17279 I Rift    : session 6 active
-main_after=17259 browser_after=
+main=19834 browser=19862 renderer=19905 generation=5
+10-18 03:31:30.407 19834 19855 I Rift    : generation 4 disposed
+10-18 03:31:30.422 19834 19855 I Rift    : session 5 active; recovered interrupted session 4
+10-18 03:31:35.962 19834 19849 W Rift    : renderer gone (crashed=true) in generation 5; ending the session
+10-18 03:31:35.999 19834 19855 I Rift    : generation 5 disposed
+10-18 03:31:36.004 19834 19855 I Rift    : session 6 active
+main_after=19834 browser_after=

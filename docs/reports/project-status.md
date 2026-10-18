@@ -88,6 +88,7 @@ These were all found by tests, not by reading:
 18. Killing the main process while `:browser` is bound makes Android restart it immediately; recovery runs in that restart, before a session is shown (S13).
 19. Isolated-service instance names may contain only letters, digits and `_` (`preview-1` is rejected).
 20. Workers forked from the app zygote showed `NoNewPrivs: 1` on the API 36 image (Phase 0 saw 0 for system-zygote workers). Recorded, not relied on.
+21. PdfRenderer loads PDFium lazily; with the parser-thread filter already installed the load fails, so the worker preloads it with a built-in PDF first.
 
 ### 2.5 Phase 2 code (Android vertical slice)
 
@@ -99,7 +100,7 @@ These were all found by tests, not by reading:
 | `android/` | Compose shell; `:browser` WebView host with the §8.4 configuration; disposal by process death, directory deletion and an allowlist inventory; `PreviewService` (isolated, app zygote) and the controller's `Previewer`. Debug-only misbehaving workers for S3–S7. |
 | Tests | 19 instrumented tests plus host-driven S13 and S14 (`android/run-tests.sh`); fixtures in `android/fixtures`. |
 
-Phase 2 findings, added to the list below: 15–20.
+Phase 2 findings, added to the list below: 15–21.
 
 ## 3. Finished vs. not finished
 
@@ -142,7 +143,7 @@ Phase 2 findings, added to the list below: 15–20.
 |---|---|---|
 | A WebView escape lands in `:browser` with the app's UID | Android gives one UID per APK | Vault keys never enter `:browser`; auth-bound Keystore key; minimal Binder interface. Stronger: a separate browser APK (ADR-04, post-V1). |
 | `blob:`, `data:` and POST downloads cannot be captured | WebView does not report them or they cannot be re-fetched | Stated as unsupported. For `blob:` and `data:` Rift is never told, so it cannot even show a message. A JavaScript bridge could capture them but would add attack surface, so it is rejected for V1. |
-| Android worker is weaker than the Linux worker (exec memory, `AF_UNIX`; NoNewPrivs varies by image) | `isolated_app` policy is set by the OS; ART needs exec memory | Per-thread seccomp filter in the native library, as defence in depth, if it does not break ART (not done yet). |
+| Android worker is weaker than the Linux worker (exec memory, `AF_UNIX`; NoNewPrivs varies by image) | `isolated_app` policy is set by the OS; ART needs exec memory | A seccomp filter on the parser thread now denies sockets, exec mappings, exec and ptrace there (measured on API 36). Other threads share the address space, so it is defence in depth, not a boundary. |
 | Rift's own downloads trust only the bundled Mozilla roots | Chosen so user-installed CAs cannot intercept the core's fetches | Downloads behind a TLS-inspecting proxy fail. Switching to `rustls-platform-verifier` is the documented alternative if that proves unacceptable. |
 | Preview input is held in the controller's memory (≤ 32 MiB) | The decrypted copy passes through Kotlin into the memfd | Larger files are not previewed; writing from Rust into the memfd would remove the copy. |
 | An Android app cannot inspect the renderer's sandbox at runtime (A1 needed `adb root`) | Other apps' `/proc` entries are hidden | Rift relies on the API ≥ 30 floor and `isMultiProcessEnabled()`, which A1 showed imply an `isolated_app` renderer on the tested builds. |
@@ -162,7 +163,7 @@ Phase 2 findings, added to the list below: 15–20.
 3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.
 4. ~~Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.~~ Done.
 5. ~~Previews (images and PDF in the isolated worker, text as escaped plain text); reset and recovery.~~ Done (P1, P2, S3–S7, S12, S13, S19).
-6. Security tests on the device matrix: **API 36 done; API 30/33/34/35, 16 KB pages and a phone open.** Also open: the per-thread seccomp filter, a release build.
+6. Security tests on the device matrix: **API 36 done; API 30/33/34/35, 16 KB pages and a phone open.** Also open: a release build. (The parser-thread seccomp filter is done.)
 
 **Phase 3: Scanner and signed intel**
 7. YARA-X scan jobs, verdict cache bound to rule and engine versions.

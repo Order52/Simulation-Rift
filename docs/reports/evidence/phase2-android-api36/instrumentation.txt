@@ -267,7 +267,7 @@ INSTRUMENTATION_STATUS: test=s19_previewLeavesNoPlaintextOnDisk
 INSTRUMENTATION_STATUS_CODE: 0
 INSTRUMENTATION_RESULT: stream=
 
-Time: 22.997
+Time: 22.601
 
 OK (19 tests)
 

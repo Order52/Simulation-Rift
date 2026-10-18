@@ -358,7 +358,7 @@ PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and coo
   - The controller unbinds the worker before copying pixels, so nothing can race the copy, and treats the RGBA as untrusted data drawn into a fresh `Bitmap`.
   - Deadlines: 2 s for Hello, 12 s for rendering. Measured end-to-end preview time, including worker start, is 36–204 ms on the API 36 emulator.
   - Observed on the API 36 emulator: workers forked from the app zygote run as `u0_iN` with `Seccomp: 2` and `NoNewPrivs: 1`; app files are not even visible (ENOENT); `socket(AF_INET)` fails with `EPERM`; `AF_UNIX` sockets can still be created.
-  - Not yet done: the per-thread seccomp filter described above (it needs a native shim).
+  - **Parser-thread filter (done).** `rift-worker-ffi` installs a seccomp filter (seccompiler, no TSYNC) on the binder thread that handles the render request, before it reads input. It denies `socket`, `socketpair`, `connect`, `execve(at)`, `ptrace`, `process_vm_readv/writev`, and `mmap`/`mprotect`/`pkey_mprotect` with `PROT_EXEC`, with EPERM. If it cannot be installed, the job fails. Measured: on the filtered thread AF_UNIX sockets and executable mappings fail with EPERM, while the rest of the process (ART) is unaffected. PdfRenderer loads PDFium lazily, which maps executable code, so the worker first renders a built-in one-page PDF and only then installs the filter (Phase 2 finding). This remains defence in depth, not a boundary (see above).
 - **Cold start:** `useAppZygote` with the native library preloaded in the app zygote is required. Without it the median cold start on the API 36 emulator was 304 ms (budget 300 ms); with it, 45 ms (157 ms for the first worker, which also starts the zygote).
 
 ### 8.7 Keys

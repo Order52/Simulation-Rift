@@ -5,6 +5,8 @@ REPORT links loaded=1
 127.0.0.1 "GET /report?test=links&key=loaded&value=1 HTTP/1.1" 200 -
 127.0.0.1 code 404, message File not found
 127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
 127.0.0.1 "GET /links.html?go=https%3A%2F%2Fpaypa1.com%2Flogin HTTP/1.1" 200 -
 REPORT links loaded=1
 127.0.0.1 "GET /report?test=links&key=loaded&value=1 HTTP/1.1" 200 -
@@ -80,6 +82,8 @@ REPORT s2 done=1
 127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
 127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
 127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
 127.0.0.1 "GET /files/big HTTP/1.1" 200 -
 127.0.0.1 "GET /files/big HTTP/1.1" 200 -
 127.0.0.1 "GET /files/hello.txt HTTP/1.1" 200 -
@@ -129,15 +133,14 @@ REPORT probe-before done=1
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
-127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
-127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /probe.html?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 REPORT probe-after cookie=absent
 127.0.0.1 "GET /report?test=probe-after&key=cookie&value=absent HTTP/1.1" 200 -
-127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
 127.0.0.1 code 404, message File not found
 127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
 REPORT probe-after server_cookie=absent
