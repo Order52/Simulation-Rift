@@ -46,6 +46,8 @@ android {
     sourceSets {
         // Kotlin bindings generated from rift-ffi by build.sh (never edited by hand).
         getByName("main").kotlin.directories += "build/generated-rift/kotlin"
+        // The signed demo threat database, debug builds only (build.sh).
+        getByName("debug").assets.directories += "build/generated-intel"
     }
 
     packaging {

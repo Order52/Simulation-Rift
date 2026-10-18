@@ -23,6 +23,26 @@ for lib in rift_ffi rift_worker_ffi; do
     --out-dir "$here/app/build/generated-rift/kotlin"
 done
 
+# Debug builds embed a signed demo threat database (Phase 3). The signing
+# keys and the root stay outside the repository; only the public root and
+# the signed repository go into the build directory.
+keys="${RIFT_DEMO_KEYS:-${XDG_DATA_HOME:-$HOME/.local/share}/simulation-rift/demo-keys}"
+intel="$here/app/build/generated-intel/intel-demo"
+cargo build --quiet --locked -p rift-pack
+pack_tool=target/debug/rift-pack
+if [ ! -f "$keys/root.json" ]; then
+  mkdir -p "$keys"
+  chmod 700 "$keys"
+  "$pack_tool" keys "$keys"
+  "$pack_tool" root "$keys" "$keys/root.json"
+fi
+rm -rf "$intel" && mkdir -p "$intel/pack"
+"$pack_tool" demo "$intel/pack" >/dev/null
+# Minutes since the epoch: each build's release is newer than the last one.
+"$pack_tool" publish "$keys/root.json" "$keys" "$intel/pack" "$intel/repo" "$(($(date +%s) / 60))" >/dev/null
+cp "$keys/root.json" "$intel/root.json"
+rm -rf "$intel/pack"
+
 cd "$here"
 # Only :browser code may use WebView: loading it in the main process creates
 # app_webview/ outside any session (Phase 2, finding 12). A static check, so

@@ -24,7 +24,7 @@ import org.simulationrift.worker.confineCurrentThread
 import org.simulationrift.worker.reject
 
 /**
- * The untrusted-input worker (§8.6). It is an `isolatedProcess`: a random UID
+ * The untrusted-input worker for previews and scans (§8.6). It is an `isolatedProcess`: a random UID
  * in the `isolated_app` domain, with no permissions and no access to the
  * app's files. It sees only the frames and descriptors the controller hands
  * it, and the controller validates everything it returns.
@@ -64,11 +64,38 @@ open class PreviewService : Service() {
                 input.close()
                 output.close()
             }
+
+        override fun call(request: ByteArray, input: ParcelFileDescriptor): ByteArray =
+            try {
+                // The same parser-thread filter as for rendering: rule
+                // compilation and scanning read untrusted bytes too.
+                val confined = try {
+                    confineCurrentThread()
+                    true
+                } catch (e: Exception) { // ConfineException
+                    android.util.Log.e(TAG, "parser thread not prepared; failing the job", e)
+                    false
+                }
+                if (confined) {
+                    this@PreviewService.call(request, input)
+                } else {
+                    engine.platformReply(request, PlatformResult.EngineFailure).frame
+                }
+            } finally {
+                input.close()
+            }
     }
 
     override fun onBind(intent: Intent): IBinder = binder
 
     protected open fun hello(request: ByteArray): ByteArray = engine.handle(request, null).frame
+
+    /** Rules (LoadRules) and scans (Scan): rift-worker's own jobs, reply frame only. */
+    protected open fun call(request: ByteArray, input: ParcelFileDescriptor): ByteArray =
+        when (engine.job(request)) {
+            Job.Native -> engine.handle(request, readBounded(input)).frame
+            else -> reject().frame
+        }
 
     protected open fun render(request: ByteArray, input: ParcelFileDescriptor, output: SharedMemory): ByteArray =
         when (val job = engine.job(request)) {

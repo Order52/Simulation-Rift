@@ -36,6 +36,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
+import org.simulationrift.core.IntelStatus
+import org.simulationrift.core.ScanStatus
+import org.simulationrift.core.Verdict
 
 /** The trusted home screen (main process). */
 class MainActivity : ComponentActivity() {
@@ -92,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     BrowseCard(active.generation)
                     DownloadsCard()
                 }
+                IntelCard()
                 DiagnosticsCard(sandbox)
             }
         }
@@ -153,6 +157,7 @@ class MainActivity : ComponentActivity() {
         val downloads by Core.downloads.collectAsState()
         val localHosts by Core.localHosts.collectAsState()
         val previews by Core.previews.collectAsState()
+        val verdicts by Core.verdicts.collectAsState()
         var host by remember { mutableStateOf("") }
         Card(Modifier.fillMaxWidth().testTag("downloads")) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -172,7 +177,10 @@ class MainActivity : ComponentActivity() {
                         else -> "Fetching ${d.url}…"
                     }
                     Text(text, modifier = Modifier.testTag("download-${d.key}"))
-                    if (file != null) PreviewArea(file.id, file.displayName, previews[file.id])
+                    if (file != null) {
+                        VerdictArea(file.id, verdicts.containsKey(file.id), verdicts[file.id])
+                        PreviewArea(file.id, file.displayName, previews[file.id])
+                    }
                 }
                 Text("Local network hosts allowed for downloads in this session: " + localHosts.ifEmpty { listOf("none") }.joinToString())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -187,6 +195,64 @@ class MainActivity : ComponentActivity() {
                         Core.allowLocalHost(host)
                         host = ""
                     }) { Text("Allow") }
+                }
+            }
+        }
+    }
+
+    /** The scan result as rift-core decided it: never "safe", always with its coverage. */
+    @Composable
+    private fun VerdictArea(fileId: String, requested: Boolean, verdict: Verdict?) {
+        when {
+            !requested -> OutlinedButton(onClick = { Core.scan(fileId) }, modifier = Modifier.testTag("scan-$fileId")) { Text("Scan") }
+            verdict == null -> Text("Checking in an isolated worker…", modifier = Modifier.testTag("scanning-$fileId"))
+            else -> Column(Modifier.testTag("verdict-$fileId"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                val color = when (verdict.status) {
+                    ScanStatus.KNOWN_MALICIOUS, ScanStatus.SUSPICIOUS -> MaterialTheme.colorScheme.error
+                    ScanStatus.NOT_FLAGGED, ScanStatus.NOT_FULLY_SCANNED -> MaterialTheme.colorScheme.onSurface
+                }
+                Text(verdict.label, style = MaterialTheme.typography.titleSmall, color = color, modifier = Modifier.testTag("verdict-label-$fileId"))
+                verdict.findings.forEach { f ->
+                    Text(
+                        "${f.description} (${f.check}: ${f.id}, ${if (f.highConfidence) "high" else "low"} confidence, source ${f.source})",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                verdict.gaps.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                val basis = verdict.snapshot?.let { "Database $it" + (if (verdict.stale) " (out of date)" else "") } ?: "No threat database"
+                Text(
+                    "$basis · ${verdict.engine}" + (if (verdict.demo) " · DEMO database, not real coverage" else "") +
+                        (if (verdict.status == ScanStatus.NOT_FLAGGED) " · not flagged is not a guarantee that the file is safe" else ""),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(onClick = { Core.scan(fileId) }) { Text("Scan again") }
+            }
+        }
+    }
+
+    @Composable
+    private fun IntelCard() {
+        val status by Core.intel.collectAsState()
+        val message by Core.intelMessage.collectAsState()
+        Card(Modifier.fillMaxWidth().testTag("intel")) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Threat database", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    when (val s = status) {
+                        null -> "Opening…"
+                        is IntelStatus.Missing -> "None installed. Files are checked for type only, and say what was not checked."
+                        is IntelStatus.Damaged -> "The installed database is damaged and is not used: ${s.detail}"
+                        is IntelStatus.Installed -> "${s.snapshot}" + (if (s.demo) " · DEMO, not real coverage" else "") +
+                            (if (s.stale) " · out of date, still used offline" else "")
+                    },
+                    modifier = Modifier.testTag("intel-status"),
+                )
+                (status as? IntelStatus.Installed)?.notices?.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("intel-message")) }
+                if (Core.demoIntelAvailable()) {
+                    OutlinedButton(onClick = { Core.installDemoIntel() }, modifier = Modifier.testTag("intel-demo")) {
+                        Text("Install the signed demo database")
+                    }
                 }
             }
         }
@@ -237,7 +303,7 @@ class MainActivity : ComponentActivity() {
                 )
                 Text("Checked: addresses you type, links opened in Rift, and main-frame navigations the engine reports.")
                 Text("Not checked: subresources, frames, WebSockets, WebRTC, service-worker fetches and form posts (§10.3).")
-                Text("No threat database is installed yet; only the built-in address checks run.")
+                Text("Address checks use a built-in list; the threat database is used for downloaded files.")
                 Text("Safe Browsing is off, so no addresses or hashes are sent to Google.")
             }
         }

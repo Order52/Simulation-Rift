@@ -14,6 +14,12 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.update
 import org.simulationrift.core.DownloadFailure
 import org.simulationrift.core.DownloadInfo
+import org.simulationrift.core.Intel
+import org.simulationrift.core.IntelFailure
+import org.simulationrift.core.IntelStatus
+import org.simulationrift.core.ScanFailure
+import org.simulationrift.core.ScanStart
+import org.simulationrift.core.Verdict
 import org.simulationrift.core.Navigation
 import org.simulationrift.core.QuarantinedFile
 import org.simulationrift.core.Navigator
@@ -84,6 +90,26 @@ object Core {
     private val _previews = MutableStateFlow<Map<String, Preview>>(emptyMap())
     val previews: StateFlow<Map<String, Preview>> = _previews
 
+    /** The installed threat database, or null while it is being opened. */
+    private val _intel = MutableStateFlow<IntelStatus?>(null)
+    val intel: StateFlow<IntelStatus?> = _intel
+
+    /** The outcome of the last database install, for the home screen. */
+    private val _intelMessage = MutableStateFlow<String?>(null)
+    val intelMessage: StateFlow<String?> = _intelMessage
+
+    /** Scan verdicts of this session's files; a key with null means "checking". */
+    private val _verdicts = MutableStateFlow<Map<String, Verdict?>>(emptyMap())
+    val verdicts: StateFlow<Map<String, Verdict?>> = _verdicts
+
+    // Scans and database checks, one worker at a time (each holds the file or
+    // the rules in memory until its worker is retired).
+    private val scanning = Executors.newSingleThreadExecutor { Thread(it, "rift-scan") }
+    @Volatile private var database: Intel? = null
+
+    /** The worker component for the scan after each download; tests substitute misbehaving ones. */
+    @Volatile internal var scanWorker: Class<out Service> = PreviewService::class.java
+
     // One worker at a time: previews are user-initiated, and each holds its
     // decrypted input in memory until the worker is retired.
     private val previewing = Executors.newSingleThreadExecutor { Thread(it, "rift-preview") }
@@ -141,6 +167,7 @@ object Core {
         _downloads.value = emptyList()
         _localHosts.value = emptyList()
         _previews.value = emptyMap()
+        _verdicts.value = emptyMap()
         try {
             opened.reset()
         } catch (e: SessionFailure) {
@@ -152,6 +179,7 @@ object Core {
 
     private fun openAndStart() {
         _state.value = State.Opening
+        if (database == null) openIntel()
         val opened = try {
             Sessions.open(File(app.filesDir, "rift").path, AndroidBrowserDisposal(app))
         } catch (e: SessionFailure) {
@@ -161,6 +189,19 @@ object Core {
         sessions = opened
         start(opened, opened.recovery().interruptedGeneration?.toLong())
     }
+
+    /** files/rift/intel is Rift's own state (on the disposal allowlist), kept across sessions. */
+    private fun openIntel() {
+        try {
+            database = Intel.open(File(app.filesDir, "rift/intel").path)
+            _intel.value = database?.status(nowUnix())
+        } catch (e: IntelFailure) {
+            Log.e(TAG, "threat database unavailable", e)
+            _intelMessage.value = "The threat database could not be opened: ${Scanner.describe(e)}"
+        }
+    }
+
+    private fun nowUnix(): ULong = (System.currentTimeMillis() / 1000).toULong()
 
     private fun start(opened: Sessions, recovered: Long?) {
         try {
@@ -240,9 +281,100 @@ object Core {
             Log.i(TAG, "download $key in generation $generation: " + (outcome.file?.let { "stored ${it.size} bytes" } ?: "not captured: ${outcome.failure}"))
             if (generation == currentGeneration) {
                 _downloads.update { list -> list.map { if (it.key == key) outcome else it } }
+                outcome.file?.let { scan(it.id, scanWorker) }
             }
         }
     }
+
+    /**
+     * Scans quarantined file `fileId` (§12.1): the core's hash check, then
+     * the rules in a fresh isolated worker. `service` is the worker
+     * component; tests substitute misbehaving ones.
+     */
+    fun scan(fileId: String, service: Class<out Service> = PreviewService::class.java) {
+        val generation = currentGeneration ?: return
+        val opened = sessions ?: return
+        val intel = database ?: return
+        _verdicts.update { it + (fileId to null) }
+        scanning.execute {
+            val started = android.os.SystemClock.elapsedRealtime()
+            val verdict = try {
+                when (val start = opened.scan(generation.toULong(), fileId, intel)) {
+                    is ScanStart.Done -> start.verdict
+                    is ScanStart.Run -> start.job.use { job -> Scanner.scan(app, job, service) }
+                }
+            } catch (e: ScanFailure) {
+                // Only when the file or session is gone; worker failures become verdicts.
+                Log.w(TAG, "scan of $fileId not run: $e")
+                null
+            }
+            Log.i(TAG, "scan of $fileId in generation $generation after ${android.os.SystemClock.elapsedRealtime() - started} ms: " +
+                (verdict?.let { v -> "${v.label}; findings ${v.findings.map { "${it.check}:${it.id}" }}; gaps ${v.gaps}" } ?: "not run"))
+            if (generation == currentGeneration) {
+                _verdicts.update { if (verdict == null) it - fileId else it + (fileId to verdict) }
+            }
+        }
+    }
+
+    /**
+     * Installs the TUF repository in `repository`, verified against
+     * `trustedRoot` (§13.2), after a fresh worker has compiled its rules.
+     * On any failure the current database stays.
+     */
+    fun installIntel(trustedRoot: ByteArray, repository: File, service: Class<out Service> = PreviewService::class.java) {
+        val intel = database ?: return
+        _intelMessage.value = "Checking the update…"
+        scanning.execute {
+            _intelMessage.value = try {
+                intel.verifyOffline(trustedRoot, repository.path).use { pending ->
+                    Scanner.check(app, pending, service)
+                    _intel.value = pending.install(nowUnix())
+                    "Installed ${pending.snapshot()}."
+                }
+            } catch (e: IntelFailure) {
+                Scanner.describe(e)
+            } catch (e: IsolatedWorker.Failed) {
+                "the update's rules could not be checked: ${e.message}"
+            }
+            Log.i(TAG, "intel install: ${_intelMessage.value}")
+        }
+    }
+
+    /** Debug builds carry a signed demo database (`android/build.sh`); release builds do not. */
+    fun demoIntelAvailable(): Boolean = try {
+        app.assets.list(DEMO_INTEL)?.contains("root.json") == true
+    } catch (e: java.io.IOException) {
+        false
+    }
+
+    fun installDemoIntel(service: Class<out Service> = PreviewService::class.java) {
+        scanning.execute {
+            val copy = File(app.cacheDir, "intel-import")
+            try {
+                copy.deleteRecursively()
+                copyAssets("$DEMO_INTEL/repo", File(copy, "repo"))
+                val root = app.assets.open("$DEMO_INTEL/root.json").use { it.readBytes() }
+                installIntel(root, File(copy, "repo"), service)
+                // Runs after the install on the same executor; the copy is not needed after.
+                scanning.execute { copy.deleteRecursively() }
+            } catch (e: java.io.IOException) {
+                _intelMessage.value = "the demo database is not available in this build: ${e.message}"
+            }
+        }
+    }
+
+    private fun copyAssets(path: String, target: File) {
+        val children = app.assets.list(path).orEmpty()
+        if (children.isEmpty()) {
+            target.parentFile?.mkdirs()
+            app.assets.open(path).use { input -> target.outputStream().use { input.copyTo(it) } }
+        } else {
+            target.mkdirs()
+            for (child in children) copyAssets("$path/$child", File(target, child))
+        }
+    }
+
+    private const val DEMO_INTEL = "intel-demo"
 
     /** The user's per-session exception for one local host name (INV-13). */
     fun allowLocalHost(host: String) = worker.execute {
@@ -270,7 +402,7 @@ object Core {
                 }
             } catch (e: PreviewFailure) {
                 Preview(fileId, failure = describe(e))
-            } catch (e: Previewer.Failed) {
+            } catch (e: IsolatedWorker.Failed) {
                 Preview(fileId, failure = e.message)
             } catch (e: Exception) {
                 Log.e(TAG, "preview failed", e)
