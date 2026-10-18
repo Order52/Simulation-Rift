@@ -1,6 +1,7 @@
 #!/bin/sh
-# Builds rift-ffi for both ABIs, generates its Kotlin bindings, builds the
-# debug APK, and checks that every bundled .so is aligned for 16 KB pages.
+# Builds rift-ffi (controller) and rift-worker-ffi (isolated worker) for both
+# ABIs, generates their Kotlin bindings, builds the debug APK, and checks that
+# every bundled .so is aligned for 16 KB pages.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 : "${ANDROID_HOME:=$HOME/Library/Android/sdk}"
@@ -9,16 +10,18 @@ here="$(cd "$(dirname "$0")" && pwd)"
 export ANDROID_HOME ANDROID_NDK_HOME JAVA_HOME
 
 cd "$here/.."
-cargo ndk -t arm64-v8a -t x86_64 -P 30 -o "$here/app/src/main/jniLibs" build --release --locked -p rift-ffi
+cargo ndk -t arm64-v8a -t x86_64 -P 30 -o "$here/app/src/main/jniLibs" build --release --locked -p rift-ffi -p rift-worker-ffi
 # Bindings come from UniFFI's metadata in an unstripped host build of the same
 # source (release stripping removes it). The generated code checks the API
 # checksums against the Android library when it loads, so a mismatch fails.
-cargo build --quiet --locked -p rift-ffi
-host_lib="$(ls target/debug/librift_ffi.dylib target/debug/librift_ffi.so 2>/dev/null | head -1)"
+cargo build --quiet --locked -p rift-ffi -p rift-worker-ffi
 rm -rf "$here/app/build/generated-rift/kotlin"
-cargo run --quiet --locked -p rift-ffi --features bindgen --bin uniffi-bindgen -- generate \
-  --library "$host_lib" --language kotlin --no-format \
-  --out-dir "$here/app/build/generated-rift/kotlin"
+for lib in rift_ffi rift_worker_ffi; do
+  host_lib="$(ls target/debug/lib$lib.dylib target/debug/lib$lib.so 2>/dev/null | head -1)"
+  cargo run --quiet --locked -p rift-ffi --features bindgen --bin uniffi-bindgen -- generate \
+    --library "$host_lib" --language kotlin --no-format \
+    --out-dir "$here/app/build/generated-rift/kotlin"
+done
 
 cd "$here"
 "${GRADLE:-./gradlew}" --quiet assembleDebug assembleDebugAndroidTest

@@ -1,7 +1,9 @@
 package org.simulationrift.app
 
 import android.app.Application
+import android.app.Service
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import java.io.File
 import java.util.concurrent.Executors
@@ -15,6 +17,7 @@ import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.Navigation
 import org.simulationrift.core.QuarantinedFile
 import org.simulationrift.core.Navigator
+import org.simulationrift.core.PreviewFailure
 import org.simulationrift.core.SessionFailure
 import org.simulationrift.core.Sessions
 import org.simulationrift.core.displaySafe
@@ -62,6 +65,18 @@ object Core {
 
     private val _localHosts = MutableStateFlow<List<String>>(emptyList())
     val localHosts: StateFlow<List<String>> = _localHosts
+
+    /** A preview of one quarantined file: pixels from the isolated worker, or why there are none. */
+    data class Preview(val fileId: String, val bitmap: Bitmap? = null, val failure: String? = null) {
+        val running get() = bitmap == null && failure == null
+    }
+
+    private val _previews = MutableStateFlow<Map<String, Preview>>(emptyMap())
+    val previews: StateFlow<Map<String, Preview>> = _previews
+
+    // One worker at a time: previews are user-initiated, and each holds its
+    // decrypted input in memory until the worker is retired.
+    private val previewing = Executors.newSingleThreadExecutor { Thread(it, "rift-preview") }
 
     // Transfers run here, never on the session worker, so a slow download
     // cannot delay a reset (which cancels it instead).
@@ -115,6 +130,7 @@ object Core {
         currentGeneration = null // decisions for the old generation now block
         _downloads.value = emptyList()
         _localHosts.value = emptyList()
+        _previews.value = emptyMap()
         try {
             opened.reset()
         } catch (e: SessionFailure) {
@@ -225,6 +241,46 @@ object Core {
         if (opened.allowLocalHost(generation.toULong(), host)) {
             _localHosts.value = opened.localHosts(generation.toULong())
         }
+    }
+
+    /**
+     * Previews quarantined file `fileId` in a fresh isolated worker (§8.6).
+     * `service` is the worker component; tests substitute misbehaving ones.
+     */
+    fun preview(fileId: String, service: Class<out Service> = PreviewService::class.java) {
+        val generation = currentGeneration ?: return
+        val opened = sessions ?: return
+        _previews.update { it + (fileId to Preview(fileId)) }
+        previewing.execute {
+            val started = android.os.SystemClock.elapsedRealtime()
+            val outcome = try {
+                opened.preview(generation.toULong(), fileId, Previewer.MAX_SIDE.toUInt(), Previewer.MAX_SIDE.toUInt()).use { job ->
+                    Preview(fileId, bitmap = Previewer.render(app, job, service))
+                }
+            } catch (e: PreviewFailure) {
+                Preview(fileId, failure = describe(e))
+            } catch (e: Previewer.Failed) {
+                Preview(fileId, failure = e.message)
+            } catch (e: Exception) {
+                Log.e(TAG, "preview failed", e)
+                Preview(fileId, failure = "the preview failed: ${e.javaClass.simpleName}")
+            }
+            Log.i(TAG, "preview of $fileId in generation $generation after ${android.os.SystemClock.elapsedRealtime() - started} ms: " +
+                (outcome.bitmap?.let { "${it.width}x${it.height}" } ?: "failed: ${outcome.failure}"))
+            if (generation == currentGeneration) _previews.update { it + (fileId to outcome) }
+        }
+    }
+
+    private fun describe(e: PreviewFailure): String = when (e) {
+        is PreviewFailure.SessionEnded -> "the session this file belonged to has ended"
+        is PreviewFailure.NotFound -> "the file is not in this session's quarantine"
+        is PreviewFailure.Unsupported -> "Rift previews PNG, JPEG, WebP and PDF content only"
+        is PreviewFailure.TooLarge -> "files larger than ${e.limit} bytes are not previewed"
+        is PreviewFailure.Storage -> "the quarantined copy could not be read: ${e.detail}"
+        is PreviewFailure.Unconfined -> "the preview worker is not confined (${e.detail}), so previews are disabled"
+        is PreviewFailure.BadReply -> "the preview worker sent an invalid reply (${e.detail}) and was stopped"
+        is PreviewFailure.Worker -> "the file could not be previewed: ${e.detail}"
+        is PreviewFailure.Poisoned -> "session state is unusable after an internal error"
     }
 
     fun rendererGone(generation: Long, crashed: Boolean) {

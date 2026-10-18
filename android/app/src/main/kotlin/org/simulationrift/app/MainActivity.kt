@@ -4,11 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -148,6 +151,7 @@ class MainActivity : ComponentActivity() {
     private fun DownloadsCard() {
         val downloads by Core.downloads.collectAsState()
         val localHosts by Core.localHosts.collectAsState()
+        val previews by Core.previews.collectAsState()
         var host by remember { mutableStateOf("") }
         Card(Modifier.fillMaxWidth().testTag("downloads")) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -167,6 +171,7 @@ class MainActivity : ComponentActivity() {
                         else -> "Fetching ${d.url}…"
                     }
                     Text(text, modifier = Modifier.testTag("download-${d.key}"))
+                    if (file != null) PreviewArea(file.id, file.displayName, previews[file.id])
                 }
                 Text("Local network hosts allowed for downloads in this session: " + localHosts.ifEmpty { listOf("none") }.joinToString())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -183,6 +188,30 @@ class MainActivity : ComponentActivity() {
                     }) { Text("Allow") }
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun PreviewArea(fileId: String, name: String, preview: Core.Preview?) {
+        val bitmap = preview?.bitmap
+        when {
+            preview == null -> OutlinedButton(onClick = { Core.preview(fileId) }, modifier = Modifier.testTag("preview-$fileId")) {
+                Text("Preview")
+            }
+            preview.running -> Text("Rendering in an isolated worker…")
+            bitmap != null -> {
+                val image = remember(bitmap) { bitmap.asImageBitmap() }
+                Image(
+                    image,
+                    contentDescription = "Preview of $name",
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).testTag("preview-image-$fileId"),
+                )
+                Text(
+                    "A picture rendered by an isolated worker: no scripts, links or network. ${bitmap.width}×${bitmap.height}.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            else -> Text("Preview unavailable: ${preview.failure}", modifier = Modifier.testTag("preview-failure-$fileId"))
         }
     }
 
