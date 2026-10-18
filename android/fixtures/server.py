@@ -112,6 +112,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.send_bytes(PICTURE, "image/png", [("Content-Disposition", 'attachment; filename="picture.png"')])
         if url.path == "/files/document.pdf":
             return self.send_bytes(DOCUMENT, "application/pdf", [("Content-Disposition", 'attachment; filename="document.pdf"')])
+        if url.path == "/files/notes.txt":
+            # Text with a CRLF, a terminal escape and a right-to-left override.
+            body = "line one\r\nline two \x1b[31mred\x1b[0m \u202eesrever\n".encode("utf-8") + MARKER
+            return self.send_bytes(body, "text/plain; charset=utf-8", [("Content-Disposition", 'attachment; filename="notes.txt"')])
         if url.path == "/files/broken.png":
             # A PNG signature followed by garbage: the worker must fail cleanly.
             return self.send_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 8, "image/png",

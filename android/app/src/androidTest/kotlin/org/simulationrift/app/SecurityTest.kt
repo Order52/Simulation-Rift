@@ -192,6 +192,16 @@ class SecurityTest {
     }
 
     @Test
+    fun p2_textIsShownAsEscapedPlainText() {
+        allowFixtureHost()
+        val preview = previewOf(download("/files/notes.txt").file!!.id)
+        assertEquals(null, preview.bitmap)
+        assertEquals("line one\nline two \\u{1b}[31mred\\u{1b}[0m \\u{202e}esrever\nRIFT-PREVIEW-PLAINTEXT-MARKER", preview.text)
+        assertTrue("${preview.note}", preview.note?.startsWith("Plain text, not interpreted.") == true)
+        report("p2", "text ${preview.text?.length} chars; note: ${preview.note}")
+    }
+
+    @Test
     fun s03_workerCannotReachAppFiles() {
         val canary = File(context.filesDir, "canary.txt").apply { writeText("worker canary") }
         try {
@@ -279,6 +289,7 @@ class SecurityTest {
         for (path in listOf("/files/picture.png", "/files/document.pdf")) {
             assertNotNull(path, previewOf(download(path).file!!.id).bitmap)
         }
+        assertNotNull(previewOf(download("/files/notes.txt").file!!.id).text)
         val marker = "RIFT-PREVIEW-PLAINTEXT-MARKER".toByteArray()
         val hits = context.dataDir.walkTopDown().filter { it.isFile && contains(it.readBytes(), marker) }
             .map { it.relativeTo(context.dataDir).path }.toList()

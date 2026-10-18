@@ -18,6 +18,7 @@ import org.simulationrift.core.Navigation
 import org.simulationrift.core.QuarantinedFile
 import org.simulationrift.core.Navigator
 import org.simulationrift.core.PreviewFailure
+import org.simulationrift.core.Preview as CorePreview
 import org.simulationrift.core.SessionFailure
 import org.simulationrift.core.Sessions
 import org.simulationrift.core.displaySafe
@@ -66,9 +67,18 @@ object Core {
     private val _localHosts = MutableStateFlow<List<String>>(emptyList())
     val localHosts: StateFlow<List<String>> = _localHosts
 
-    /** A preview of one quarantined file: pixels from the isolated worker, or why there are none. */
-    data class Preview(val fileId: String, val bitmap: Bitmap? = null, val failure: String? = null) {
-        val running get() = bitmap == null && failure == null
+    /**
+     * A preview of one quarantined file: pixels from the isolated worker,
+     * escaped plain text with a note on what is shown, or why there is none.
+     */
+    data class Preview(
+        val fileId: String,
+        val bitmap: Bitmap? = null,
+        val text: String? = null,
+        val note: String? = null,
+        val failure: String? = null,
+    ) {
+        val running get() = bitmap == null && text == null && failure == null
     }
 
     private val _previews = MutableStateFlow<Map<String, Preview>>(emptyMap())
@@ -254,8 +264,9 @@ object Core {
         previewing.execute {
             val started = android.os.SystemClock.elapsedRealtime()
             val outcome = try {
-                opened.preview(generation.toULong(), fileId, Previewer.MAX_SIDE.toUInt(), Previewer.MAX_SIDE.toUInt()).use { job ->
-                    Preview(fileId, bitmap = Previewer.render(app, job, service))
+                when (val prepared = opened.preview(generation.toULong(), fileId, Previewer.MAX_SIDE.toUInt(), Previewer.MAX_SIDE.toUInt())) {
+                    is CorePreview.Rendered -> prepared.job.use { job -> Preview(fileId, bitmap = Previewer.render(app, job, service)) }
+                    is CorePreview.Text -> Preview(fileId, text = prepared.text, note = textNote(prepared))
                 }
             } catch (e: PreviewFailure) {
                 Preview(fileId, failure = describe(e))
@@ -266,15 +277,21 @@ object Core {
                 Preview(fileId, failure = "the preview failed: ${e.javaClass.simpleName}")
             }
             Log.i(TAG, "preview of $fileId in generation $generation after ${android.os.SystemClock.elapsedRealtime() - started} ms: " +
-                (outcome.bitmap?.let { "${it.width}x${it.height}" } ?: "failed: ${outcome.failure}"))
+                (outcome.bitmap?.let { "${it.width}x${it.height}" } ?: outcome.text?.let { "text, ${it.length} chars" } ?: "failed: ${outcome.failure}"))
             if (generation == currentGeneration) _previews.update { it + (fileId to outcome) }
         }
     }
 
+    private fun textNote(t: CorePreview.Text) = listOfNotNull(
+        "Plain text, not interpreted. Control and direction-changing characters are shown as \\u{…}.",
+        "Only the first 64 KiB is shown.".takeIf { t.truncated },
+        "Bytes that are not valid UTF-8 are shown as \uFFFD.".takeIf { t.replaced },
+    ).joinToString(" ")
+
     private fun describe(e: PreviewFailure): String = when (e) {
         is PreviewFailure.SessionEnded -> "the session this file belonged to has ended"
         is PreviewFailure.NotFound -> "the file is not in this session's quarantine"
-        is PreviewFailure.Unsupported -> "Rift previews PNG, JPEG, WebP and PDF content only"
+        is PreviewFailure.Unsupported -> "Rift previews PNG, JPEG, WebP, PDF and plain-text content only"
         is PreviewFailure.TooLarge -> "files larger than ${e.limit} bytes are not previewed"
         is PreviewFailure.Storage -> "the quarantined copy could not be read: ${e.detail}"
         is PreviewFailure.Unconfined -> "the preview worker is not confined (${e.detail}), so previews are disabled"

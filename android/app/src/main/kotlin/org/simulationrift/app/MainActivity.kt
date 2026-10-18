@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -210,6 +211,15 @@ class MainActivity : ComponentActivity() {
                     "A picture rendered by an isolated worker: no scripts, links or network. ${bitmap.width}×${bitmap.height}.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+            preview.text != null -> {
+                Text(
+                    preview.text,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()).testTag("preview-text-$fileId"),
+                )
+                preview.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
             else -> Text("Preview unavailable: ${preview.failure}", modifier = Modifier.testTag("preview-failure-$fileId"))
         }
