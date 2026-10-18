@@ -108,4 +108,4 @@ APK libraries (all LOAD segments 0x4000-aligned): `librift_ffi.so` 3.15 MB (arm6
 - `librift_worker_ffi.so` carries YARA-X before the scanner uses it. Phase 3 should check that the 25 MB budget still holds with the intelligence code added.
 - `run-tests.sh` samples processes every ~200 ms, so most workers (which live < 200 ms) are not seen at all. A worker that is seen does disappear when expected. An app-side "worker retired" event would give exact lifetimes.
 - The instrumented tests share one fixture server and a single session lifecycle, so a failure in one test can disturb later ones (finding 12 caused six follow-on failures). Isolating them (a reset before each) would make failures easier to read.
-- A lint check that no main-process code references `android.webkit`/`androidx.webkit` would catch finding 12 at build time, not at reset.
+- `build.sh` now fails if any file other than `BrowserActivity.kt` and `WebViewSandbox.kt` uses `android.webkit`/`androidx.webkit`, or if anything but `BrowserActivity` asks for WebView's facts. It checks the source text, not process placement, so a real lint rule on call graphs would be stronger.

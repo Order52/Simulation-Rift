@@ -24,6 +24,18 @@ for lib in rift_ffi rift_worker_ffi; do
 done
 
 cd "$here"
+# Only :browser code may use WebView: loading it in the main process creates
+# app_webview/ outside any session (Phase 2, finding 12). A static check, so
+# it catches direct use, not every path that might load the provider.
+for f in $(grep -rlE 'android\.webkit|androidx\.webkit' app/src/main/kotlin app/src/debug/kotlin); do
+  case "$(basename "$f")" in
+    BrowserActivity.kt | WebViewSandbox.kt) ;;
+    *) echo "ERROR: $f uses WebView outside :browser" >&2; exit 1 ;;
+  esac
+done
+for f in $(grep -rl 'WebViewSandbox\.facts(' app/src/main/kotlin app/src/debug/kotlin); do
+  [ "$(basename "$f")" = BrowserActivity.kt ] || { echo "ERROR: $f asks WebView for its facts outside :browser" >&2; exit 1; }
+done
 "${GRADLE:-./gradlew}" --quiet assembleDebug assembleDebugAndroidTest
 
 # Every native library in the APK, including JNA's, must be 16 KB aligned (§8.1).
