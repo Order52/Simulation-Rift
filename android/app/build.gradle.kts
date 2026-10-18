@@ -21,6 +21,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    buildTypes {
+        release {
+            // Shrinking also removes code paths an attacker could reuse; the
+            // rules keep what JNA and the UniFFI bindings reach by reflection.
+            // No signing config: release APKs are signed outside the build,
+            // so no key or password is ever in the repository.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+
     buildFeatures {
         aidl = true
         compose = true
