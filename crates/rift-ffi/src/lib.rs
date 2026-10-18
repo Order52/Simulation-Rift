@@ -284,6 +284,23 @@ impl SessionExtras {
 /// in both the controller and the worker.
 const MAX_PREVIEW_INPUT: u64 = 32 * 1024 * 1024;
 
+/// How much of a text file is shown.
+const MAX_TEXT_PREVIEW: usize = 64 * 1024;
+
+/// A prepared preview.
+#[derive(Debug, uniffi::Enum)]
+pub enum Preview {
+    /// Rendered by an isolated worker.
+    Rendered { job: Arc<PreviewJob> },
+    /// The start of a text file, with control, bidirectional and invisible
+    /// characters (other than line breaks and tabs) shown as escapes.
+    Text {
+        text: String,
+        truncated: bool,
+        replaced: bool,
+    },
+}
+
 /// Passed to the worker; the controller enforces its own deadline by
 /// unbinding (§8.6), since an isolated process cannot be killed by the app.
 const PREVIEW_DEADLINE_MS: u32 = 10_000;
@@ -321,7 +338,7 @@ pub enum PreviewFailure {
     SessionEnded,
     #[error("the file is not in this session's quarantine")]
     NotFound,
-    #[error("Rift previews PNG, JPEG, WebP and PDF content only")]
+    #[error("Rift previews PNG, JPEG, WebP, PDF and plain-text content only")]
     Unsupported,
     #[error("files larger than {limit} bytes are not previewed")]
     TooLarge { limit: u64 },
@@ -672,17 +689,18 @@ impl Sessions {
         Ok(file)
     }
 
-    /// Prepares a preview of quarantined file `id` (§8.6): decrypts and
-    /// verifies it, and identifies the format from its content, never from
-    /// its name or the server's label. The returned job frames the worker
-    /// requests and checks every reply.
+    /// Prepares a preview of quarantined file `id` (§8.6, §11.2): decrypts
+    /// and verifies it, and identifies the format from its content, never
+    /// from its name or the server's label. Images and PDFs get a job that
+    /// frames the worker requests and checks every reply; text is returned
+    /// as bounded, escaped plain text.
     pub fn preview(
         self: Arc<Self>,
         generation: u64,
         id: String,
         max_width: u32,
         max_height: u32,
-    ) -> Result<Arc<PreviewJob>, PreviewFailure> {
+    ) -> Result<Preview, PreviewFailure> {
         // Decrypted under the lock (the key never leaves the session), so a
         // reset waits for this bounded local read instead of racing it.
         let input = {
@@ -715,7 +733,17 @@ impl Sessions {
                 })?;
             input
         };
-        let kind = sniff(&input).ok_or(PreviewFailure::Unsupported)?;
+        let Some(kind) = sniff(&input) else {
+            // Plain text is decoded here, in memory-safe code with a bound,
+            // and never interpreted (§11.2).
+            return rift_core::text::plain_text(&input, MAX_TEXT_PREVIEW)
+                .map(|t| Preview::Text {
+                    text: t.text,
+                    truncated: t.truncated,
+                    replaced: t.replaced,
+                })
+                .ok_or(PreviewFailure::Unsupported);
+        };
         let job_id = self.next_job.fetch_add(1, Ordering::SeqCst);
         let request = match kind {
             PreviewKind::Image => Request::DecodeImage {
@@ -730,14 +758,16 @@ impl Sessions {
                 deadline_ms: PREVIEW_DEADLINE_MS,
             },
         };
-        Ok(Arc::new(PreviewJob {
-            sessions: self,
-            generation,
-            kind,
-            hello: envelope(job_id, generation, Request::Hello),
-            request: envelope(job_id.saturating_add(1), generation, request),
-            input,
-        }))
+        Ok(Preview::Rendered {
+            job: Arc::new(PreviewJob {
+                sessions: self,
+                generation,
+                kind,
+                hello: envelope(job_id, generation, Request::Hello),
+                request: envelope(job_id.saturating_add(1), generation, request),
+                input,
+            }),
+        })
     }
 }
 
@@ -945,13 +975,27 @@ mod tests {
         let text = sessions
             .download(
                 generation,
-                info(format!("http://localhost:{}/", serve(b"plain text"))),
+                info(format!(
+                    "http://localhost:{}/",
+                    serve(b"plain\r\ntext \xe2\x80\xae")
+                )),
+            )
+            .unwrap();
+        let binary = sessions
+            .download(
+                generation,
+                info(format!("http://localhost:{}/", serve(b"MZ\x90\x00"))),
             )
             .unwrap();
 
         // Content decides the kind; the hostile ".exe" name is irrelevant.
         assert!(matches!(
             sessions.clone().preview(generation, text.id, 64, 64),
+            Ok(Preview::Text { text, truncated: false, replaced: false })
+                if text == "plain\ntext \\u{202e}"
+        ));
+        assert!(matches!(
+            sessions.clone().preview(generation, binary.id, 64, 64),
             Err(PreviewFailure::Unsupported)
         ));
         assert!(matches!(
@@ -960,10 +1004,11 @@ mod tests {
                 .preview(generation, "00".repeat(16), 64, 64),
             Err(PreviewFailure::NotFound)
         ));
-        let job = sessions
-            .clone()
-            .preview(generation, png.id.clone(), 64, 64)
-            .unwrap();
+        let Ok(Preview::Rendered { job }) =
+            sessions.clone().preview(generation, png.id.clone(), 64, 64)
+        else {
+            panic!("expected a worker job for a PNG");
+        };
         assert_eq!(job.kind(), PreviewKind::Image);
         assert_eq!(job.input(), PNG);
 
