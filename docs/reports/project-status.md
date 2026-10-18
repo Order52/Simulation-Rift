@@ -174,6 +174,10 @@ Phase 2 findings, added to the list above: 15–26.
 | An Android app cannot inspect the renderer's sandbox at runtime (A1 needed `adb root`) | Other apps' `/proc` entries are hidden | Rift relies on the API ≥ 30 floor and `isMultiProcessEnabled()`, which A1 showed imply an `isolated_app` renderer on the tested builds. |
 | The WebView version on a device is outside Rift's control | Updated by Google Play, or not at all on some devices | Minimum-version precondition before browsing (§8.4); the version is recorded in compatibility reports. |
 | URL heuristics and YARA rules are not a malware verdict | Offline indicators have limited coverage | Results always state coverage; never "100% safe". |
+| The only threat database is the demo one | Real feeds need licensing review (§13.3); no real malware is kept in the repository | Every verdict and the database card carry the demo label. Real coverage needs licensed feeds and a production root in release builds. |
+| Update expiry trusts the device clock | TUF checks expiry against the system time | A wrong clock shows as "expired", or as current when it is not. Surfacing clock problems in the UI (§13.2) is not built. |
+| Demo signing keys are one key per role on one machine | `rift-pack` is a development tool | The §13.2 policy (offline root and targets keys, thresholds, rotation) is needed before any real release. |
+| One scan worker at a time | Simplest safe first version | A hung worker delays the files queued behind it by up to 17 s; a bounded pool is the planned fix. |
 | WebKitGTK network process unsandboxed in native packages | Upstream design | Ship Flatpak first; native packages only with a stated reduced boundary. |
 | Quarantine does not survive a process kill | Keys are ephemeral by design (crypto-shredding) | Intended. Users save to the vault to keep files. |
 | Upstream dependencies carry advisories (Wasmtime via YARA-X) | Rift cannot patch them | Scoped `cargo deny` exceptions with an exit condition: remove when YARA-X depends on Wasmtime ≥ 48.0.6. |
