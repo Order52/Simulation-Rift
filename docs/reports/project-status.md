@@ -8,7 +8,7 @@
 |---|---|
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix (physical phones, API 33–35, 16 KB pages). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
-| 2: Android vertical slice | **Built; tested on one device** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery; S1–S10, S12–S15, S19 and the preview tests pass on the API 36 emulator. **Gate open:** the device matrix (API 30/33/34/35, 16 KB pages, a phone) has not run. |
+| 2: Android vertical slice | **Built; tested on one device** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery; S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on the API 36 emulator. **Gate open:** the device matrix (API 30/33/34/35, 16 KB pages, a phone) has not run. |
 | 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
 | 5: Linux app | Not started (worker lockdown and WebKit check proven in PoCs). |
@@ -97,7 +97,7 @@ These were all found by tests, not by reading:
 | `rift-core::download` | The core's re-fetch of downloads under INV-13: destination check on every resolved address of every redirect hop, streamed size limit, cookies only to their origin, cancellation at reset. `ureq` + `rustls` + bundled Mozilla roots. |
 | `rift-worker-ffi` | UniFFI interface of the worker, loaded only in the isolated process; no core code. |
 | `android/` | Compose shell; `:browser` WebView host with the §8.4 configuration; disposal by process death, directory deletion and an allowlist inventory; `PreviewService` (isolated, app zygote) and the controller's `Previewer`. Debug-only misbehaving workers for S3–S7. |
-| Tests | 18 instrumented tests plus host-driven S13 and S14 (`android/run-tests.sh`); fixtures in `android/fixtures`. |
+| Tests | 19 instrumented tests plus host-driven S13 and S14 (`android/run-tests.sh`); fixtures in `android/fixtures`. |
 
 Phase 2 findings, added to the list below: 15–20.
 
@@ -107,8 +107,8 @@ Phase 2 findings, added to the list below: 15–20.
 
 - The architecture and the decision record.
 - PoCs A1–A7 and the worker lifecycle test on Android emulators (API 30, 36); X2 on the host and on Android; L1 (native), L2, L3, X1; X3 on the host.
-- The Phase 1 crates listed above, and the Phase 2 additions: 104 host tests pass on macOS (74 `rift-core`, 7 `rift-ffi`, 11 `rift-protocol`, 8 `rift-worker`, 4 `rift-worker-ffi`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
-- The Phase 2 Android slice on the API 36 emulator: all 18 instrumented tests and S13/S14 pass ([evidence](evidence/phase2-android-api36/)).
+- The Phase 1 crates listed above, and the Phase 2 additions: 105 host tests pass on macOS (75 `rift-core`, 7 `rift-ffi`, 11 `rift-protocol`, 8 `rift-worker`, 4 `rift-worker-ffi`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
+- The Phase 2 Android slice on the API 36 emulator: all 19 instrumented tests and S13/S14 pass ([evidence](evidence/phase2-android-api36/)).
 
 **Not finished:**
 
@@ -119,7 +119,7 @@ Phase 2 findings, added to the list below: 15–20.
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
 | Android device matrix | API 33/34/35, physical phones, OEM WebView builds, x86_64, a 16 KB page-size device. |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
-| Phase 2 gate | The same suite on API 30/33/34/35, a 16 KB page-size image and a physical phone; a release build; text preview. |
+| Phase 2 gate | The same suite on API 30/33/34/35, a 16 KB page-size image and a physical phone; a release build. |
 | Phases 3–7 | Everything in §5. |
 
 ## 4. Limitations and how to work around them
@@ -161,7 +161,7 @@ Phase 2 findings, added to the list below: 15–20.
 **Phase 2: Android vertical slice** (items 3–5 built and tested on API 36; see [phase-2.md](phase-2.md))
 3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.
 4. ~~Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.~~ Done.
-5. Isolated worker preview: images and PDF done; **text preview not done**. Reset and recovery done (S12, S13).
+5. ~~Previews (images and PDF in the isolated worker, text as escaped plain text); reset and recovery.~~ Done (P1, P2, S3–S7, S12, S13, S19).
 6. Security tests on the device matrix: **API 36 done; API 30/33/34/35, 16 KB pages and a phone open.** Also open: the per-thread seccomp filter, a release build.
 
 **Phase 3: Scanner and signed intel**

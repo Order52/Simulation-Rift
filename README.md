@@ -7,7 +7,7 @@ A fully local, modular workspace for Android and Linux. It lets you open unfamil
 ## What it is
 
 - **Rift Browser:** a disposable, restricted browser session. It uses the platform engine's own sandbox and has no native bridges, sensor access, or automatic external-app launches.
-- **Rift Files:** downloads and imports go into an encrypted, session-scoped quarantine. Previews (PDF and images so far; text is planned) render in OS-confined worker processes with no file or network access.
+- **Rift Files:** downloads and imports go into an encrypted, session-scoped quarantine. PDFs and images are previewed in OS-confined worker processes with no file or network access; text is shown as escaped plain text, never interpreted.
 - **Rift Scanner:** offline checks using URL and hash indicators, explainable URL heuristics, and YARA-X rules. Results state their coverage. There is never a "100% safe" label.
 - **Rift Vault:** persistent [age](https://age-encryption.org)-encrypted storage, unlocked through the Android Keystore or a passphrase.
 - **Signed intelligence updates:** delivered through [TUF](https://theupdateframework.io/). They can be fetched or imported offline.

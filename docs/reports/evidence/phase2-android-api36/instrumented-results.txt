@@ -2,6 +2,7 @@ n1_externalAppLinksAreBlocked PASS
 n2_lookalikeAddressNeedsConfirmation PASS
 n3_unencryptedPagesAreMarked PASS
 p1_imagesAndPdfsArePreviewedByAnIsolatedWorker PASS
+p2_textIsShownAsEscapedPlainText PASS
 s01_pageFindsNoNativeBridge PASS
 s02_pageIsDeniedDevicePermissions PASS
 s03_workerCannotReachAppFiles PASS

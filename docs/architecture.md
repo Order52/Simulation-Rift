@@ -456,7 +456,7 @@ RECEIVING ─▶ COMMITTED(immutable, sha256) ─▶ SCANNING ─▶ SCANNED(ver
 |---|---|
 | PDF | Confined page rendering, one page per request, ≤ 4 Mpx output. No forms, attachments, JavaScript, or link launching. |
 | PNG / JPEG / WebP | Confined decoding with dimension and allocation limits. |
-| Text, logs, Markdown, HTML, SVG | Bounded UTF-8 (or lossy) **plain text**, never interpreted. Decoding happens in the worker or in the core under strict limits. |
+| Text, logs, Markdown, HTML, SVG | Bounded UTF-8 (or lossy) **plain text**, never interpreted. Decoding happens in the worker or in the core under strict limits. Phase 2: in the core (`rift-core::text::plain_text`), first 64 KiB, after the object's hash is verified; line breaks and tabs kept, other control, bidi and invisible characters shown as `\u{…}`; a NUL byte in the first 8 KiB means binary. |
 | Executables, APK, scripts, Office, archives, encrypted files, other | Stored, hashed, scanned on outer bytes, metadata shown. Disclosed as "preview not supported" or "contents not inspected". |
 
 ### 11.3 Preview handoff **[PoC A7/L3]**

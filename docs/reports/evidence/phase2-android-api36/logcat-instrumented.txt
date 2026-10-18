@@ -1,60 +1,67 @@
 --------- beginning of main
-10-18 03:13:27.199 13343 13371 I Rift    : session 1 active
-10-18 03:13:30.331 13343 13528 I Rift    : download 1 in generation 1: stored 107456 bytes
-10-18 03:13:30.408 13343 13367 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=58899b527c314cff6efc0cf342520738, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
-10-18 03:13:30.567 13343 13535 I Rift    : preview of 58899b527c314cff6efc0cf342520738 in generation 1 after 158 ms: 300x200
-10-18 03:13:30.624 13343 13572 I Rift    : download 2 in generation 1: stored 633 bytes
-10-18 03:13:30.714 13343 13367 I Rift    : result download: /files/document.pdf -> QuarantinedFile(id=5ea2c8fac9c97d6753db7183ac345560, displayName=document.pdf, size=633, sha256=d30973d92a1948ada613213a25d12a376e7f85f2769a2752dcef01e0ffeb99db, contentType=application/pdf, source=http://localhost:8766/files/document.pdf, redirects=0)
-10-18 03:13:30.898 13343 13535 I Rift    : preview of 5ea2c8fac9c97d6753db7183ac345560 in generation 1 after 184 ms: 1582x2048
-10-18 03:13:30.927 13343 13528 I Rift    : download 3 in generation 1: stored 2056 bytes
-10-18 03:13:31.019 13343 13367 I Rift    : result download: /files/broken.png -> QuarantinedFile(id=e7c2009db4d0863c1b2cfe9767586e98, displayName=broken.png, size=2056, sha256=7630fc84b891c670090a8e14448c7dc0b1c338ea47f86be5bb07363d4cd75619, contentType=image/png, source=http://localhost:8766/files/broken.png, redirects=0)
-10-18 03:13:31.063 13343 13535 I Rift    : preview of e7c2009db4d0863c1b2cfe9767586e98 in generation 1 after 43 ms: failed: the file could not be previewed: the file is damaged or not what it claims to be
-10-18 03:13:31.070 13343 13367 I Rift    : result p1: picture 300x200; page 1582x2048; broken: the file could not be previewed: the file is damaged or not what it claims to be
-10-18 03:13:31.324 13343 13367 I Rift    : result s03: isolated=true | uid=90003 | seccomp=2 | no_new_privs=1 | read_canary=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/canary.txt: open failed: ENOENT (No such file or directory) | list_app_files=DENIED SecurityException: list() returned null | write_app_files=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/from-worker: open failed: ENOENT (No such file or directory) | list_external_storage=DENIED NullPointerException: Attempt to get length of null array | tcp_connect=DENIED SocketException: socket failed: EPERM (Operation not permitted) | udp_socket=DENIED SocketException: socket failed: EPERM (Operation not permitted) | dns=DENIED SecurityException: Permission denied (missing INTERNET permission?) | clipboard=DENIED SecurityException: no clipboard service | bind_core=DENIED SecurityException: Isolated process not allowed to call bindService | unix_socket=ALLOWED created
-10-18 03:13:31.348 13343 13367 I Rift    : result s04: isolated=true | uid=90004 | seccomp=2 | no_new_privs=1 | read_canary=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/canary.txt: open failed: ENOENT (No such file or directory) | list_app_files=DENIED SecurityException: list() returned null | write_app_files=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/from-worker: open failed: ENOENT (No such file or directory) | list_external_storage=DENIED NullPointerException: Attempt to get length of null array | tcp_connect=DENIED SocketException: socket failed: EPERM (Operation not permitted) | udp_socket=DENIED SocketException: socket failed: EPERM (Operation not permitted) | dns=DENIED SecurityException: Permission denied (missing INTERNET permission?) | clipboard=DENIED SecurityException: no clipboard service | bind_core=DENIED SecurityException: Isolated process not allowed to call bindService | unix_socket=ALLOWED created
-10-18 03:13:31.363 13343 13572 I Rift    : download 4 in generation 1: stored 107456 bytes
-10-18 03:13:31.455 13343 13367 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=a891775700a7d5d86b254bdff9996439, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
-10-18 03:13:31.496 13343 13535 I Rift    : preview of a891775700a7d5d86b254bdff9996439 in generation 1 after 40 ms: failed: the preview worker sent an invalid reply (response field out of bounds: bitmap dimensions) and was stopped
-10-18 03:13:31.507 13343 13367 I Rift    : result s05: OversizedPreviewService: the preview worker sent an invalid reply (response field out of bounds: bitmap dimensions) and was stopped
-10-18 03:13:31.555 13343 13535 I Rift    : preview of a891775700a7d5d86b254bdff9996439 in generation 1 after 49 ms: failed: the preview worker sent an invalid reply (frame of 4294967295 bytes exceeds the limit) and was stopped
-10-18 03:13:31.557 13343 13367 I Rift    : result s05: GarbagePreviewService: the preview worker sent an invalid reply (frame of 4294967295 bytes exceeds the limit) and was stopped
-10-18 03:13:31.593 13343 13535 I Rift    : preview of a891775700a7d5d86b254bdff9996439 in generation 1 after 36 ms: failed: the preview worker sent an invalid reply (response belongs to job 6, expected 7) and was stopped
-10-18 03:13:31.607 13343 13367 I Rift    : result s05: ReplayingPreviewService: the preview worker sent an invalid reply (response belongs to job 6, expected 7) and was stopped
-10-18 03:13:31.658 13343 13535 I Rift    : preview of a891775700a7d5d86b254bdff9996439 in generation 1 after 50 ms: 300x200
-10-18 03:13:31.725 13343 13528 I Rift    : download 5 in generation 1: stored 107456 bytes
-10-18 03:13:31.811 13343 13367 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=34c36286c8e3bedd7af0baad96c85d29, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
-10-18 03:13:31.851 13343 13535 I Rift    : preview of 34c36286c8e3bedd7af0baad96c85d29 in generation 1 after 39 ms: failed: the preview worker stopped unexpectedly
-10-18 03:13:43.899 13343 13535 I Rift    : preview of 34c36286c8e3bedd7af0baad96c85d29 in generation 1 after 12037 ms: failed: the preview worker did not render in time and was stopped
-10-18 03:13:44.105 13343 13535 I Rift    : preview of 34c36286c8e3bedd7af0baad96c85d29 in generation 1 after 86 ms: 300x200
-10-18 03:13:44.119 13343 13367 I Rift    : result s06: crash: the preview worker stopped unexpectedly; hang ended after 12156 ms: the preview worker did not render in time and was stopped; slowest UI round trip 1 ms
-10-18 03:13:44.137 13343 13572 I Rift    : download 6 in generation 1: stored 107456 bytes
-10-18 03:13:44.227 13343 13367 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=e3756a5c62ad981ec5118d24ad76e29f, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
-10-18 03:13:44.228 13343 13535 I Rift    : preview of e3756a5c62ad981ec5118d24ad76e29f in generation 1 after 2 ms: failed: the preview worker is not declared as an isolated process, so previews are disabled
-10-18 03:13:44.333 13343 13535 I Rift    : preview of e3756a5c62ad981ec5118d24ad76e29f in generation 1 after 54 ms: failed: the preview worker is not confined (the worker reports no seccomp filter), so previews are disabled
-10-18 03:13:44.381 13343 13367 I Rift    : result s07: non-isolated: the preview worker is not declared as an isolated process, so previews are disabled; no seccomp: the preview worker is not confined (the worker reports no seccomp filter), so previews are disabled
-10-18 03:13:44.679 13343 13528 I Rift    : download 7 in generation 1: not captured: the file is larger than the 104857600-byte limit
-10-18 03:13:44.687 13343 13367 I Rift    : result download: /files/big -> the file is larger than the 104857600-byte limit
-10-18 03:13:44.718 13343 13371 I Rift    : generation 1 disposed
-10-18 03:13:44.737 13343 13371 I Rift    : session 2 active
-10-18 03:13:45.590 13343 13572 I Rift    : download 8 in generation 2: not captured: localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
-10-18 03:13:45.674 13343 13367 I Rift    : result download: /files/hello.txt -> localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
-10-18 03:13:45.768 13343 13528 I Rift    : download 9 in generation 2: not captured: 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
-10-18 03:13:45.807 13343 13367 I Rift    : result download: /files/to-loopback -> 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
-10-18 03:13:45.892 13343 13572 I Rift    : download 10 in generation 2: stored 1040 bytes
-10-18 03:13:45.922 13343 13367 I Rift    : result download: /files/hello.txt -> QuarantinedFile(id=1d8baab976689ce1fdfe9785a64cbd45, displayName=hello.txt, size=1040, sha256=b996cb5919d5b903999e90db3fc84b05ab73d46c0a2546651035a1a530e57935, contentType=text/plain, source=http://localhost:8766/files/hello.txt, redirects=0)
-10-18 03:13:45.935 13343 13528 I Rift    : download 11 in generation 2: stored 16 bytes
-10-18 03:13:46.026 13343 13367 I Rift    : result download: /files/hostile -> QuarantinedFile(id=c18c48d198164096e86ffa38ea8b6db8, displayName=evilgpj.pdf, size=16, sha256=c5c2e8be6ad0825a56ded1f1a153ceaf11dc060ab44b120a94406a08207babc2, contentType=application/pdf, source=http://localhost:8766/files/hostile, redirects=0)
-10-18 03:13:46.050 13343 13572 I Rift    : download 12 in generation 2: stored 1050 bytes
-10-18 03:13:46.130 13343 13367 I Rift    : result download: /login?next=/files/private.bin -> QuarantinedFile(id=299b9d1e602a6ff0180c6ea2f105d51a, displayName=private.bin, size=1050, sha256=306153a5ff5fd7b62d9abf47f378fd7224ae53083811c8a2ceb79f9ebad57127, contentType=application/octet-stream, source=http://localhost:8766/files/private.bin, redirects=0)
-10-18 03:13:46.377 13343 13371 I Rift    : generation 2 disposed
-10-18 03:13:46.387 13343 13371 I Rift    : session 3 active
-10-18 03:13:47.569 13343 13367 I Rift    : result s12: reset_ms=42 generation=2->3
-10-18 03:13:47.617 13343 13371 I Rift    : generation 3 disposed
-10-18 03:13:47.638 13343 13371 I Rift    : session 4 active
-10-18 03:13:48.634 13343 13528 I Rift    : download 13 in generation 4: stored 107456 bytes
-10-18 03:13:48.708 13343 13367 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=cfa949eda1bc9997811284e2d3557fb1, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
-10-18 03:13:48.836 13343 13535 I Rift    : preview of cfa949eda1bc9997811284e2d3557fb1 in generation 4 after 127 ms: 300x200
-10-18 03:13:48.906 13343 13572 I Rift    : download 14 in generation 4: stored 633 bytes
-10-18 03:13:48.974 13343 13367 I Rift    : result download: /files/document.pdf -> QuarantinedFile(id=5f00c8b91151dc541359a614bdadfcca, displayName=document.pdf, size=633, sha256=d30973d92a1948ada613213a25d12a376e7f85f2769a2752dcef01e0ffeb99db, contentType=application/pdf, source=http://localhost:8766/files/document.pdf, redirects=0)
-10-18 03:13:49.177 13343 13535 I Rift    : preview of 5f00c8b91151dc541359a614bdadfcca in generation 4 after 204 ms: 1582x2048
-10-18 03:13:49.267 13343 13367 I Rift    : result s19: plaintext marker found in: [none]
+10-18 03:24:10.971 16090 16125 I Rift    : session 1 active
+10-18 03:24:14.170 16090 16282 I Rift    : download 1 in generation 1: stored 107456 bytes
+10-18 03:24:14.254 16090 16120 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=97559986285182a6ad80f35479d54f19, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-18 03:24:14.412 16090 16290 I Rift    : preview of 97559986285182a6ad80f35479d54f19 in generation 1 after 158 ms: 300x200
+10-18 03:24:14.471 16090 16326 I Rift    : download 2 in generation 1: stored 633 bytes
+10-18 03:24:14.561 16090 16120 I Rift    : result download: /files/document.pdf -> QuarantinedFile(id=fe372478eb5192959f6f44648b670bb5, displayName=document.pdf, size=633, sha256=d30973d92a1948ada613213a25d12a376e7f85f2769a2752dcef01e0ffeb99db, contentType=application/pdf, source=http://localhost:8766/files/document.pdf, redirects=0)
+10-18 03:24:14.734 16090 16290 I Rift    : preview of fe372478eb5192959f6f44648b670bb5 in generation 1 after 173 ms: 1582x2048
+10-18 03:24:14.774 16090 16282 I Rift    : download 3 in generation 1: stored 2056 bytes
+10-18 03:24:14.865 16090 16120 I Rift    : result download: /files/broken.png -> QuarantinedFile(id=744cd0d1751f56d96997cfb46c0b4362, displayName=broken.png, size=2056, sha256=7630fc84b891c670090a8e14448c7dc0b1c338ea47f86be5bb07363d4cd75619, contentType=image/png, source=http://localhost:8766/files/broken.png, redirects=0)
+10-18 03:24:14.926 16090 16290 I Rift    : preview of 744cd0d1751f56d96997cfb46c0b4362 in generation 1 after 61 ms: failed: the file could not be previewed: the file is damaged or not what it claims to be
+10-18 03:24:14.967 16090 16120 I Rift    : result p1: picture 300x200; page 1582x2048; broken: the file could not be previewed: the file is damaged or not what it claims to be
+10-18 03:24:14.980 16090 16326 I Rift    : download 4 in generation 1: stored 72 bytes
+10-18 03:24:15.070 16090 16120 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=349cdc9a4a84e3f75283128dbc011a39, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-18 03:24:15.073 16090 16290 I Rift    : preview of 349cdc9a4a84e3f75283128dbc011a39 in generation 1 after 3 ms: text, 86 chars
+10-18 03:24:15.121 16090 16120 I Rift    : result p2: text 86 chars; note: Plain text, not interpreted. Control and direction-changing characters are shown as \u{…}.
+10-18 03:24:15.387 16090 16120 I Rift    : result s03: isolated=true | uid=90003 | seccomp=2 | no_new_privs=1 | read_canary=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/canary.txt: open failed: ENOENT (No such file or directory) | list_app_files=DENIED SecurityException: list() returned null | write_app_files=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/from-worker: open failed: ENOENT (No such file or directory) | list_external_storage=DENIED NullPointerException: Attempt to get length of null array | tcp_connect=DENIED SocketException: socket failed: EPERM (Operation not permitted) | udp_socket=DENIED SocketException: socket failed: EPERM (Operation not permitted) | dns=DENIED SecurityException: Permission denied (missing INTERNET permission?) | clipboard=DENIED SecurityException: no clipboard service | bind_core=DENIED SecurityException: Isolated process not allowed to call bindService | unix_socket=ALLOWED created
+10-18 03:24:15.421 16090 16120 I Rift    : result s04: isolated=true | uid=90004 | seccomp=2 | no_new_privs=1 | read_canary=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/canary.txt: open failed: ENOENT (No such file or directory) | list_app_files=DENIED SecurityException: list() returned null | write_app_files=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/from-worker: open failed: ENOENT (No such file or directory) | list_external_storage=DENIED NullPointerException: Attempt to get length of null array | tcp_connect=DENIED SocketException: socket failed: EPERM (Operation not permitted) | udp_socket=DENIED SocketException: socket failed: EPERM (Operation not permitted) | dns=DENIED SecurityException: Permission denied (missing INTERNET permission?) | clipboard=DENIED SecurityException: no clipboard service | bind_core=DENIED SecurityException: Isolated process not allowed to call bindService | unix_socket=ALLOWED created
+10-18 03:24:15.433 16090 16282 I Rift    : download 5 in generation 1: stored 107456 bytes
+10-18 03:24:15.524 16090 16120 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=7f75eedc07aa41ed459f03ea5bab061c, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-18 03:24:15.567 16090 16290 I Rift    : preview of 7f75eedc07aa41ed459f03ea5bab061c in generation 1 after 43 ms: failed: the preview worker sent an invalid reply (response field out of bounds: bitmap dimensions) and was stopped
+10-18 03:24:15.575 16090 16120 I Rift    : result s05: OversizedPreviewService: the preview worker sent an invalid reply (response field out of bounds: bitmap dimensions) and was stopped
+10-18 03:24:15.612 16090 16290 I Rift    : preview of 7f75eedc07aa41ed459f03ea5bab061c in generation 1 after 36 ms: failed: the preview worker sent an invalid reply (frame of 4294967295 bytes exceeds the limit) and was stopped
+10-18 03:24:15.626 16090 16120 I Rift    : result s05: GarbagePreviewService: the preview worker sent an invalid reply (frame of 4294967295 bytes exceeds the limit) and was stopped
+10-18 03:24:15.664 16090 16290 I Rift    : preview of 7f75eedc07aa41ed459f03ea5bab061c in generation 1 after 38 ms: failed: the preview worker sent an invalid reply (response belongs to job 6, expected 7) and was stopped
+10-18 03:24:15.679 16090 16120 I Rift    : result s05: ReplayingPreviewService: the preview worker sent an invalid reply (response belongs to job 6, expected 7) and was stopped
+10-18 03:24:15.721 16090 16290 I Rift    : preview of 7f75eedc07aa41ed459f03ea5bab061c in generation 1 after 42 ms: 300x200
+10-18 03:24:15.743 16090 16326 I Rift    : download 6 in generation 1: stored 107456 bytes
+10-18 03:24:15.834 16090 16120 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=e9049dd1fa3ce44c4a798d9c34d960e0, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-18 03:24:15.881 16090 16290 I Rift    : preview of e9049dd1fa3ce44c4a798d9c34d960e0 in generation 1 after 47 ms: failed: the preview worker stopped unexpectedly
+10-18 03:24:27.925 16090 16290 I Rift    : preview of e9049dd1fa3ce44c4a798d9c34d960e0 in generation 1 after 12040 ms: failed: the preview worker did not render in time and was stopped
+10-18 03:24:28.094 16090 16290 I Rift    : preview of e9049dd1fa3ce44c4a798d9c34d960e0 in generation 1 after 67 ms: 300x200
+10-18 03:24:28.127 16090 16120 I Rift    : result s06: crash: the preview worker stopped unexpectedly; hang ended after 12141 ms: the preview worker did not render in time and was stopped; slowest UI round trip 1 ms
+10-18 03:24:28.145 16090 16282 I Rift    : download 7 in generation 1: stored 107456 bytes
+10-18 03:24:28.235 16090 16120 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=001b9b04f41f75373931bc9d9a02b1b6, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-18 03:24:28.237 16090 16290 I Rift    : preview of 001b9b04f41f75373931bc9d9a02b1b6 in generation 1 after 1 ms: failed: the preview worker is not declared as an isolated process, so previews are disabled
+10-18 03:24:28.327 16090 16290 I Rift    : preview of 001b9b04f41f75373931bc9d9a02b1b6 in generation 1 after 40 ms: failed: the preview worker is not confined (the worker reports no seccomp filter), so previews are disabled
+10-18 03:24:28.338 16090 16120 I Rift    : result s07: non-isolated: the preview worker is not declared as an isolated process, so previews are disabled; no seccomp: the preview worker is not confined (the worker reports no seccomp filter), so previews are disabled
+10-18 03:24:28.697 16090 16326 I Rift    : download 8 in generation 1: not captured: the file is larger than the 104857600-byte limit
+10-18 03:24:28.743 16090 16120 I Rift    : result download: /files/big -> the file is larger than the 104857600-byte limit
+10-18 03:24:28.799 16090 16125 I Rift    : generation 1 disposed
+10-18 03:24:28.814 16090 16125 I Rift    : session 2 active
+10-18 03:24:29.815 16090 16282 I Rift    : download 9 in generation 2: not captured: localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-18 03:24:29.897 16090 16120 I Rift    : result download: /files/hello.txt -> localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-18 03:24:29.983 16090 16326 I Rift    : download 10 in generation 2: not captured: 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-18 03:24:30.022 16090 16120 I Rift    : result download: /files/to-loopback -> 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-18 03:24:30.094 16090 16282 I Rift    : download 11 in generation 2: stored 1040 bytes
+10-18 03:24:30.125 16090 16120 I Rift    : result download: /files/hello.txt -> QuarantinedFile(id=ccacb94167575e7101120ce7197eea68, displayName=hello.txt, size=1040, sha256=b996cb5919d5b903999e90db3fc84b05ab73d46c0a2546651035a1a530e57935, contentType=text/plain, source=http://localhost:8766/files/hello.txt, redirects=0)
+10-18 03:24:30.149 16090 16326 I Rift    : download 12 in generation 2: stored 16 bytes
+10-18 03:24:30.231 16090 16120 I Rift    : result download: /files/hostile -> QuarantinedFile(id=99c6cecf87059346ca1e6864c7c99397, displayName=evilgpj.pdf, size=16, sha256=c5c2e8be6ad0825a56ded1f1a153ceaf11dc060ab44b120a94406a08207babc2, contentType=application/pdf, source=http://localhost:8766/files/hostile, redirects=0)
+10-18 03:24:30.250 16090 16282 I Rift    : download 13 in generation 2: stored 1050 bytes
+10-18 03:24:30.337 16090 16120 I Rift    : result download: /login?next=/files/private.bin -> QuarantinedFile(id=600bdb5919ba46b8a86144c342f5b93e, displayName=private.bin, size=1050, sha256=306153a5ff5fd7b62d9abf47f378fd7224ae53083811c8a2ceb79f9ebad57127, contentType=application/octet-stream, source=http://localhost:8766/files/private.bin, redirects=0)
+10-18 03:24:30.589 16090 16125 I Rift    : generation 2 disposed
+10-18 03:24:30.604 16090 16125 I Rift    : session 3 active
+10-18 03:24:31.974 16090 16120 I Rift    : result s12: reset_ms=64 generation=2->3
+10-18 03:24:32.021 16090 16125 I Rift    : generation 3 disposed
+10-18 03:24:32.033 16090 16125 I Rift    : session 4 active
+10-18 03:24:33.107 16090 16326 I Rift    : download 14 in generation 4: stored 107456 bytes
+10-18 03:24:33.198 16090 16120 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=79f9ffffaf668017b367bd9ff6c2682e, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-18 03:24:33.298 16090 16290 I Rift    : preview of 79f9ffffaf668017b367bd9ff6c2682e in generation 4 after 100 ms: 300x200
+10-18 03:24:33.347 16090 16282 I Rift    : download 15 in generation 4: stored 633 bytes
+10-18 03:24:33.403 16090 16120 I Rift    : result download: /files/document.pdf -> QuarantinedFile(id=39b3ee6d5268108ca983868b1e079456, displayName=document.pdf, size=633, sha256=d30973d92a1948ada613213a25d12a376e7f85f2769a2752dcef01e0ffeb99db, contentType=application/pdf, source=http://localhost:8766/files/document.pdf, redirects=0)
+10-18 03:24:33.626 16090 16290 I Rift    : preview of 39b3ee6d5268108ca983868b1e079456 in generation 4 after 222 ms: 1582x2048
+10-18 03:24:33.673 16090 16326 I Rift    : download 16 in generation 4: stored 72 bytes
+10-18 03:24:33.767 16090 16120 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=b75e7dae7bda16ad95b25612ad093d54, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-18 03:24:33.768 16090 16290 I Rift    : preview of b75e7dae7bda16ad95b25612ad093d54 in generation 4 after 1 ms: text, 86 chars
+10-18 03:24:33.880 16090 16120 I Rift    : result s19: plaintext marker found in: [none]
