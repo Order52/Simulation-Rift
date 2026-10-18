@@ -26,3 +26,10 @@ yara-x = { version = "1.21.0", default-features = false, features = [
     "math-module",
     "string-module",
 ] }
+
+[dev-dependencies]
+# The demo pack, compiled and scanned by the real engine (S21).
+rift-core = { path = "../rift-core" }
+rift-pack = { path = "../../tools/rift-pack" }
+tempfile = "3.27.0"
+jiff = "0.2.38"

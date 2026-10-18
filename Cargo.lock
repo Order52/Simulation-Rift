@@ -2783,8 +2783,12 @@ name = "rift-worker"
 version = "0.1.0"
 dependencies = [
  "image",
+ "jiff",
+ "rift-core",
+ "rift-pack",
  "rift-protocol",
  "sha2 0.11.1",
+ "tempfile",
  "yara-x",
 ]
 

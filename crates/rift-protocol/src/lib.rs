@@ -18,6 +18,9 @@ pub const MAX_PDF_PAGES: u32 = 100_000;
 pub const MAX_RULES: u32 = 1_000_000;
 /// Output ceiling for any rendered bitmap (16 MiB = 4 Mpx RGBA).
 pub const MAX_BITMAP_BYTES: u64 = 16 * 1024 * 1024;
+/// The worker's scan engine, part of every verdict's cache key (§12.1).
+/// rift-worker's tests check it against the locked yara-x version.
+pub const SCAN_ENGINE: &str = "yara-x 1.21.0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Envelope<T> {
