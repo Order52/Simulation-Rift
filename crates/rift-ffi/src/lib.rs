@@ -6,13 +6,15 @@
 //! internals stay on the Rust side.
 
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rift_core::download::{self, DownloadPolicy, DownloadRequest};
 use rift_core::heuristics::HeuristicConfig;
 use rift_core::policy::{self, Decision, IntelState, NavigationContext};
 use rift_core::session::{RecoveryReport, SessionError, SessionManager, SessionPlatform};
+use rift_core::store::StoredObject;
+use rift_protocol::{Envelope, PROTOCOL_VERSION, Request, Response};
 
 uniffi::setup_scaffolding!();
 
@@ -259,6 +261,8 @@ struct SessionExtras {
     cancel: Arc<AtomicBool>,
     local_hosts: Vec<String>,
     files: Vec<QuarantinedFile>,
+    /// Where each of `files` is stored, for reading it back.
+    objects: Vec<StoredObject>,
     /// Committed bytes plus reservations of downloads in progress.
     reserved: u64,
 }
@@ -270,9 +274,210 @@ impl SessionExtras {
             cancel: Arc::new(AtomicBool::new(false)),
             local_hosts: Vec::new(),
             files: Vec::new(),
+            objects: Vec::new(),
             reserved: 0,
         }
     }
+}
+
+/// Largest quarantined file decrypted for a preview; it is held in memory
+/// in both the controller and the worker.
+const MAX_PREVIEW_INPUT: u64 = 32 * 1024 * 1024;
+
+/// Passed to the worker; the controller enforces its own deadline by
+/// unbinding (§8.6), since an isolated process cannot be killed by the app.
+const PREVIEW_DEADLINE_MS: u32 = 10_000;
+
+/// What a quarantined file's content says it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PreviewKind {
+    /// PNG, JPEG or WebP, decoded by rift-worker.
+    Image,
+    /// Rendered by the platform's PdfRenderer inside the worker.
+    Pdf,
+}
+
+/// Identifies previewable content by its leading bytes.
+fn sniff(content: &[u8]) -> Option<PreviewKind> {
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n";
+    const JPEG: &[u8] = b"\xff\xd8\xff";
+    if content.starts_with(PNG) || content.starts_with(JPEG) {
+        return Some(PreviewKind::Image);
+    }
+    if content.starts_with(b"RIFF") && content.get(8..12) == Some(b"WEBP") {
+        return Some(PreviewKind::Image);
+    }
+    // PDF readers accept the header anywhere in the first KiB.
+    let head = content.get(..1024).unwrap_or(content);
+    if head.windows(5).any(|w| w == b"%PDF-") {
+        return Some(PreviewKind::Pdf);
+    }
+    None
+}
+
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum PreviewFailure {
+    #[error("the session this file belonged to has ended")]
+    SessionEnded,
+    #[error("the file is not in this session's quarantine")]
+    NotFound,
+    #[error("Rift previews PNG, JPEG, WebP and PDF content only")]
+    Unsupported,
+    #[error("files larger than {limit} bytes are not previewed")]
+    TooLarge { limit: u64 },
+    #[error("the quarantined copy could not be read: {detail}")]
+    Storage { detail: String },
+    /// The worker did not prove the confinement the controller requires.
+    #[error("the preview worker is not confined: {detail}")]
+    Unconfined { detail: String },
+    /// The worker's reply failed validation; the worker must be retired.
+    #[error("the preview worker sent an invalid reply: {detail}")]
+    BadReply { detail: String },
+    /// The worker answered with a typed error.
+    #[error("the preview worker could not render the file: {detail}")]
+    Worker { detail: String },
+    #[error("session state is unusable after an internal error")]
+    Poisoned,
+}
+
+/// A validated bitmap reply: `width * 4 == stride`, within the requested
+/// box and the protocol's size limit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct PreviewBitmap {
+    pub width: u32,
+    pub height: u32,
+    pub stride: u32,
+}
+
+/// One preview of one file by one fresh worker. The controller sends
+/// `hello_frame`, checks the reply with `accept_hello`, and only then passes
+/// `input` and `request_frame`; every reply is validated against the request.
+#[derive(Debug, uniffi::Object)]
+pub struct PreviewJob {
+    sessions: Arc<Sessions>,
+    generation: u64,
+    kind: PreviewKind,
+    hello: Envelope<Request>,
+    request: Envelope<Request>,
+    input: Vec<u8>,
+}
+
+#[uniffi::export]
+impl PreviewJob {
+    pub fn kind(&self) -> PreviewKind {
+        self.kind
+    }
+
+    pub fn hello_frame(&self) -> Vec<u8> {
+        frame(&self.hello)
+    }
+
+    /// Requires the worker to report seccomp, which Android applies to every
+    /// app process; anything else means the process is not what was bound.
+    /// The isolation itself is checked by the platform (FLAG_ISOLATED_PROCESS).
+    pub fn accept_hello(&self, reply: Vec<u8>) -> Result<(), PreviewFailure> {
+        match self.validate(&reply, &self.hello)? {
+            Response::Ready(confinement) if confinement.seccomp => Ok(()),
+            Response::Ready(_) => Err(PreviewFailure::Unconfined {
+                detail: "the worker reports no seccomp filter".into(),
+            }),
+            Response::Error(error) => Err(PreviewFailure::Unconfined {
+                detail: format!("{error:?}"),
+            }),
+            _ => Err(bad_reply("unexpected response to hello")),
+        }
+    }
+
+    /// The decrypted, hash-verified file content for the worker's input descriptor.
+    pub fn input(&self) -> Vec<u8> {
+        self.input.clone()
+    }
+
+    pub fn request_frame(&self) -> Vec<u8> {
+        frame(&self.request)
+    }
+
+    /// Validates the render reply. `region_bytes` is the size of the output
+    /// region the controller created; the bitmap must fit in it. Fails if the
+    /// session ended meanwhile.
+    pub fn accept(
+        &self,
+        reply: Vec<u8>,
+        region_bytes: u64,
+    ) -> Result<PreviewBitmap, PreviewFailure> {
+        let response = self.validate(&reply, &self.request)?;
+        if !self.sessions.is_current(self.generation) {
+            return Err(PreviewFailure::SessionEnded);
+        }
+        match response {
+            Response::Bitmap(header) => {
+                let expected = u64::from(header.stride).saturating_mul(u64::from(header.height));
+                if expected > region_bytes {
+                    return Err(bad_reply("the bitmap does not fit the output region"));
+                }
+                Ok(PreviewBitmap {
+                    width: header.width,
+                    height: header.height,
+                    stride: header.stride,
+                })
+            }
+            Response::Error(error) => Err(PreviewFailure::Worker {
+                detail: worker_error_text(error).into(),
+            }),
+            _ => Err(bad_reply("unexpected response to the render request")),
+        }
+    }
+}
+
+impl PreviewJob {
+    fn validate(
+        &self,
+        reply: &[u8],
+        request: &Envelope<Request>,
+    ) -> Result<Response, PreviewFailure> {
+        let mut reader = reply;
+        let body = rift_protocol::read_frame(&mut reader).map_err(|e| bad_reply(&e.to_string()))?;
+        if !reader.is_empty() {
+            return Err(bad_reply("trailing bytes after the reply"));
+        }
+        rift_protocol::decode_response(&body, request)
+            .map(rift_protocol::Validated::into_inner)
+            .map_err(|e| bad_reply(&e.to_string()))
+    }
+}
+
+fn bad_reply(detail: &str) -> PreviewFailure {
+    PreviewFailure::BadReply {
+        detail: detail.to_owned(),
+    }
+}
+
+fn worker_error_text(error: rift_protocol::WorkerError) -> &'static str {
+    use rift_protocol::WorkerError as E;
+    match error {
+        E::Unsupported => "the format or a feature it uses is not supported",
+        E::Malformed => "the file is damaged or not what it claims to be",
+        E::TooLarge => "the content is too large to preview",
+        E::Timeout => "rendering took too long",
+        E::Encrypted => "the document is password-protected",
+        E::EngineFailure => "the renderer failed",
+        E::RulesNotLoaded => "the worker was in an unexpected state",
+    }
+}
+
+fn envelope(job_id: u64, generation: u64, body: Request) -> Envelope<Request> {
+    Envelope {
+        version: PROTOCOL_VERSION,
+        job_id,
+        generation,
+        body,
+    }
+}
+
+/// Requests built here are small and fixed-shape, so encoding cannot fail;
+/// an empty frame would be rejected by the worker rather than misread.
+fn frame(request: &Envelope<Request>) -> Vec<u8> {
+    rift_protocol::encode(request).unwrap_or_default()
 }
 
 #[derive(Debug)]
@@ -294,6 +499,8 @@ impl State {
 pub struct Sessions {
     state: Mutex<State>,
     recovery: Recovery,
+    /// Worker job ids, unique for the life of the process.
+    next_job: AtomicU64,
 }
 
 #[uniffi::export]
@@ -313,6 +520,7 @@ impl Sessions {
                 extras: None,
             }),
             recovery: report.into(),
+            next_job: AtomicU64::new(1),
         }))
     }
 
@@ -460,7 +668,76 @@ impl Sessions {
             redirects: u32::try_from(downloaded.redirects).unwrap_or(u32::MAX),
         };
         extras.files.push(file.clone());
+        extras.objects.push(downloaded.object);
         Ok(file)
+    }
+
+    /// Prepares a preview of quarantined file `id` (§8.6): decrypts and
+    /// verifies it, and identifies the format from its content, never from
+    /// its name or the server's label. The returned job frames the worker
+    /// requests and checks every reply.
+    pub fn preview(
+        self: Arc<Self>,
+        generation: u64,
+        id: String,
+        max_width: u32,
+        max_height: u32,
+    ) -> Result<Arc<PreviewJob>, PreviewFailure> {
+        // Decrypted under the lock (the key never leaves the session), so a
+        // reset waits for this bounded local read instead of racing it.
+        let input = {
+            let mut state = self.state.lock().map_err(|_| PreviewFailure::Poisoned)?;
+            let object = state
+                .current(generation)
+                .ok_or(PreviewFailure::SessionEnded)?
+                .objects
+                .iter()
+                .find(|o| o.id.to_hex() == id)
+                .copied()
+                .ok_or(PreviewFailure::NotFound)?;
+            if object.sealed.size > MAX_PREVIEW_INPUT {
+                return Err(PreviewFailure::TooLarge {
+                    limit: MAX_PREVIEW_INPUT,
+                });
+            }
+            let session = state.manager.active().ok_or(PreviewFailure::SessionEnded)?;
+            let mut input = Vec::new();
+            session
+                .quarantine()
+                .read(
+                    object.id,
+                    session.quarantine_key(),
+                    &object.sealed,
+                    &mut input,
+                )
+                .map_err(|e| PreviewFailure::Storage {
+                    detail: e.to_string(),
+                })?;
+            input
+        };
+        let kind = sniff(&input).ok_or(PreviewFailure::Unsupported)?;
+        let job_id = self.next_job.fetch_add(1, Ordering::SeqCst);
+        let request = match kind {
+            PreviewKind::Image => Request::DecodeImage {
+                max_width,
+                max_height,
+                deadline_ms: PREVIEW_DEADLINE_MS,
+            },
+            PreviewKind::Pdf => Request::RenderPdfPage {
+                page: 0,
+                max_width,
+                max_height,
+                deadline_ms: PREVIEW_DEADLINE_MS,
+            },
+        };
+        Ok(Arc::new(PreviewJob {
+            sessions: self,
+            generation,
+            kind,
+            hello: envelope(job_id, generation, Request::Hello),
+            request: envelope(job_id.saturating_add(1), generation, request),
+            input,
+        }))
     }
 }
 
@@ -642,6 +919,120 @@ mod tests {
                 .join(generation.to_string())
                 .exists()
         );
+    }
+
+    /// 1x1 RGBA PNG.
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 0,
+        0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 0x1f, 0x15, 0xc4, 0x89, 0, 0, 0, 0x0d, 0x49, 0x44,
+        0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0, 0x05, 0x00, 0x01, 0xff,
+        0x89, 0x99, 0x3d, 0x1d, 0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+
+    #[test]
+    fn previews_go_through_a_validated_worker_exchange() {
+        use rift_worker_ffi::WorkerEngine;
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        let png = sessions
+            .download(
+                generation,
+                info(format!("http://localhost:{}/", serve(PNG))),
+            )
+            .unwrap();
+        let text = sessions
+            .download(
+                generation,
+                info(format!("http://localhost:{}/", serve(b"plain text"))),
+            )
+            .unwrap();
+
+        // Content decides the kind; the hostile ".exe" name is irrelevant.
+        assert!(matches!(
+            sessions.clone().preview(generation, text.id, 64, 64),
+            Err(PreviewFailure::Unsupported)
+        ));
+        assert!(matches!(
+            sessions
+                .clone()
+                .preview(generation, "00".repeat(16), 64, 64),
+            Err(PreviewFailure::NotFound)
+        ));
+        let job = sessions
+            .clone()
+            .preview(generation, png.id.clone(), 64, 64)
+            .unwrap();
+        assert_eq!(job.kind(), PreviewKind::Image);
+        assert_eq!(job.input(), PNG);
+
+        // A worker that does not report seccomp is refused before any input.
+        let unconfined = WorkerEngine::new(false, false);
+        assert!(matches!(
+            job.accept_hello(unconfined.handle(job.hello_frame(), None).frame),
+            Err(PreviewFailure::Unconfined { .. })
+        ));
+        let worker = WorkerEngine::new(true, false);
+        let hello = worker.handle(job.hello_frame(), None).frame;
+        job.accept_hello(hello.clone()).unwrap();
+
+        // Replies for another request, garbage and bitmaps larger than the region are rejected.
+        assert!(matches!(
+            job.accept(hello, 4),
+            Err(PreviewFailure::BadReply { .. })
+        ));
+        assert!(matches!(
+            job.accept(b"junk".to_vec(), 4),
+            Err(PreviewFailure::BadReply { .. })
+        ));
+        let reply = worker.handle(job.request_frame(), Some(job.input()));
+        let pixels = reply.pixels.clone().unwrap();
+        assert!(matches!(
+            job.accept(reply.frame.clone(), 3),
+            Err(PreviewFailure::BadReply { .. })
+        ));
+        assert_eq!(
+            job.accept(reply.frame.clone(), pixels.len() as u64)
+                .unwrap(),
+            PreviewBitmap {
+                width: 1,
+                height: 1,
+                stride: 4
+            }
+        );
+
+        // A malformed image becomes a typed worker error, not a bitmap.
+        let broken = worker.handle(
+            job.request_frame(),
+            Some(b"\x89PNG\r\n\x1a\nbroken".to_vec()),
+        );
+        assert!(matches!(
+            job.accept(broken.frame, 0),
+            Err(PreviewFailure::Worker { .. })
+        ));
+
+        // Once the session ends, its previews are discarded.
+        sessions.reset().unwrap();
+        assert!(matches!(
+            job.accept(reply.frame, pixels.len() as u64),
+            Err(PreviewFailure::SessionEnded)
+        ));
+        assert!(matches!(
+            sessions.clone().preview(generation, png.id, 64, 64),
+            Err(PreviewFailure::SessionEnded)
+        ));
+    }
+
+    #[test]
+    fn content_sniffing() {
+        assert_eq!(sniff(PNG), Some(PreviewKind::Image));
+        assert_eq!(sniff(b"\xff\xd8\xff\xe0rest"), Some(PreviewKind::Image));
+        assert_eq!(sniff(b"RIFF\0\0\0\0WEBPVP8 "), Some(PreviewKind::Image));
+        assert_eq!(sniff(b"RIFF\0\0\0\0WAVEfmt "), None);
+        assert_eq!(sniff(b"junk\n%PDF-1.7\n"), Some(PreviewKind::Pdf));
+        assert_eq!(sniff(b"MZ\x90\0"), None);
+        assert_eq!(sniff(b""), None);
     }
 
     #[test]

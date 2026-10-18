@@ -2524,6 +2524,8 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "rift-core",
+ "rift-protocol",
+ "rift-worker-ffi",
  "tempfile",
  "thiserror 2.0.21",
  "uniffi",
