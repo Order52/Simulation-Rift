@@ -1,6 +1,6 @@
 # Phase 3 report: scanner and signed intelligence (in progress)
 
-**Status (18 Oct 2026):** the trusted host side is built and tested: pack validation, scan verdicts with a versioned cache, the on-disk snapshot store, TUF verification for offline import, and the maintainer tool with a harmless demo pack. **Not built yet:** the Android wiring (scan jobs in the isolated worker after each download, the verdict in the UI, an import screen) and an online update transport. The §22 gate (update-failure suite, offline operation, report) is met on the host only. "Verified" means tested on macOS arm64 and in CI (Ubuntu, macOS). Nothing here claims that a file is safe: the best status is "not flagged" by named checks.
+**Status (18 Oct 2026):** built and tested on the host and on Android emulators. Host side: pack validation, scan verdicts with a versioned cache, the on-disk snapshot store, TUF verification for offline import, and the maintainer tool with a harmless demo pack. Android: every download is scanned (the core's hash and type checks, then the rules in a fresh isolated worker), the verdict is shown under the download, and debug builds can install a signed demo database. S16 and S21 pass on API 33 and 34 (x86_64, CI). **Not built yet:** an import screen for a user-chosen update with a production root, and an online update transport. The §22 gate (update-failure suite, offline operation, report) is met on the host and on emulators; a physical phone is still open, as for Phase 2. "Verified" means tested on macOS arm64, in CI (Ubuntu, macOS), and on the stated emulators. Nothing here claims that a file is safe: the best status is "not flagged" by named checks.
 
 ## What was built
 
@@ -13,6 +13,9 @@
 | `rift-pack` | Maintainer tool: Ed25519 role keys (0600, refused inside a git work tree), a signed root, the demo pack and signed releases with §13.2 expiries (timestamp 7 d, snapshot 14 d, targets 90 d). It validates every pack with the app's own validator before writing or signing. | `tools/rift-pack` |
 | Demo pack | Labelled `demo: true` with a "DEMO: not real coverage" notice. Indicators: the SHA-256 of a harmless text file (`DEMO_FILE`) and a `.invalid` URL. Rules: a marker string (high confidence) and a byte pattern (low). No real malware and no third-party feed data. | `tools/rift-pack/src/lib.rs` |
 | `SCAN_ENGINE` | The engine name in every cache key (`yara-x 1.21.0`). A test checks it against `Cargo.lock`. | `crates/rift-protocol` |
+| `rift-ffi::scan` | The controller API: `Intel` (the store in `files/rift/intel`, kept across sessions, and the TUF datastore), `PendingIntel` (a verified update that a worker must compile before it can be installed), `ScanJob` (the frames for one scan; it validates every reply). The core decides the status; pack text is escaped for display. | `crates/rift-ffi/src/scan.rs` |
+| Android | `IsolatedWorker`: binding, deadlines and the kill switch, now shared by previews and scans. `Scanner`: Hello (seccomp required), LoadRules, then Scan over a sealed memfd, one fresh worker per file. `Core` scans each download and keeps verdicts per session. The UI shows the status, the named checks and the gaps, and a database card (status, demo label, staleness). | `android/app/src/main/kotlin` |
+| Demo database in debug builds | `android/build.sh` signs a fresh demo release on each build with keys outside the repository (`~/.local/share/simulation-rift/demo-keys` by default) and embeds only the public root and the signed repository. | `android/build.sh` |
 
 ## Results
 
@@ -25,14 +28,24 @@
 | S21 | Demo rule and indicator match | **Pass.** In the real engine (rift-worker, YARA-X), the demo rules compile to the rule count the metadata declares, which is the install check. The demo file matches the marker rule (known malicious), the byte pattern matches the low rule (suspicious), and other content is not flagged. A verified, installed pack finds the demo file by hash, with the engine and pack digest in the verdict. | `crates/rift-worker/tests/demo_pack.rs`, `rift-update` tests |
 | S22 | New pack adds or removes a rule | **Pass (core).** A pack with one more rule has a new digest: the old verdict is no longer current and appears as history. A different engine version also misses the cache. | `scan::tests::s22_*` |
 | — | Damaged snapshot on disk | **Refused, not trusted.** A replaced rule file (valid, but not the pack the directory names), a missing file, and malformed pointers are each reported as damaged. | `snapshot::tests` |
+| S16 | Android: tampered update | **Pass (API 33, 34).** A same-length change to the signed rules was refused on the device by tough's hash check ("Hash mismatch … calculated 7536…, expected 2e5f…"), and the database stayed missing. | `s16b`, [33](evidence/phase3-android-api33-x86_64/), [34](evidence/phase3-android-api34-x86_64/) |
+| — | Android: no database | **Pass (API 33, 34).** Every scan says "Not fully scanned" and names both missing checks. The type check still runs: an executable served as `invoice.pdf` is "Suspicious" ("Named as .pdf, but the content is a Windows executable"). | `s16a` |
+| S21 | Android: demo database | **Pass (API 33, 34).** The signed demo database installed after a fresh worker compiled its 2 rules. `demo-file.txt` was "Known malicious" by file hash and by `rift_demo_marker`, with engine `yara-x 1.21.0` and the installed snapshot in the verdict; `notes.txt` was "Not flagged" with no gaps. These scans ran in the worker that answers garbage if the parser-thread filter is missing on the scan path, so the filter was in force. A scan with a fresh worker took 0.3–0.5 s on the emulators. | `s21a` |
+| S6 (scan) | Android: hung scan worker | **Pass (API 33, 34).** A worker that compiles the rules and then never answers was stopped by the controller's 17 s deadline (the whole scan took 17.3–17.4 s; the test saw 18.8–19.5 s including the download). The core's hash check still found the file ("Known malicious"), and the verdict named the missing rule scan ("the worker did not scan in time and was stopped"). | `s21b` |
 | — | Maintainer CLI end to end | **Pass.** `rift-pack keys`, `root`, `demo` and `publish` on the host, then `cargo run -p rift-update --example verify`: "OK snapshot demo-…, targets v1, timestamp v1, demo=true, 1 file and 1 URL indicators, 2 rules". A key directory inside the repository was refused. | manual run, 18 Oct |
 
-Host tests after this phase: rift-core 90 (+1 ignored network test), rift-ffi 7, rift-protocol 11, rift-update 7, rift-worker 10 (+1 Linux-only), rift-worker-ffi 4. `clippy -D warnings`, `fmt` and `cargo deny` (advisories, bans, licenses, sources) are clean.
+Android: the full instrumented suite (24 tests: the 20 from Phase 2 and the 4 above) and S13/S14 passed on API 33 and API 34 x86_64 in CI (run 39111591453). Not yet run on API 36, on the 16 KB page-size image or on a phone.
+
+Host tests after this phase: rift-core 92 (+1 ignored network test), rift-ffi 8, rift-protocol 11, rift-update 7, rift-worker 10 (+1 Linux-only), rift-worker-ffi 4. `clippy -D warnings`, `fmt` and `cargo deny` (advisories, bans, licenses, sources) are clean.
 
 ## Findings
 
 1. **A tampered target that only grows is caught by the length check, not the hash.** The first tamper test appended bytes, so it never exercised the hash. It now covers both cases.
 2. **The X2 PoC's allowlist (`meta.json`, `notices.txt`) did not match the product format.** Notices are now part of `metadata.json`, so a pack is four files, and the allowlist is `rift_core::pack::FILES`, shared by the store and the update client.
+3. **The first default key directory was inside a git work tree.** `build.sh` put the demo keys in `~/.config/simulation-rift`, and on the development machine `~/.config` is a git repository. `rift-pack` refused to write the keys there, as designed, and the default moved to `~/.local/share`. The check is worth keeping: a key directory can sit inside a repository the developer did not think of.
+4. **Size.** `librift_ffi.so` grew from 3.15 MB to 7.45 MB (arm64) and from 3.52 MB to 8.32 MB (x86_64). Most of the growth is tough and aws-lc-rs (X2 bound: 4.8 MB standalone); the rest is not broken down. With the worker library (11.7 / 15.5 MB) and JNA, the native code is 19.3 MB (arm64) and 24.0 MB (x86_64) per ABI, against the 25 MB budget. x86_64 is an emulator ABI, but the margin is now small, and online updates (Phase 3 open item) must not add a second TLS stack.
+5. **A worker stuck outside the engine costs the full controller deadline.** The worker's own 15 s limit is YARA-X's scan timeout, which only applies inside the engine. A worker hung elsewhere is caught by the controller at 17 s. Scans run one at a time, so the files queued behind it wait as well.
+6. **Refusal messages are raw.** The tampered-update message shown in the UI is tough's full error, with internal `file://` paths and both hashes. That is accurate but not readable; the UI should show one sentence and keep the detail in the log.
 
 ## Verified
 
@@ -41,7 +54,8 @@ Host tests after this phase: rift-core 90 (+1 ignored network test), rift-ffi 7,
 
 ## Unverified
 
-- **Android.** None of this is wired into the app yet: no scan job after a download, no verdict in the UI, no import screen, and no embedded root. The Android size of tough and aws-lc-rs inside Rift's library is still unmeasured (X2 bound: 4.8 MB standalone).
+- **Android beyond the emulators.** API 33 and 34 x86_64 only; not yet API 36, the 16 KB image or a phone. The import path for a user-chosen update is not built: release builds have no root and no install button, and debug builds install only the embedded demo database.
+- **YARA-X's own timeout on the device.** The hung-worker test hangs in Kotlin, so it shows the controller's deadline, not the engine's. A slow rule or input that trips YARA-X's 15 s limit (`Gap::Timeout`) is tested on the host only.
 - **Online updates.** Only offline import (a repository directory) exists. An HTTP transport over the core's own fetcher (INV-13 destination checks) is not written.
 - **Key policy.** The tool makes 1-of-1 keys per role on one machine. The §13.2 policy (offline root and targets keys, thresholds, root rotation) is not exercised. Tough's root rotation is not tested here.
 - **Clock problems.** Expiry is enforced by tough against the system clock. A wrong clock surfaces as "expired" or a false "current"; the UI side of §13.2 ("clock problems are surfaced") is not built.
@@ -52,3 +66,5 @@ Host tests after this phase: rift-core 90 (+1 ignored network test), rift-ffi 7,
 - Scans in progress should stay pinned to their starting snapshot (§13.2). The store keeps one previous snapshot, but nothing yet tracks which jobs hold which snapshot.
 - `rift-pack` takes all four role keys from one directory. Separate key locations, and refusing to sign with the root key in day-to-day publishing, would match the policy better.
 - The verdict cache is in memory only. A persisted cache must be bound to the vault (Phase 4).
+- Run more than one scan worker at a time, with a limit, so that one hung worker does not hold up the queue (finding 5).
+- Short refusal messages in the UI, with tough's detail in the log only (finding 6).

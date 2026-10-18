@@ -9,7 +9,7 @@
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and A1–A7 on API 33/34 and a physical phone (the Phase 2 suite, which builds on them, passes on API 33/34). A1–A7 now also pass on a 16 KB page-size emulator (API 35). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
 | 2: Android vertical slice | **Built; tested on emulators** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery. S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on API 36 and on API 35 with 16 KB pages (arm64), and on API 33 and 34 (x86_64, in CI). API 30 refuses browsing as designed. The R8 release build passes a smoke test. **Gate open:** a physical phone. |
-| 3: Scanner and signed intel | **In progress; host side built and tested** ([report](phase-3.md)). Pack validation, verdicts with a versioned cache, an atomic snapshot store, offline TUF import, and `rift-pack` with a harmless demo pack. S11, S16, S17, S21 and S22 pass on the host. **Not built:** Android wiring (scan after download, verdict UI, import), and online updates. |
+| 3: Scanner and signed intel | **In progress; built and tested on the host and on Android emulators** ([report](phase-3.md)). Pack validation, verdicts with a versioned cache, an atomic snapshot store, offline TUF import, and `rift-pack` with a harmless demo pack. On Android every download is scanned (core hash and type checks, then the rules in a fresh isolated worker) and the verdict is shown. S11, S16, S17, S21 and S22 pass on the host; S16, S21 and a hung scan worker pass on API 33 and 34 (CI). **Not built:** an import screen with a production root, and online updates. |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
 | 5: Linux app | Not started (worker lockdown and WebKit check proven in PoCs). |
 | 6: AI experiment | Not started; deferred and gated by design. |
@@ -109,8 +109,11 @@ Phase 2 findings, added to the list above: 15–26.
 
 27. (Phase 3) A tampered TUF target that only grows is caught by tough's length check before its hash; the test now covers a same-length change too.
 28. (Phase 3) The X2 PoC's staging allowlist (`meta.json`, `notices.txt`) did not match the product pack, which is four files (`rift_core::pack::FILES`) with notices inside `metadata.json`.
+29. (Phase 3) `build.sh` first put the demo keys under `~/.config`, which is a git repository on the development machine; `rift-pack` refused, and the default moved to `~/.local/share`.
+30. (Phase 3) tough and aws-lc-rs took `librift_ffi.so` from 3.15 to 7.45 MB (arm64) and from 3.52 to 8.32 MB (x86_64). Native code per ABI is now 19.3 MB (arm64) and 24.0 MB (x86_64) against the 25 MB budget.
+31. (Phase 3) A scan worker that hangs outside YARA-X is stopped by the controller's 17 s deadline, not the engine's 15 s timeout; scans run one at a time, so the queue waits too.
 
-### 2.6 Phase 3 code (scanner and signed intel, host side)
+### 2.6 Phase 3 code (scanner and signed intel)
 
 | Part | What it does |
 |---|---|
@@ -119,6 +122,8 @@ Phase 2 findings, added to the list above: 15–26.
 | `rift-core::snapshot` | Digest-named snapshots made current by an fsynced pointer swap; interrupted installs leave the old one. |
 | `rift-update` | Offline TUF verification with tough (no HTTP), then install through the snapshot store. |
 | `tools/rift-pack` | Role keys (outside git), signed root, the demo pack, signed releases. |
+| `rift-ffi::scan` | The controller API for Android: the threat database, verified updates that a worker must compile before install, and scan jobs whose replies the core validates. |
+| Android `IsolatedWorker`, `Scanner` | One fresh isolated worker per scan (seccomp required, deadlines, unbound after); the verdict under each download; a database card; the signed demo database in debug builds. |
 
 ## 3. Finished vs. not finished
 
@@ -126,21 +131,20 @@ Phase 2 findings, added to the list above: 15–26.
 
 - The architecture and the decision record.
 - PoCs A1–A7 and the worker lifecycle test on Android emulators (API 30, 36); X2 on the host and on Android; L1 (native), L2, L3, X1; X3 on the host.
-- The Phase 1 crates listed above, and the Phase 2 and 3 additions: 129 host tests pass on macOS (90 `rift-core`, 7 `rift-ffi`, 11 `rift-protocol`, 7 `rift-update`, 10 `rift-worker`, 4 `rift-worker-ffi`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
+- The Phase 1 crates listed above, and the Phase 2 and 3 additions: 132 host tests pass on macOS (92 `rift-core`, 8 `rift-ffi`, 11 `rift-protocol`, 7 `rift-update`, 10 `rift-worker`, 4 `rift-worker-ffi`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
 - The Phase 2 Android slice: all 20 instrumented tests and S13/S14 pass on the API 36 emulator ([evidence](evidence/phase2-android-api36/)) and on API 33 and 34 x86_64 in CI ([33](evidence/phase2-android-api33-x86_64/), [34](evidence/phase2-android-api34-x86_64/)), and the 19 that existed then pass on the API 35 16 KB page-size emulator ([evidence](evidence/phase2-android-api35-16k/)).
-- The Phase 3 host side: S11, S16, S17, S21 and S22 ([report](phase-3.md)). The R8 release build passed a UI smoke test on API 36. On API 30 (WebView 91, below the minimum) browsing is refused as designed, so 17 tests that need a page fail; S3, S15 and S13 pass ([evidence](evidence/phase2-android-api30/)).
+- Phase 3: S11, S16, S17, S21 and S22 on the host, and the Android scan path: S16 (tampered update refused on the device), S21 (demo database installs; the demo file is known malicious by hash and rule), no-database scans that name their gaps, and a hung scan worker that costs only rule coverage. The full 24-test suite and S13/S14 pass on API 33 and 34 x86_64 in CI ([33](evidence/phase3-android-api33-x86_64/), [34](evidence/phase3-android-api34-x86_64/), [report](phase-3.md)). The R8 release build passed a UI smoke test on API 36. On API 30 (WebView 91, below the minimum) browsing is refused as designed, so 17 tests that need a page fail; S3, S15 and S13 pass ([evidence](evidence/phase2-android-api30/)).
 
 **Not finished:**
 
 | Item | What is missing |
 |---|---|
-| X2 size in the product | The standalone Android binary is 4.8 MB (upper bound); measure tough + aws-lc-rs inside Rift's shared library. |
 | X3 on a phone | Run the lookup benchmark on a real arm64 phone. |
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
 | Android device matrix | Physical phones, OEM WebView builds, a 16 KB page-size device. All emulator levels (30, 33–36, both ABIs, 16 KB pages) have run. |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
 | Phase 2 gate | The same suite on a physical phone; the instrumented suite against a release-like build. |
-| Phase 3 on Android | Scan job after each download in the isolated worker, verdict in the UI, import screen, embedded root; measured library size. |
+| Phase 3 on Android | Built and passing on API 33/34. Open: the suite on API 36, the 16 KB image and a phone; an import screen for user-chosen updates with a production root (release builds have none); concurrent scan workers; short refusal messages. |
 | Online updates | An HTTP transport for tough over the core's own fetcher (INV-13). |
 | Phases 4–7 | Everything in §5. |
 
@@ -187,8 +191,8 @@ Phase 2 findings, added to the list above: 15–26.
 6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done; a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
 
 **Phase 3: Scanner and signed intel**
-7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store.~~ Done on the host (S11, S17, S22). Open: scan jobs on Android after each download, and pinning running scans to their snapshot.
-8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done on the host (S16, S21). Open: the Android import screen and embedded root, online updates, the production key policy. No real malware samples are in the repository.
+7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store; scan jobs on Android after each download.~~ Done (host: S11, S17, S22; Android API 33/34: S21, hung worker). Open: pinning running scans to their snapshot, and concurrent scan workers.
+8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done (host and Android API 33/34: S16, S21). Open: the Android import screen with a production root, online updates, the production key policy. No real malware samples are in the repository.
 
 **Phase 4: Vault**
 9. Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.

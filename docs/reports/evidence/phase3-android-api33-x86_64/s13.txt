@@ -1,0 +1,12 @@
+killed main 9221
+RESETTING 9
+generation=9
+after recovery: main=9557 browser=9591
+10-18 08:41:06.924   483  1714 I ActivityManager: Process org.simulationrift.app (pid 9221) has died: vis BTOP
+10-18 08:41:07.003  9269  9352 I Rift    : browser process exiting: core died
+10-18 08:41:07.168   483   567 I ActivityManager: Process org.simulationrift.app:browser (pid 9269) has died: fg  TOP 
+10-18 08:41:07.300   483   519 I ActivityManager: Start proc 9557:org.simulationrift.app/u0a174 for top-activity {org.simulationrift.app/org.simulationrift.app.MainActivity}
+10-18 08:41:07.878  9557  9583 I Rift    : generation 9 disposed
+10-18 08:41:07.893  9557  9583 I Rift    : session 10 active; recovered interrupted session 9
+10-18 08:41:07.996   483   519 I ActivityManager: Start proc 9591:org.simulationrift.app:browser/u0a174 for next-top-activity {org.simulationrift.app/org.simulationrift.app.BrowserActivity}
+after recovery: leftovers of 9: none

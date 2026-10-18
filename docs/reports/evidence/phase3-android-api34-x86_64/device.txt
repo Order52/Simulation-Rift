@@ -1,0 +1,5 @@
+android=14 sdk=34
+security_patch=2023-09-05
+device=sdk_gphone64_x86_64 abi=x86_64
+page_size=4096
+Current WebView package (name, version): (com.google.android.webview, 113.0.5672.136)
