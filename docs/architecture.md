@@ -507,7 +507,8 @@ Each finding carries: source, rule or indicator ID, object hash, engine version,
 
 ### 13.1 Snapshot store
 
-- Each snapshot is a directory `intel/snapshots/<id>/` with a pointer file `intel/current`. The pointer is replaced by write + fsync + rename.
+- Each snapshot is a directory `intel/snapshots/<pack digest>/` with a pointer file `intel/current`. The pointer is replaced by write + fsync + rename. Directories are named by the SHA-256 over the pack's files, never by anything the pack says about itself. Every load validates the pack again and compares its digest with the directory name. Installs are staged in `intel/staging/` and moved into place before the pointer changes; leftovers are removed when the store opens. One previous snapshot is kept (Phase 3: `rift-core::snapshot`).
+- A pack is exactly four files: `metadata.json`, `url-hashes.bin`, `file-hashes.bin` and `rules.yar` (`rift_core::pack::FILES`). This is also the TUF staging allowlist.
 - **URL table:** sorted array of `(sha256(expression)[..16], meta_idx: u32)`. Expressions follow the Safe Browsing canonicalization and host-suffix × path-prefix scheme [R16]. A host-only expression is a domain-scoped indicator; a host+path expression is a path-scoped one.
 - **File table:** sorted array of `(sha256[32], meta_idx: u32)`.
 - **Binary format:** a header with magic `RIFTIDX1`, version, record size, and count. On install the store validates that `len == header + count × size` and that records are strictly sorted, both in O(n). The table is memory-mapped and binary-searched. Malicious URLs are not stored in cleartext.

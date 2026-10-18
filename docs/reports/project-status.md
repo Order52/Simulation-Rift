@@ -1,6 +1,6 @@
 # Project status: Simulation-Rift
 
-**As of 18 Oct 2026.** This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
+**As of 18 Oct 2026.** This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
 
 ## 1. Where the project stands
 
@@ -9,7 +9,7 @@
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and A1–A7 on API 33/34 and a physical phone (the Phase 2 suite, which builds on them, passes on API 33/34). A1–A7 now also pass on a 16 KB page-size emulator (API 35). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
 | 2: Android vertical slice | **Built; tested on emulators** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery. S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on API 36 and on API 35 with 16 KB pages (arm64), and on API 33 and 34 (x86_64, in CI). API 30 refuses browsing as designed. The R8 release build passes a smoke test. **Gate open:** a physical phone. |
-| 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
+| 3: Scanner and signed intel | **In progress; host side built and tested** ([report](phase-3.md)). Pack validation, verdicts with a versioned cache, an atomic snapshot store, offline TUF import, and `rift-pack` with a harmless demo pack. S11, S16, S17, S21 and S22 pass on the host. **Not built:** Android wiring (scan after download, verdict UI, import), and online updates. |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
 | 5: Linux app | Not started (worker lockdown and WebKit check proven in PoCs). |
 | 6: AI experiment | Not started; deferred and gated by design. |
@@ -107,14 +107,28 @@ These were all found by tests, not by reading:
 
 Phase 2 findings, added to the list above: 15–26.
 
+27. (Phase 3) A tampered TUF target that only grows is caught by tough's length check before its hash; the test now covers a same-length change too.
+28. (Phase 3) The X2 PoC's staging allowlist (`meta.json`, `notices.txt`) did not match the product pack, which is four files (`rift_core::pack::FILES`) with notices inside `metadata.json`.
+
+### 2.6 Phase 3 code (scanner and signed intel, host side)
+
+| Part | What it does |
+|---|---|
+| `rift-core::pack` | Validates a pack: the four fixed files within their limits, strict metadata, tables pointing into the metadata, a digest over every file. |
+| `rift-core::scan` | Evidence to status (§12.3, never "safe"); verdict cache keyed by object, engine, pack digest and policy. |
+| `rift-core::snapshot` | Digest-named snapshots made current by an fsynced pointer swap; interrupted installs leave the old one. |
+| `rift-update` | Offline TUF verification with tough (no HTTP), then install through the snapshot store. |
+| `tools/rift-pack` | Role keys (outside git), signed root, the demo pack, signed releases. |
+
 ## 3. Finished vs. not finished
 
 **Finished (tested, with evidence):**
 
 - The architecture and the decision record.
 - PoCs A1–A7 and the worker lifecycle test on Android emulators (API 30, 36); X2 on the host and on Android; L1 (native), L2, L3, X1; X3 on the host.
-- The Phase 1 crates listed above, and the Phase 2 additions: 105 host tests pass on macOS (75 `rift-core`, 7 `rift-ffi`, 11 `rift-protocol`, 8 `rift-worker`, 4 `rift-worker-ffi`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
-- The Phase 2 Android slice: all 20 instrumented tests and S13/S14 pass on the API 36 emulator ([evidence](evidence/phase2-android-api36/)), and the 19 that existed then pass on the API 35 16 KB page-size emulator ([evidence](evidence/phase2-android-api35-16k/)). The R8 release build passed a UI smoke test on API 36. On API 30 (WebView 91, below the minimum) browsing is refused as designed, so 17 tests that need a page fail; S3, S15 and S13 pass ([evidence](evidence/phase2-android-api30/)).
+- The Phase 1 crates listed above, and the Phase 2 and 3 additions: 129 host tests pass on macOS (90 `rift-core`, 7 `rift-ffi`, 11 `rift-protocol`, 7 `rift-update`, 10 `rift-worker`, 4 `rift-worker-ffi`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
+- The Phase 2 Android slice: all 20 instrumented tests and S13/S14 pass on the API 36 emulator ([evidence](evidence/phase2-android-api36/)) and on API 33 and 34 x86_64 in CI ([33](evidence/phase2-android-api33-x86_64/), [34](evidence/phase2-android-api34-x86_64/)), and the 19 that existed then pass on the API 35 16 KB page-size emulator ([evidence](evidence/phase2-android-api35-16k/)).
+- The Phase 3 host side: S11, S16, S17, S21 and S22 ([report](phase-3.md)). The R8 release build passed a UI smoke test on API 36. On API 30 (WebView 91, below the minimum) browsing is refused as designed, so 17 tests that need a page fail; S3, S15 and S13 pass ([evidence](evidence/phase2-android-api30/)).
 
 **Not finished:**
 
@@ -126,7 +140,9 @@ Phase 2 findings, added to the list above: 15–26.
 | Android device matrix | Physical phones, OEM WebView builds, a 16 KB page-size device. All emulator levels (30, 33–36, both ABIs, 16 KB pages) have run. |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
 | Phase 2 gate | The same suite on a physical phone; the instrumented suite against a release-like build. |
-| Phases 3–7 | Everything in §5. |
+| Phase 3 on Android | Scan job after each download in the isolated worker, verdict in the UI, import screen, embedded root; measured library size. |
+| Online updates | An HTTP transport for tough over the core's own fetcher (INV-13). |
+| Phases 4–7 | Everything in §5. |
 
 ## 4. Limitations and how to work around them
 
@@ -171,8 +187,8 @@ Phase 2 findings, added to the list above: 15–26.
 6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done; a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
 
 **Phase 3: Scanner and signed intel**
-7. YARA-X scan jobs, verdict cache bound to rule and engine versions.
-8. TUF update and offline import; a demo intel pack; `tools/` pack builder. No real malware samples in the repository.
+7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store.~~ Done on the host (S11, S17, S22). Open: scan jobs on Android after each download, and pinning running scans to their snapshot.
+8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done on the host (S16, S21). Open: the Android import screen and embedded root, online updates, the production key policy. No real malware samples are in the repository.
 
 **Phase 4: Vault**
 9. Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.
@@ -195,4 +211,5 @@ Phase 2 findings, added to the list above: 15–26.
 | WebKitGTK check (L1) | `poc/linux-webkit-sandbox/run-in-docker.sh` |
 | TUF offline (X2) | `poc/tuf-offline/run-scenarios.sh poc/target/release/tuf-offline` (needs `tuftool`); on Android: build with `cargo ndk -t arm64-v8a -P 30 build --release -p tuf-offline`, then pass `poc/tuf-offline/adb-client.sh` as the client with `RIFT_X2_BINARY` set |
 | Android A1–A7 | `poc/android-feasibility/build.sh`, then `run-poc.sh <out-dir>` with one emulator or phone attached |
-| Android Phase 2 suite | `android/build.sh`, then `android/run-tests.sh <out-dir>` with one emulator attached (S13/S14 need `adb root`) |
+| Android Phase 2 suite | `android/build.sh`, then `android/run-tests.sh <out-dir>` with one emulator attached (S13/S14 need `adb root`); x86_64 API 33/34 run in the `android-emulator` CI job |
+| Signed demo pack (Phase 3) | `cargo run -p rift-pack -- keys <dir outside git>`, then `root <keys> <root.json>`, `demo <pack-dir>`, `publish <root.json> <keys> <pack-dir> <repo-dir> 1`; check with `cargo run -p rift-update --example verify -- <root.json> <repo-dir> <datastore>` |
