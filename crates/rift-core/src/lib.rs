@@ -6,8 +6,11 @@
 pub mod download;
 pub mod heuristics;
 pub mod intel;
+pub mod pack;
 pub mod policy;
+pub mod scan;
 pub mod session;
+pub mod snapshot;
 pub mod store;
 pub mod text;
 pub mod transfer;
