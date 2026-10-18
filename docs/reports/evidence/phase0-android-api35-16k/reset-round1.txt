@@ -1,0 +1,8 @@
+generation.before=1
+browser.killed=pid 3522 exited
+deleted cache/webview_s1 ok=true
+deleted app_webview_s1 ok=true
+deleted shared_prefs/WebViewChromiumPrefs.xml ok=true
+deleted shared_prefs/AwOriginVisitLoggerPrefs.xml ok=true
+verify.leftovers=0
+generation.after=2

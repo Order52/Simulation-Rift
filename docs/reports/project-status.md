@@ -6,7 +6,7 @@
 
 | Phase (architecture §22) | State |
 |---|---|
-| 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix (physical phones, API 33–35, 16 KB pages). |
+| 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix (physical phones, API 33/34, x86_64). A1–A7 now also pass on a 16 KB page-size emulator (API 35). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
 | 2: Android vertical slice | **Built; tested on one device** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery; S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on the API 36 emulator and on API 35 with 16 KB pages; the R8 release build passes a smoke test. **Gate open:** API 33/34, x86_64 and a physical phone have not run. |
 | 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
@@ -123,7 +123,7 @@ Phase 2 findings, added to the list above: 15–26.
 | X2 size in the product | The standalone Android binary is 4.8 MB (upper bound); measure tough + aws-lc-rs inside Rift's shared library. |
 | X3 on a phone | Run the lookup benchmark on a real arm64 phone. |
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
-| Android device matrix | API 33/34/35, physical phones, OEM WebView builds, x86_64, a 16 KB page-size device. |
+| Android device matrix | API 33/34, physical phones, OEM WebView builds, x86_64, a 16 KB page-size device (the 16 KB emulator image passes). |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
 | Phase 2 gate | The same suite on API 33/34, x86_64 and a physical phone; the instrumented suite against a release-like build. |
 | Phases 3–7 | Everything in §5. |
@@ -162,7 +162,7 @@ Phase 2 findings, added to the list above: 15–26.
 
 **Phase 0 close-out**
 1. X3 on a phone; L1 and L2 inside Flatpak on Fedora and Ubuntu.
-2. Run A1–A7 on API 33/34/35, a physical phone and a 16 KB page-size image.
+2. Run A1–A7 on API 33/34 and a physical phone. (Done on the API 35 16 KB page-size image.)
 
 **Phase 2: Android vertical slice** (items 3–5 built and tested on API 36; see [phase-2.md](phase-2.md))
 3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.

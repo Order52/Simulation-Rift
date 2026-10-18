@@ -1,0 +1,24 @@
+system_zygote.zygote_preload=none
+system_zygote.sample1 connect_ms=2021.0 first_call_ms=0.8 pid=3161 retired=died_after_unbind_ms=254
+system_zygote.sample2 connect_ms=714.3 first_call_ms=0.1 pid=3199 retired=died_after_unbind_ms=11
+system_zygote.sample3 connect_ms=280.8 first_call_ms=0.2 pid=3231 retired=died_after_unbind_ms=8
+system_zygote.sample4 connect_ms=311.5 first_call_ms=0.3 pid=3258 retired=died_after_unbind_ms=11
+system_zygote.sample5 connect_ms=227.0 first_call_ms=0.3 pid=3295 retired=died_after_unbind_ms=19
+system_zygote.connect_ms.median=311.5 of 5/5
+app_zygote.zygote_preload=loaded
+app_zygote.sample1 connect_ms=486.7 first_call_ms=0.9 pid=3349 retired=died_after_unbind_ms=20
+app_zygote.sample2 connect_ms=252.5 first_call_ms=0.3 pid=3366 retired=died_after_unbind_ms=63
+app_zygote.sample3 connect_ms=451.7 first_call_ms=0.3 pid=3388 retired=died_after_unbind_ms=6
+app_zygote.sample4 connect_ms=67.0 first_call_ms=0.3 pid=3404 retired=died_after_unbind_ms=17
+app_zygote.sample5 connect_ms=101.8 first_call_ms=1.1 pid=3416 retired=died_after_unbind_ms=80
+app_zygote.connect_ms.median=252.5 of 5/5
+signal.kill0=DENIED ErrnoException: kill failed: EPERM (Operation not permitted)
+signal.sigkill=DENIED ErrnoException: kill failed: EPERM (Operation not permitted)
+signal.alive_after=true
+signal.retired=died_after_unbind_ms=8
+timeout.reply=yara.status=TIMEOUT yara.scan_ms=2001.1
+timeout.wall_ms=2013
+timeout.retired=died_after_unbind_ms=6
+stuck.alive_while_scanning=true
+stuck.retired=died_after_unbind_ms=3
+stuck.blocked_call=DeadObjectException

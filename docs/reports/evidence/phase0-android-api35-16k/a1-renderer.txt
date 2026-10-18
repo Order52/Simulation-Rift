@@ -1,0 +1,10 @@
+# processes (PID USER LABEL NAME)
+ 2570 u0_a209      u:r:untrusted_app:s0:c209,c256,c512,c768 org.simulationrift.poc
+ 3522 u0_a209      u:r:untrusted_app:s0:c209,c256,c512,c768 org.simulationrift.poc:browser
+ 3556 u0_i9009     u:r:isolated_app:s0:c512,c768  com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0
+# renderer pid=3556 /proc status
+Uid:	99009	99009	99009	99009
+CapEff:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2
+Seccomp_filters:	4

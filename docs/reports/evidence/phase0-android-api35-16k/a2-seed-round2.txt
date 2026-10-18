@@ -1,0 +1,9 @@
+webview.package=com.google.android.webview 124.0.6367.219
+webview.multiprocess=true
+webview.safe_browsing=true
+webview.multi_profile_feature=true
+webview.proxy_override_feature=true
+host.process=org.simulationrift.poc:browser uid=10209 pid=3853
+host.generation=2
+webview.renderer_handle=present
+page.seeded=cookie,localStorage,indexedDB,cacheStorage,serviceWorker,httpCache

@@ -81,7 +81,7 @@
 - L2/L3 on Fedora kernels, and inside Flatpak, where Flatpak's own seccomp filter also applies. (Ubuntu x86_64 passes in CI; there the ptrace negative control is inconclusive because Yama already blocks it.)
 - X2 on x86_64 Android and physical phones; the size of tough and aws-lc-rs inside Rift's shared library (the standalone binary, 4.8 MB, is an upper bound).
 - X3 latency on a real phone (the API 36 emulator gives p95 11.6 µs). Memory cost: ~19 MiB per million URL entries when held in a `Vec`.
-- Android on physical devices, OEM WebView builds, API 33/34/35, x86_64, and 16 KB page-size devices. API 30 was run only with the image's stock WebView 91.
+- Android on physical devices, OEM WebView builds, API 33/34, x86_64, and 16 KB page-size devices. API 30 was run only with the image's stock WebView 91. (Added 18 Oct 2026: A1–A7 and the lifecycle test also pass on an API 35 16 KB page-size emulator; see [the Android evidence](evidence/phase0-android.md).)
 - L1 inside Flatpak (the shipping configuration), on a real desktop with a GPU, and with the Rust `webkit6` bindings instead of the Python probe. Whether the Flatpak sandbox bounds the network process.
 
 ## Could be improved
