@@ -187,7 +187,7 @@ Each invariant has a test ID in §23. An invariant without a passing test is rep
  └──┬──────────────────────┬────────────────────┘   └──┬───────────────┬──────────────┘
     │ Binder, non-exported │ Binder + ParcelFileDescriptor  │ WebKit IPC   │ socketpair + SCM_RIGHTS
  ┌──▼─ :browser ───────────┐ ┌▼─ isolatedProcess ─────┐ ┌──▼──────────┐ ┌▼─ rift-worker ──────┐
- │ WebView host + network  │ │ rift-worker (JNI .so)  │ │ WebKit       │ │ seccomp + Landlock   │
+ │ WebView host + network  │ │ rift-worker-ffi (.so)  │ │ WebKit       │ │ seccomp + Landlock   │
  │ URL lookup (read-only)  │ │ PdfRenderer (platform) │ │ WebProcess   │ │ rlimits, NNP         │
  │ no vault, no keys       │ │ image · YARA-X(pulley) │ │ (sandboxed)  │ │ PDFium · image ·     │
  └──┬──────────────────────┘ └────────────────────────┘ └──────────────┘ │ YARA-X(pulley)       │
@@ -214,7 +214,7 @@ link ─▶ url::canonicalize ─▶ intel lookup + heuristics ─▶ policy ─
 
 ## 7. Shared Rust components
 
-The workspace has a few crates with explicit dependency direction: `rift-protocol` ← `rift-worker`, `rift-protocol` ← `rift-core` ← `rift-ffi` / `rift-linux`. `rift-core` never depends on parser crates.
+The workspace has a few crates with explicit dependency direction: `rift-protocol` ← `rift-worker` ← `rift-worker-ffi`, `rift-protocol` ← `rift-core` ← `rift-ffi` / `rift-linux`. `rift-core` never depends on parser crates. On Android the two UniFFI libraries are loaded by different processes: `rift_ffi` (core) only in the main process, `rift_worker_ffi` (parsers and protocol, no core) only in the isolated worker.
 
 ### 7.1 `rift-core`: trusted logic (`#![forbid(unsafe_code)]`)
 
@@ -284,7 +284,8 @@ Everything else is a concrete type.
 - Components:
   - `MainActivity` (main process).
   - `BrowserActivity` with `android:process=":browser"`.
-  - `WorkerService` with `android:isolatedProcess="true"`, `android:exported="false"`, and `android:useAppZygote="true"` with a minimal zygote preload.
+  - `PreviewService` with `android:isolatedProcess="true"`, `android:exported="false"`, and `android:useAppZygote="true"`. The zygote preload only loads the native libraries (`jnidispatch`, `rift_worker_ffi`): the zygote must stay single-threaded, so no JNA or UniFFI object is created there.
+  - Debug builds add test workers from `src/debug` (probe, hanging, crashing, lying and unconfined services for S3–S7). The release manifest is checked to contain none of them.
   - A non-exported Binder service in the main process for the browser→core interface.
 
 ### 8.3 Processes and why
@@ -322,6 +323,8 @@ The only stronger option is a separate APK, which means a separate UID. That is 
   - `onShowCustomView`: fullscreen keeps a trusted overlay indicator, or is denied.
   - `onReceivedSslError`: cancel.
   - `onRenderProcessGone`: destroy the WebView, end the session, return `true`.
+- **Media Integrity API is disabled** (`WebSettingsCompat.setWebViewMediaIntegrityApiStatus(…, DISABLED)`). Phase 2 finding (S1): WebView 133 exposes `window.android.webview` to every page, and by default its token provider calls Play Integrity for the page. It is not an app bridge, but it is a page-reachable channel to a Google service, which INV-11 does not allow by default. With the setting, the object remains visible but answers "API disabled by application"; S1 asserts exactly that.
+- `android.webkit.WebView.MetricsOptOut` is set in the manifest. The minimum WebView major version is 100, a release parameter reviewed against Chromium's security releases.
 - **Safe Browsing** is a disclosed onboarding choice. It works by matching URL hash prefixes in Google Play services and can send prefixes to Google. If the user enables it, Local mode's claim (INV-11) states this explicitly.
 
 ### 8.5 Downloads **[PoC A3]**
@@ -332,6 +335,13 @@ The only stronger option is a separate APK, which means a separate UID. That is 
 
 PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and cookie-gated downloads reach the listener, and the core's re-fetch returns the same bytes. A POST form response reaches the listener, but a re-fetch with GET gets HTTP 405, so the core must detect a failed or mismatched re-fetch and show the message above rather than store an error page. `blob:` and `data:` downloads **never call `DownloadListener`**: they fail silently in the engine, and Rift cannot show a message for an event it never sees. The product claim is therefore "Rift captures downloads that arrive at a URL; downloads generated inside the page are not supported." 
 
+**Phase 2 implementation (`rift-core::download`).**
+- HTTP client: `ureq` 3.4 without default features, with `rustls` (ring) and the bundled Mozilla roots (`webpki-roots`). It is blocking and small, and it lets Rift resolve names itself: a resolver wrapper runs the destination check (INV-13) on every address of every hop, so a redirect or DNS answer to a private address is refused before connecting. Redirects are followed by Rift (at most 10). The bundled roots mean Rift does not trust user-installed CAs for its own fetches; the cost is that root updates ship with Rift releases. `rustls-platform-verifier` remains the alternative if that proves wrong.
+- The cookie header from `:browser` is sent only to the origin it was read for, never after a cross-origin redirect.
+- The byte limit is applied to the stream, whatever `Content-Length` says. Reset sets a cancel flag that the transfer checks between chunks.
+- Local and private destinations need the user's explicit exception, which applies to one host name for one session only (another name for the same address is still refused).
+- Session quota: space is reserved before the transfer and the unused part released afterwards.
+
 ### 8.6 Isolated worker service **[PoC A4–A6]**
 
 - The main process binds `WorkerService` (`BIND_AUTO_CREATE`; `bindIsolatedService` with a per-document instance name).
@@ -340,6 +350,15 @@ PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and coo
 - After a result arrives, the controller copies the validated pixels into a `Bitmap` and unbinds. The worker process is retired after the document closes.
 - **What `isolated_app` does not deny (PoC A6).** The worker cannot open app files or external storage, create `AF_INET` sockets, or reach the clipboard. It **can** create `AF_UNIX` sockets and map executable memory. `pulley` itself needs neither, but ART's JIT in the same process needs executable memory, so a process-wide filter denying `PROT_EXEC` would break the runtime. The candidate hardening for Phase 2 is a seccomp filter installed by the native library on the thread that runs the parser only (no TSYNC), denying `socket`, executable mappings, `execve` and `ptrace`. It is weaker than the Linux worker's: threads share one address space, so code that has taken over the parser thread can still corrupt the others. It is adopted only if it is measured not to break ART, and is reported as defence in depth, not as a boundary.
 - **Deadlines:** the isolated process runs under a different UID, and the app's `kill(2)` on it fails with `EPERM` (Phase 0 lifecycle test). The worker therefore enforces its own scan timeout (`Deadline::InProcess`, §7.3), which fired on time under Pulley. As the backstop, the controller unbinds after the deadline: Android then ends the isolated process within milliseconds, even mid-scan, and the controller's pending call fails with `DeadObjectException`.
+- **Phase 2 implementation.**
+  - One worker instance per preview (`bindIsolatedService`; instance names may contain only letters, digits and `_`).
+  - Before any input is sent, the controller checks that the component is declared `FLAG_ISOLATED_PROCESS` and not exported, and that the worker's Hello reply reports a seccomp filter. Either failure disables previews; there is no in-process fallback (S7).
+  - The input is a sealed memfd; the output is a `SharedMemory` region the controller creates (2048 × 2048 × 4 bytes, the protocol limit).
+  - Requests and replies are `rift-protocol` frames. `rift-ffi`'s `PreviewJob` validates each reply against its request (job, generation, type, bitmap box) and against the region size.
+  - The controller unbinds the worker before copying pixels, so nothing can race the copy, and treats the RGBA as untrusted data drawn into a fresh `Bitmap`.
+  - Deadlines: 2 s for Hello, 12 s for rendering. Measured end-to-end preview time, including worker start, is 36–204 ms on the API 36 emulator.
+  - Observed on the API 36 emulator: workers forked from the app zygote run as `u0_iN` with `Seccomp: 2` and `NoNewPrivs: 1`; app files are not even visible (ENOENT); `socket(AF_INET)` fails with `EPERM`; `AF_UNIX` sockets can still be created.
+  - Not yet done: the per-thread seccomp filter described above (it needs a native shim).
 - **Cold start:** `useAppZygote` with the native library preloaded in the app zygote is required. Without it the median cold start on the API 36 emulator was 304 ms (budget 300 ms); with it, 45 ms (157 ms for the first worker, which also starts the zygote).
 
 ### 8.7 Keys
@@ -442,7 +461,7 @@ RECEIVING ─▶ COMMITTED(immutable, sha256) ─▶ SCANNING ─▶ SCANNED(ver
 
 ### 11.3 Preview handoff **[PoC A7/L3]**
 
-The core decrypts the object into a RAM-backed fd: `memfd_create` on Linux, a `SharedMemory`/ashmem fd on Android. The fd must be seekable, as `PdfRenderer` requires. It is passed read-only to the worker and closed when the preview closes.
+The core decrypts the object into a RAM-backed fd: `memfd_create` on both platforms (`Os.memfd_create` on Android, API 30+), sealed against writing, growing and shrinking before it is passed (PoC A7). The fd is seekable, as `PdfRenderer` requires, and is closed when the job ends. On Android the decrypted copy also exists briefly in the controller's memory (at most 32 MiB; larger files are not previewed). S19 searches the app's data directory for plaintext after previews and finds none.
 
 **Fallback if the Android PoC fails:** an unlinked-after-open file in `noBackupFilesDir`. This would be documented as a reduction of INV-9 rather than done silently.
 
@@ -561,7 +580,7 @@ CREATING ─▶ ACTIVE ─▶ RESETTING ─▶ DESTROYED
   2. Drop the session key, which crypto-shreds quarantine.
   3. Ask `:browser` to finish, then `killProcess`. Wait for binder death.
   4. Delete `app_webview_s<gen>` and the WebView cache directories for that generation, **and every file in `shared_prefs/`**. PoC A2 found that WebView writes `AwOriginVisitLoggerPrefs.xml` (hashes of visited origins with a date) and `WebViewChromiumPrefs.xml` at the app level, outside the suffix. Rift therefore never stores its own state in SharedPreferences, so this directory can be deleted default-deny.
-  5. Verify the inventory against an **allowlist** of Rift's own files: anything else is a leftover, so a new kind of engine state is detected even before it is understood.
+  5. Verify the inventory against an **allowlist** of Rift's own files: anything else is a leftover, so a new kind of engine state is detected even before it is understood. The Phase 2 allowlist is `files/rift/**` and `files/profileInstalled` (written by `androidx.profileinstaller`; it contains no browsing data).
   6. Increment the generation.
 - **Linux reset:** the same steps, with WebKit's `WebKitNetworkSession` set to ephemeral (`webkit_network_session_new_ephemeral`), which keeps data in memory, and termination of the web process.
 - **Recovery on launch:** if the marker says ACTIVE or RESETTING, cleanup completes *before* any new session is presented as fresh **[PoC A2]**.
@@ -620,7 +639,7 @@ Versions are as of 17 Oct 2026 and are locked by `Cargo.lock` and Gradle catalog
 |---|---|---|
 | Shared logic | Rust stable (pinned by `rust-toolchain.toml`) | — |
 | Rust↔Kotlin | UniFFI | 0.32 |
-| Android UI | Kotlin, Jetpack Compose, AndroidX WebKit | latest stable |
+| Android UI | Kotlin, Jetpack Compose, AndroidX WebKit; compileSdk 37 (required by Compose BOM 2026.09), targetSdk 36 | latest stable |
 | Linux UI | gtk4-rs, libadwaita, webkit6 (GNOME runtime) | runtime-provided |
 | Rule engine | `yara-x` with the `pulley` feature (no JIT) | 1.21 |
 | PDF | Android `PdfRenderer` (PoC-gated); Linux PDFium via `pdfium-render` | 0.9 |
@@ -632,7 +651,7 @@ Versions are as of 17 Oct 2026 and are locked by `Cargo.lock` and Gradle catalog
 | Hashing | `sha2` | — |
 | Serialization | `serde`, `postcard`, `serde_json` (bounded) | — |
 | Type detection | `infer` | — |
-| HTTP for transfers and updates | Decided in Phase 2 against INV-13 (candidate: `reqwest` + `rustls` + `rustls-platform-verifier`) | — |
+| HTTP for transfers | `ureq` with `rustls` (ring) and `webpki-roots` (§8.5); updates decided in Phase 3 | 3.4 (pinned) |
 
 ## 20. Decision record
 
@@ -664,7 +683,8 @@ Simulation-Rift/
     rift-protocol/   worker messages + validation (forbid unsafe)
     rift-core/       trusted logic (forbid unsafe)
     rift-worker/     parsers + Linux lockdown (unsafe confined, reviewed)
-    rift-ffi/        UniFFI bindings            (Phase 2)
+    rift-ffi/        UniFFI bindings: controller (Phase 2)
+    rift-worker-ffi/ UniFFI bindings: Android worker (Phase 2)
     rift-linux/      GTK4 application           (Phase 5)
   android/           Gradle project             (Phase 2)
   tools/             maintainer pack builder    (Phase 3)

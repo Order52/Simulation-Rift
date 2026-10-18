@@ -1,6 +1,6 @@
 # Project status: Simulation-Rift
 
-**As of 17 Oct 2026.** This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
+**As of 18 Oct 2026.** This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
 
 ## 1. Where the project stands
 
@@ -8,7 +8,7 @@
 |---|---|
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and the wider Android device matrix (physical phones, API 33–35, 16 KB pages). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
-| 2: Android vertical slice | Not started (the Phase 0 PoC app is a test harness, not product code). |
+| 2: Android vertical slice | **Built; tested on one device** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery; S1–S10, S12–S15, S19 and the preview tests pass on the API 36 emulator. **Gate open:** the device matrix (API 30/33/34/35, 16 KB pages, a phone) has not run. |
 | 3: Scanner and signed intel | Not started (engine and TUF verification proven in PoCs only). |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
 | 5: Linux app | Not started (worker lockdown and WebKit check proven in PoCs). |
@@ -82,6 +82,24 @@ These were all found by tests, not by reading:
 12. The X2 test script let one tamper test pass for the wrong reason (a missing file). Every rejection is now checked for its expected reason.
 13. Fuzzing (Phase 1): bracketed URL hosts were not canonicalized consistently, so the same URL could hash differently. Brackets are now accepted only as a whole IPv6 literal.
 14. Fuzzing (Phase 1): shortening a long download name could hide its real extension (`invoice<padding>.pdf.exe` shown as `…pdf`). Long names now keep the final extension.
+15. WebView 133 exposes a Media Integrity API (`window.android.webview`) to every page, whose token provider calls Play Integrity. It is now disabled, and S1 checks the refusal.
+16. `androidx.profileinstaller` writes `files/profileInstalled`; the default-deny inventory caught it, and it is allowlisted (no browsing data).
+17. `isMultiProcessEnabled()` loads the WebView provider, so the data-directory suffix must be set before the sandbox check.
+18. Killing the main process while `:browser` is bound makes Android restart it immediately; recovery runs in that restart, before a session is shown (S13).
+19. Isolated-service instance names may contain only letters, digits and `_` (`preview-1` is rejected).
+20. Workers forked from the app zygote showed `NoNewPrivs: 1` on the API 36 image (Phase 0 saw 0 for system-zygote workers). Recorded, not relied on.
+
+### 2.5 Phase 2 code (Android vertical slice)
+
+| Part | What it does |
+|---|---|
+| `rift-ffi` | UniFFI interface of the controller (main process only): navigation decisions with explained reasons, disposable sessions with recovery, downloads into encrypted quarantine, preview jobs whose worker replies it validates. |
+| `rift-core::download` | The core's re-fetch of downloads under INV-13: destination check on every resolved address of every redirect hop, streamed size limit, cookies only to their origin, cancellation at reset. `ureq` + `rustls` + bundled Mozilla roots. |
+| `rift-worker-ffi` | UniFFI interface of the worker, loaded only in the isolated process; no core code. |
+| `android/` | Compose shell; `:browser` WebView host with the §8.4 configuration; disposal by process death, directory deletion and an allowlist inventory; `PreviewService` (isolated, app zygote) and the controller's `Previewer`. Debug-only misbehaving workers for S3–S7. |
+| Tests | 18 instrumented tests plus host-driven S13 and S14 (`android/run-tests.sh`); fixtures in `android/fixtures`. |
+
+Phase 2 findings, added to the list below: 15–20.
 
 ## 3. Finished vs. not finished
 
@@ -89,7 +107,8 @@ These were all found by tests, not by reading:
 
 - The architecture and the decision record.
 - PoCs A1–A7 and the worker lifecycle test on Android emulators (API 30, 36); X2 on the host and on Android; L1 (native), L2, L3, X1; X3 on the host.
-- The Phase 1 crates listed above: 81 unit and property tests pass on macOS (62 `rift-core`, 11 `rift-protocol`, 8 `rift-worker`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy -D warnings` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
+- The Phase 1 crates listed above, and the Phase 2 additions: 104 host tests pass on macOS (74 `rift-core`, 7 `rift-ffi`, 11 `rift-protocol`, 8 `rift-worker`, 4 `rift-worker-ffi`), plus the Linux-only `no_threads` test in CI; six fuzz targets run in CI; `clippy` and `cargo deny` are clean. The Linux lockdown PoC passes in CI on x86_64 Ubuntu.
+- The Phase 2 Android slice on the API 36 emulator: all 18 instrumented tests and S13/S14 pass ([evidence](evidence/phase2-android-api36/)).
 
 **Not finished:**
 
@@ -100,7 +119,8 @@ These were all found by tests, not by reading:
 | L1 in Flatpak | Run the probe inside a Flatpak on Fedora and Ubuntu; check whether Flatpak also bounds the network process. |
 | Android device matrix | API 33/34/35, physical phones, OEM WebView builds, x86_64, a 16 KB page-size device. |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
-| Phases 2–7 | Everything in §5. |
+| Phase 2 gate | The same suite on API 30/33/34/35, a 16 KB page-size image and a physical phone; a release build; text preview. |
+| Phases 3–7 | Everything in §5. |
 
 ## 4. Limitations and how to work around them
 
@@ -110,7 +130,7 @@ These were all found by tests, not by reading:
 |---|---|---|
 | The Docker VM has ~6 GB with ~1.4 GB free; building YARA-X/Cranelift for Linux in Docker is killed (OOM) | Linux-only Rust tests (`no_threads`) cannot be run locally; they run only in CI | Give Docker Desktop ≥ 8 GB (Settings → Resources) or stop unrelated containers; meanwhile rely on GitHub CI, which runs them on Ubuntu. |
 | No physical Android device | All Android evidence is from emulators with software GPU | Connect a phone with USB debugging and run `poc/android-feasibility/run-poc.sh <dir>` (not yet tried on a phone). Without `adb root`, everything except the A1 renderer `/proc` check should still run. |
-| Emulator images: only API 30 and 36 installed, no 16 KB page-size image | A1/A4 criteria name 33/34/35; 16 KB alignment checked only statically | `sdkmanager "system-images;android-35;google_apis;arm64-v8a"` and the `..._ps16k` variants, then rerun. |
+| Emulator images: only API 30 and 36 installed, no 16 KB page-size image (downloads over this connection stalled) | A1/A4 criteria name 33/34/35; the Phase 2 gate needs the matrix; 16 KB alignment checked only statically | `sdkmanager "system-images;android-35;google_apis_ps16k;arm64-v8a"` (and 33, 34), create an AVD, then `android/run-tests.sh <dir>`. |
 | API 30 image has WebView 91 | Old engine; not representative of updated devices | Update WebView from Play on a `google_apis_playstore` image, or use a phone. |
 | No Flatpak host | L1 and L2 unverified in the shipping configuration | Run on a Fedora or Ubuntu VM/desktop with `flatpak-builder`. |
 | `cargo` is not on PATH in non-login shells | Commands fail with "not found" | `export PATH="$HOME/.cargo/bin:$PATH"`. |
@@ -122,7 +142,9 @@ These were all found by tests, not by reading:
 |---|---|---|
 | A WebView escape lands in `:browser` with the app's UID | Android gives one UID per APK | Vault keys never enter `:browser`; auth-bound Keystore key; minimal Binder interface. Stronger: a separate browser APK (ADR-04, post-V1). |
 | `blob:`, `data:` and POST downloads cannot be captured | WebView does not report them or they cannot be re-fetched | Stated as unsupported. For `blob:` and `data:` Rift is never told, so it cannot even show a message. A JavaScript bridge could capture them but would add attack surface, so it is rejected for V1. |
-| Android worker is weaker than the Linux worker (exec memory, `AF_UNIX`, NoNewPrivs=0) | `isolated_app` policy is set by the OS; ART needs exec memory | Per-thread seccomp filter in the native library, as defence in depth, if it does not break ART. |
+| Android worker is weaker than the Linux worker (exec memory, `AF_UNIX`; NoNewPrivs varies by image) | `isolated_app` policy is set by the OS; ART needs exec memory | Per-thread seccomp filter in the native library, as defence in depth, if it does not break ART (not done yet). |
+| Rift's own downloads trust only the bundled Mozilla roots | Chosen so user-installed CAs cannot intercept the core's fetches | Downloads behind a TLS-inspecting proxy fail. Switching to `rustls-platform-verifier` is the documented alternative if that proves unacceptable. |
+| Preview input is held in the controller's memory (≤ 32 MiB) | The decrypted copy passes through Kotlin into the memfd | Larger files are not previewed; writing from Rust into the memfd would remove the copy. |
 | An Android app cannot inspect the renderer's sandbox at runtime (A1 needed `adb root`) | Other apps' `/proc` entries are hidden | Rift relies on the API ≥ 30 floor and `isMultiProcessEnabled()`, which A1 showed imply an `isolated_app` renderer on the tested builds. |
 | The WebView version on a device is outside Rift's control | Updated by Google Play, or not at all on some devices | Minimum-version precondition before browsing (§8.4); the version is recorded in compatibility reports. |
 | URL heuristics and YARA rules are not a malware verdict | Offline indicators have limited coverage | Results always state coverage; never "100% safe". |
@@ -136,11 +158,11 @@ These were all found by tests, not by reading:
 1. X3 on a phone; L1 and L2 inside Flatpak on Fedora and Ubuntu.
 2. Run A1–A7 on API 33/34/35, a physical phone and a 16 KB page-size image.
 
-**Phase 2: Android vertical slice**
-3. Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.
-4. Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.
-5. Isolated worker preview (PDF, images, text) with validated output; reset and recovery as proven in A2.
-6. Security tests S1–S12 on the device matrix; Phase 2 report.
+**Phase 2: Android vertical slice** (items 3–5 built and tested on API 36; see [phase-2.md](phase-2.md))
+3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.
+4. ~~Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.~~ Done.
+5. Isolated worker preview: images and PDF done; **text preview not done**. Reset and recovery done (S12, S13).
+6. Security tests on the device matrix: **API 36 done; API 30/33/34/35, 16 KB pages and a phone open.** Also open: the per-thread seccomp filter, a release build.
 
 **Phase 3: Scanner and signed intel**
 7. YARA-X scan jobs, verdict cache bound to rule and engine versions.
@@ -167,3 +189,4 @@ These were all found by tests, not by reading:
 | WebKitGTK check (L1) | `poc/linux-webkit-sandbox/run-in-docker.sh` |
 | TUF offline (X2) | `poc/tuf-offline/run-scenarios.sh poc/target/release/tuf-offline` (needs `tuftool`); on Android: build with `cargo ndk -t arm64-v8a -P 30 build --release -p tuf-offline`, then pass `poc/tuf-offline/adb-client.sh` as the client with `RIFT_X2_BINARY` set |
 | Android A1–A7 | `poc/android-feasibility/build.sh`, then `run-poc.sh <out-dir>` with one emulator or phone attached |
+| Android Phase 2 suite | `android/build.sh`, then `android/run-tests.sh <out-dir>` with one emulator attached (S13/S14 need `adb root`) |
