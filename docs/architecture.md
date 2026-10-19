@@ -1,7 +1,8 @@
 # Simulation-Rift — Architecture and Specification
 
-**Version:** 2.0 (supersedes the v1.1 "Project Specification", 17 Oct 2026)
-**Date:** 17 October 2026
+**Version:** 2.1 (20 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
+**Date:** 20 October 2026
+**Changes in 2.1:** the Android browser moves into its own APK (separate UID, wiped by the system at every reset) behind a network lock: a per-app VPN that forwards nothing, and an authenticated loopback proxy in the controller as the browser's only way out. PoC A8 measured both (ADR-04 revised, ADR-14, INV-14, B2/B8, §8.8, S23–S28).
 **Status:** Approved baseline architecture. Phase 0 feasibility tests are in progress; every claim marked **[PoC]** is unverified until its Phase 0 report says otherwise.
 **Platforms:** Android (API 30+, arm64-v8a first, x86_64 for emulators) and Linux (Flatpak, x86_64 and aarch64)
 **Languages:** Rust (shared core, workers, Linux UI), Kotlin (Android UI and platform glue), Python (offline model training only, never shipped)
@@ -133,26 +134,29 @@ In priority order:
 | # | Boundary | Enforced by | Strength | Notes |
 |---|---|---|---|---|
 | B1 | Web content → app | Android: Chromium renderer in an `isolated_app` SELinux domain with seccomp-bpf. Linux: the WebKitGTK WebProcess sandbox (bubblewrap + seccomp) | Strong; exploit chains exist | One renderer per WebView profile, so there is no site isolation within a session. |
-| B2 | Browser host (`:browser`) → vault and core | Android: separate **process**, same UID | **Weak** | Raises cost (no key material in memory, no vault code loaded). It is not a security identity: same-UID code can read app files and use Keystore keys. See §8.3. |
+| B2 | Browser host → vault and core | Android: separate **APK and UID** (`org.simulationrift.browser`). Its data directory is private to it and Rift's is not even mounted in its namespace; the only door is one Binder service exported under a `signature` permission, which checks the caller's UID and signer on every call | Strong; kernel- and SELinux-enforced (PoC A8) | v2.0 used a separate process with the same UID, which was weak. An engine escape now lands in an app that holds no Rift data, keys or code beyond the browser's. The system wipes that app at every reset. |
 | B3 | File content → app | Android: `isolatedProcess` service (random UID, `isolated_app` domain, no permissions). Linux: worker self-lockdown with seccomp-bpf allowlist, Landlock, rlimits, and no_new_privs | Strong for parse-only workers | Workers receive only file descriptors. |
 | B4 | Website → sensors | Permissions are **absent from the manifest** (Android) or denied in WebKit permission callbacks (Linux) | Strong on Android (OS-enforced); policy-enforced on Linux | Callbacks deny as well, as defence in depth. |
 | B5 | Offline attacker → vault | age encryption; the identity is wrapped by Android Keystore or a passphrase (scrypt) | Strong while locked | Leaks object count, ciphertext sizes, and timestamps. |
 | B6 | Network or feed attacker → intelligence | TUF metadata (signatures, thresholds, expiry, rollback state), then strict bounded parsing | Strong while keys are protected | Signatures prove origin, not correctness. |
 | B7 | Other apps → Rift's data | Android app sandbox (per-app UID). Flatpak's per-app home on Linux | Strong on Android; partial on Linux | Linux host processes of the same user can read `~/.var/app/<id>`. |
+| B8 | Browser → network | Android: a VPN that applies to the browser app's UID only and forwards nothing, so the kernel routes all of its non-loopback traffic (TCP, UDP, DNS, WebRTC) into a dead end; the browser's only way out is the controller's loopback proxy (`rift-core::egress`), which needs a per-session token and applies INV-13 to every connection. Linux: §9.2 | Strong for page content; strong against direct sockets from escaped browser code except to **loopback** (PoC A8) | Pages cannot reach the LAN, the router, loopback services or cloud metadata addresses. The proxy sees host names and ports, not HTTPS content. Only one VPN can run on a device; without it the browser runs only in a stated reduced mode (§8.8). |
 
 ```text
-                 ┌──────────────── TRUSTED ────────────────┐
-  user ──UI──▶   │ main process: UI · rift-core · vault ·  │
-                 │ intel · updater · policy                │
-                 └───────┬───────────────────┬─────────────┘
-                 B2 (weak, same UID)    B3 (strong)
-                 ┌───────▼────────┐   ┌──────▼───────────────┐
-                 │ :browser       │   │ rift-worker           │
-                 │ WebView host   │   │ PDF · image · YARA-X  │
-                 │ network service│   │ no net · no fs · no   │
-                 └───────┬────────┘   │ keys                  │
-                    B1 (strong)       └──────────────────────┘
-                 ┌───────▼────────┐
+                 ┌──────────────── TRUSTED (controller APK) ───────────┐
+  user ──UI──▶   │ main process: UI · rift-core · vault · intel ·       │
+                 │ updater · policy · egress proxy (127.0.0.1) · VPN    │
+                 └───┬────────────────────┬──────────────────┬──────────┘
+            B2 (strong: other UID,   B8: the only way    B3 (strong)
+            signature-checked Binder) out (loopback)        │
+                 ┌───▼────────────────────▼────┐   ┌────────▼─────────────┐
+                 │ browser APK, own UID        │   │ rift-worker           │
+                 │ :web  WebView host + network│   │ PDF · image · YARA-X  │
+                 │ service; session service    │   │ no net · no fs · no   │
+                 │ (wiped by the system)       │   │ keys                  │
+                 └───┬─────────────────────────┘   └───────────────────────┘
+                     │ B1 (strong)       all other traffic ──▶ VPN tun ──▶ dropped
+                 ┌───▼────────────┐
                  │ renderer       │  ◀── T1 hostile web content
                  └────────────────┘
 ```
@@ -170,28 +174,31 @@ Each invariant has a test ID in §23. An invariant without a passing test is rep
 | INV-5 | A failed, timed-out, crashed, or unsupported check produces **Not fully scanned**. It never produces **Not flagged**. |
 | INV-6 | The browser exposes no JavaScript interface or message channel to web content. File and content access are disabled. `intent:`, `file:`, `content:`, and custom schemes are never forwarded automatically. Mixed content is never allowed. Multiple windows are disabled. A persistent trusted indicator survives fullscreen. The file chooser is denied unless the user enables it for the session. |
 | INV-7 | Browsing is refused if the engine's renderer sandbox cannot be confirmed. On Android that means the renderer is not multi-process or WebView is below the minimum version. On Linux that means the WebKit sandbox is not active. If the renderer crashes, the session is torn down and the app does not crash. |
-| INV-8 | Session reset terminates the session's processes, deletes session data, and verifies the deletion. Only then does it report success, and it advances the session generation. Results from older generations are rejected. A failed cleanup is shown as failed. |
+| INV-8 | Session reset terminates the session's processes, deletes session data, and verifies the deletion. Only then does it report success, and it advances the session generation. Results from older generations are rejected. A failed cleanup is shown as failed. On Android the browser app is wiped by the system (`clearApplicationUserData`), which kills all its processes and deletes all its data, at every reset and before the first session after a launch. |
 | INV-9 | Vault and quarantine plaintext is written to persistent storage only in encrypted form. Preview plaintext lives in RAM-backed fds (memfd/ashmem) **[PoC A7/L3]**. |
 | INV-10 | An intelligence snapshot is activated only after full TUF verification, staging, schema validation, and smoke tests, all followed by one atomic pointer swap. Expired network metadata and rollbacks are rejected. Recovery is done with a new, higher-versioned release, never by resetting anti-rollback state. |
 | INV-11 | In Local Protection mode, Rift's own code sends no content-specific requests (URLs, hashes, files) to any third party. Engine features that do, such as Safe Browsing, are disclosed and controlled by the user. |
 | INV-12 | The app opts out of backup and device-to-device transfer for all data. Vault screens set `FLAG_SECURE`. |
 | INV-13 | Controller-owned network transfers (downloads, updates) re-check every redirect hop. They resolve DNS once per hop and refuse loopback, private, link-local, and multicast destinations unless the user explicitly allows them. They enforce byte limits on the stream, not on `Content-Length`. |
+| INV-14 | While a session is open, the browser has no network path except the controller's egress proxy (Android: the browser UID's traffic is routed into a VPN that forwards nothing, and WebView's proxy override has its implicit bypass rules removed). The proxy accepts only this session's token and applies INV-13's destination rules to every connection. If the lock is lost, the session ends and the browser is wiped. Browsing without the lock is possible only in a reduced mode the user chooses for one session, which the trusted UI names. |
 
 ## 6. Architecture overview
 
 ```text
- ANDROID — one APK, one UID                                  LINUX — Flatpak
- ┌─ main process [TRUSTED] ─────────────────────┐   ┌─ rift (GTK4) [TRUSTED] ─────────┐
- │ Kotlin/Compose UI                            │   │ gtk4-rs + libadwaita UI          │
- │ rift-core via UniFFI (rift-ffi)              │   │ rift-core (direct Rust)          │
+ ANDROID — two APKs, two UIDs                                LINUX — Flatpak
+ ┌─ controller APK, main process [TRUSTED] ─────┐   ┌─ rift (GTK4) [TRUSTED] ─────────┐
+ │ Kotlin/Compose UI · VPN for the browser UID  │   │ gtk4-rs + libadwaita UI          │
+ │ rift-core via UniFFI (rift-ffi) · egress     │   │ rift-core (direct Rust)          │
  └──┬──────────────────────┬────────────────────┘   └──┬───────────────┬──────────────┘
-    │ Binder, non-exported │ Binder + ParcelFileDescriptor  │ WebKit IPC   │ socketpair + SCM_RIGHTS
- ┌──▼─ :browser ───────────┐ ┌▼─ isolatedProcess ─────┐ ┌──▼──────────┐ ┌▼─ rift-worker ──────┐
- │ WebView host + network  │ │ rift-worker-ffi (.so)  │ │ WebKit       │ │ seccomp + Landlock   │
- │ URL lookup (read-only)  │ │ PdfRenderer (platform) │ │ WebProcess   │ │ rlimits, NNP         │
- │ no vault, no keys       │ │ image · YARA-X(pulley) │ │ (sandboxed)  │ │ PDFium · image ·     │
- └──┬──────────────────────┘ └────────────────────────┘ └──────────────┘ │ YARA-X(pulley)       │
- ┌──▼─ WebView renderer ───┐                                             └──────────────────────┘
+    │ Binder, signature    │ Binder + ParcelFileDescriptor  │ WebKit IPC   │ socketpair + SCM_RIGHTS
+    │ permission + UID chk │                          ┌──▼──────────┐ ┌▼─ rift-worker ──────┐
+ ┌──▼─ browser APK ────────┐ ┌▼─ isolatedProcess ─────┐ │ WebKit       │ │ seccomp + Landlock   │
+ │ :web WebView host +     │ │ rift-worker-ffi (.so)  │ │ WebProcess   │ │ rlimits, NNP         │
+ │ network service; proxy  │ │ PdfRenderer (platform) │ │ (sandboxed)  │ │ PDFium · image ·     │
+ │ is 127.0.0.1 (egress)   │ │ image · YARA-X(pulley) │ └──────────────┘ │ YARA-X(pulley)       │
+ │ no Rift data, no keys   │ └────────────────────────┘                  └──────────────────────┘
+ └──┬──────────────────────┘
+ ┌──▼─ WebView renderer ───┐
  │ isolated_app, seccomp   │
  └─────────────────────────┘
 ```
@@ -282,28 +289,33 @@ Everything else is a concrete type.
 - `usesCleartextTraffic` is set only as required for user-initiated HTTP browsing. Rift's own traffic is HTTPS-only.
 - Intent filters: `ACTION_VIEW` for http/https (Rift appears as a browser choice) and `ACTION_SEND` with `text/plain` (URLs) and `*/*` (file import).
 - Components:
+  - Two APKs signed with the same key (ADR-04, revised in v2.1). The controller, `org.simulationrift.app`, holds everything below except the browser. The browser, `org.simulationrift.browser`, holds only `BrowserActivity` (`android:process=":web"`) and `SessionService` (its default process, which never loads WebView). Both define the `signature` permission `org.simulationrift.permission.RIFT`; each exported component requires it, and each side also checks the calling UID's package and signer on every call. The browser has no launcher entry.
   - `MainActivity` (main process).
-  - `BrowserActivity` with `android:process=":browser"`.
+  - `NetworkLockService` (`VpnService`, `BIND_VPN_SERVICE`), the network lock (§8.8).
   - `PreviewService` with `android:isolatedProcess="true"`, `android:exported="false"`, and `android:useAppZygote="true"`. The zygote preload only loads the native libraries (`jnidispatch`, `rift_worker_ffi`): the zygote must stay single-threaded, so no JNA or UniFFI object is created there.
   - Debug builds add test workers from `src/debug` (probe, hanging, crashing, lying and unconfined services for S3–S7). The release manifest is checked to contain none of them.
-  - A non-exported Binder service in the main process for the browser→core interface.
+  - `CoreService`, the browser→core interface, exported only under the `signature` permission.
+  - The controller never depends on `androidx.webkit` and never loads WebView; `build.sh` refuses a build in which it does.
 
 ### 8.3 Processes and why
 
 | Process | Holds | Why it exists |
 |---|---|---|
-| main | UI, rift-core, vault identity (when unlocked), intel, updater | Trusted controller. |
-| `:browser` | WebView host and network service; a read-only intel snapshot handle | **Lifecycle:** killing this process plus deleting its data directory is the only disposal mechanism we expect to work on every WebView provider (§15). **Hygiene:** the process that hosts code reachable from a renderer escape never holds vault keys or loads vault code. |
+| controller main | UI, rift-core, vault identity (when unlocked), intel, updater, egress proxy, network lock | Trusted controller. |
+| browser `:web` | WebView host and its network service | The process an engine escape reaches. It runs under the browser APK's UID, which owns nothing of Rift's, and its traffic has no route except the egress proxy (§8.8). |
+| browser default process | `SessionService`: hello, inventory, wipe | Lets the controller have the system wipe the browser app and check that a fresh instance holds nothing. Never loads WebView. |
 | renderer | Web content | Provided and sandboxed by WebView (B1). |
 | isolated worker | One job's input | B3. |
 
-**Honest limit of B2.** Code running in `:browser` after an engine escape has the app's UID. It can read the app's private files, bind the app's non-exported services, and use Keystore keys that are not authentication-bound. Rift raises the cost in three ways:
+**What an engine escape reaches (v2.1, PoC A8).** Code running in the browser's `:web` process after an escape has the browser APK's UID. Measured from that process on API 30 and 36:
 
-- (a) Vault data is encrypted at rest and the identity is never in `:browser` memory.
-- (b) The vault-wrapping key is authentication-bound by default, so each unlock needs a fresh BiometricPrompt or device credential.
-- (c) The core's Binder interface offers `:browser` only `submit_download`, `lookup_url`, and `report_navigation`. It has no vault or export operations.
+- Rift's data directories are not visible at all (`ENOENT`): the vault, quarantine, intel and session marker are out of reach, and Keystore keys belong to the controller's UID.
+- The controller's private services cannot be bound (`SecurityException`). The one exported interface, `CoreService`, offers only navigation decisions, typed-address normalization, download submission, the sandbox and network reports, reset and renderer-gone. It has no vault, file or export operations, and every call is checked for the browser's UID and signer and the current session generation.
+- TCP, UDP and DNS to anything but loopback are dropped by the network lock; through the proxy only public destinations (or the user's per-session exceptions) are reachable.
 
-The only stronger option is a separate APK, which means a separate UID. That is recorded as a post-V1 option (ADR-04). The browser→core interface is designed so it could move across a UID boundary unchanged.
+What it still has: the browser app's own state for the current session (the pages, cookies and downloads seen in it), the `INTERNET` permission (useless outside loopback while the lock holds), the ability to draw anything inside the browser window, and **loopback**, which no VPN covers: other apps' local servers on the device remain reachable from escaped code (not from pages, which the proxy refuses). Because the system wipes the app at each reset, the escape does not survive into the next session unless it also escapes Android's app sandbox.
+
+v2.0 ran the browser as a process of the controller's own APK, so an escape had the controller's UID and could read its files. That weaker design is gone.
 
 ### 8.4 WebView configuration
 
@@ -311,8 +323,10 @@ The only stronger option is a separate APK, which means a separate UID. That is 
   - `WebViewCompat.getCurrentWebViewPackage()` is at or above the minimum supported version.
   - `WebViewCompat.isMultiProcessEnabled()` returns true **[PoC A1]**.
   - Otherwise browsing shows "unsupported device configuration".
-- `setDataDirectorySuffix("s<generation>")` is called in `:browser` before any WebView use. A new generation gets a fresh directory even if deletion of the old one is still pending.
-- The main process never loads WebView, not even to ask about it (`isMultiProcessEnabled()` loads the provider). Doing so would create an unsuffixed `app_webview/` outside any session. Phase 2 found this through a test that did it; the reset inventory refused the leftover, as designed.
+- `setDataDirectorySuffix("s<generation>")` is called in `:web` before any WebView use. A new generation gets a fresh directory even if the system wipe of the old one were still pending.
+- The network lock is set up before the first page (§8.8): `ProxyController.setProxyOverride` with the proxy at `127.0.0.1:<port>` and `removeImplicitRules()`, completed before any WebView is created; and the browser's default network must be the VPN. If `PROXY_OVERRIDE` is unsupported or either step fails, browsing is refused, as for an unconfirmed renderer sandbox.
+- The proxy's 407 challenge is answered in `onReceivedHttpAuthRequest` only for host `127.0.0.1` and the session's random realm; every other credential request is cancelled, so the token never goes to a site.
+- The controller never loads WebView, not even to ask about it (`isMultiProcessEnabled()` loads the provider). In v2.0 a test that did so created an unsuffixed `app_webview/`; the reset inventory refused it. In v2.1 the controller has no WebView dependency at all.
 - Settings:
   - JavaScript on (sites need it). `allowFileAccess=false`, `allowContentAccess=false`.
   - `mixedContentMode=NEVER_ALLOW`, `setSupportMultipleWindows(false)`, `javaScriptCanOpenWindowsAutomatically=false`, `setGeolocationEnabled(false)`, `saveFormData=false`.
@@ -326,6 +340,7 @@ The only stronger option is a separate APK, which means a separate UID. That is 
   - `onRenderProcessGone`: destroy the WebView, end the session, return `true`.
 - **Media Integrity API is disabled** (`WebSettingsCompat.setWebViewMediaIntegrityApiStatus(…, DISABLED)`). Phase 2 finding (S1): WebView 133 exposes `window.android.webview` to every page, and by default its token provider calls Play Integrity for the page. It is not an app bridge, but it is a page-reachable channel to a Google service, which INV-11 does not allow by default. With the setting, the object remains visible but answers "API disabled by application"; S1 asserts exactly that.
 - `android.webkit.WebView.MetricsOptOut` is set in the manifest. The minimum WebView major version is 100, a release parameter reviewed against Chromium's security releases.
+- **WebRTC** stays available to pages, but with the network lock its UDP has no route (A8: STUN to a private address was dropped, and the only host candidate a page sees is the VPN's own address, not the device's). In reduced mode it can reach the LAN and expose the local address; the trusted UI says so.
 - **Safe Browsing** is a disclosed onboarding choice. It works by matching URL hash prefixes in Google Play services and can send prefixes to Google. If the user enables it, Local mode's claim (INV-11) states this explicitly.
 
 ### 8.5 Downloads **[PoC A3]**
@@ -371,6 +386,19 @@ PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and coo
 - Without a secure lock screen, auth-bound keys are impossible. The user must then choose a vault passphrase (age scrypt). Rift never silently stores an unprotected key.
 - Key invalidation (for example, new biometrics enrolled) makes the vault unrecoverable without the optional recovery passphrase. This is stated when the vault is created.
 
+### 8.8 Network lock **[PoC A8]**
+
+The browser APK needs `INTERNET` for WebView to work at all, so its network has to be bounded from outside it. Two mechanisms, one for each way around the other:
+
+- **Egress proxy (controller, `rift-core::egress`).** An HTTP proxy on `127.0.0.1` with a random port, a 256-bit token and a random realm per session. It accepts only `CONNECT host:port` (HTTPS, WebSockets) and absolute `http://` requests with a bounded head (16 KiB, 100 headers), resolves each name once, refuses the connection if any answer is non-public unless the user allowed that exact host name for the session (INV-13), and connects only to the addresses it checked. It does not decrypt TLS. Every refusal is kept for the trusted UI. Reset stops it, which closes every tunnel.
+- **VPN for the browser UID (controller, `NetworkLockService`).** `VpnService.Builder` with routes `0.0.0.0/0` and `::/0`, a DNS server inside the tun's own range, and `addAllowedApplication(org.simulationrift.browser)` only, so no other app (Rift's controller included) is affected. The controller reads the tun and drops every packet, counting them for diagnostics. It forwards nothing, so there is no userspace TCP/IP stack in the trusted core. Loopback traffic is not routed through a VPN, which is why the proxy keeps working.
+
+Without the VPN a proxy is not a boundary (A8 finding 15): WebRTC sends UDP around it, Chromium bypasses it for loopback unless told otherwise, and escaped native code ignores it. Without the proxy the VPN would allow nothing. Together, a page reaches only public addresses (or the user's exceptions) through a channel the controller checks, and escaped browser code reaches only loopback.
+
+**Lifecycle.** The lock is established before the browser is started for a session, and the browser confirms its default network is the VPN before loading a page. If the VPN is revoked (another VPN app started, or the user turned it off), the controller ends the session and wipes the browser (S28). Consent is the system's one-time VPN dialog. Only one VPN can run on a device: a user who needs another VPN, or has one set as always-on, cannot have the lock. Such a user can choose **reduced isolation** for one session: proxy only, with a persistent label in the trusted bar saying that WebRTC can reach the local network and that escaped code is not network-bounded. There is no silent fallback.
+
+**What it does not do.** It does not filter content or hide traffic from the network (the update host and sites see the device's address as usual). It does not see inside HTTPS. It does not stop a page from reaching public addresses: that is browsing.
+
 ## 9. Linux platform
 
 ### 9.1 Distribution
@@ -388,6 +416,7 @@ Why: distribution WebKitGTK versions vary. Ubuntu 23.10+ restricts unprivileged 
   - WebKit starts more web processes as tabs and sites change (process swap on navigation), so the check runs for every new web process before its page is shown, not once per session.
   - The check is necessary, not redundant: WebKitGTK 2.54.1 aborted when `bwrap` could not create namespaces, but an environment variable silently disables the sandbox, and R12 shows a fallback path has existed before.
   - The **network process is not sandboxed** by WebKitGTK (L1: no seccomp, no new namespaces). It parses HTTP, TLS and cookies for every site, so a bug there runs with the user's full privileges in a native package. This is a main reason for Flatpak first: there it is at least bounded by the Flatpak sandbox (to be verified in Phase 0 L1-Flatpak).
+- **Network lock on Linux (Phase 5 design, PoC L4 pending).** The browser host runs as a separate process in a Flatpak sub-sandbox (`flatpak-spawn --sandbox --no-network`), so it and WebKit's network process have their own network namespace with only a loopback interface. WebKit's proxy setting (`WebKitNetworkProxySettings`) points at a forwarder inside that sandbox, which passes each connection over an inherited Unix socket to the controller's egress proxy. Escaped code in the browser sandbox then reaches nothing at all, not even the host's loopback: a stronger result than on Android, where loopback is shared. The sub-sandbox also has no access to the app's data directory (only `--sandbox-expose` paths, of which there are none). L4 must show that WebKitGTK runs in such a sub-sandbox and that the web process sandbox still starts inside it.
 - Permission requests (`permission-request` signal): deny all, including camera, microphone, geolocation, notifications, and clipboard read.
 - Downloads: the `decide-policy` and `download-started` handlers cancel the engine download and submit to the core transfer, as on Android. Engine downloads may be used later if they prove more compatible.
 - Optional hardening for later evaluation: disable JavaScriptCore's JIT for untrusted sessions. There is precedent in Edge's enhanced security mode [R23]. The mechanism is unsupported and is not relied on in V1.
@@ -577,13 +606,16 @@ CREATING ─▶ ACTIVE ─▶ RESETTING ─▶ DESTROYED
 
 - One active session at a time in V1.
 - **Generation:** a `u64` persisted in a recovery marker. It changes on every reset, and any result carrying an older generation is rejected.
-- **Android reset:**
-  1. Cancel transfers and retire workers.
+- **Android reset (v2.1):**
+  1. Cancel transfers and retire workers; stop the session's egress proxy, which closes every tunnel.
   2. Drop the session key, which crypto-shreds quarantine.
-  3. Ask `:browser` to finish, then `killProcess`. Wait for binder death. (The app freezer may have frozen a backgrounded `:browser`, so the finish request can fail; the kill and the checks below still decide.)
-  4. Delete `app_webview_s<gen>` and the WebView cache directories for that generation, **and every file in `shared_prefs/`**. PoC A2 found that WebView writes `AwOriginVisitLoggerPrefs.xml` (hashes of visited origins with a date) and `WebViewChromiumPrefs.xml` at the app level, outside the suffix. Rift therefore never stores its own state in SharedPreferences, so this directory can be deleted default-deny.
-  5. Verify the inventory against an **allowlist** of Rift's own files: anything else is a leftover, so a new kind of engine state is detected even before it is understood. The Phase 2 allowlist is `files/rift/**`, `files/profileInstalled` and, in release builds, `files/profileinstaller_profileWrittenFor_lastUpdateTime.dat` (both written by `androidx.profileinstaller`; neither contains browsing data).
+  3. Ask the browser to finish (best effort), then have its `SessionService` call `clearApplicationUserData()` on the browser app. The system kills every process of the package and deletes all of its data: WebView's directories, `shared_prefs/` (where PoC A2 found `AwOriginVisitLoggerPrefs.xml`), caches, and anything a compromised browser wrote. The controller waits for the binding to die.
+  4. Bind a fresh `SessionService` and require its inventory to contain no file at all (empty directories the platform creates, such as `cache/`, are allowed). A new process id is required.
+  5. Verify the controller's own inventory against an **allowlist** of Rift's own files, as before: `files/rift/**`, `files/profileInstalled` and, in release builds, `files/profileinstaller_profileWrittenFor_lastUpdateTime.dat`. Since the controller never loads WebView, any WebView state there is a leftover.
   6. Increment the generation.
+
+  The controller cannot inspect the browser's files itself (they belong to another UID), so step 4 trusts the fresh browser process's report. That process runs only the browser APK's code, started after the system deleted everything the old one could have changed. Tests cross-check it from outside with `run-as` (debug builds).
+- **Before the first session after a launch,** the browser is wiped in the same way, so a crash, a kill or a lost reset in an earlier run leaves nothing behind.
 - **Linux reset:** the same steps, with WebKit's `WebKitNetworkSession` set to ephemeral (`webkit_network_session_new_ephemeral`), which keeps data in memory, and termination of the web process.
 - **Recovery on launch:** if the marker says ACTIVE or RESETTING, cleanup completes *before* any new session is presented as fresh **[PoC A2]**.
 - Inactivity reset: 15 min by default, configurable. This is best effort under platform scheduling.
@@ -662,9 +694,9 @@ Each decision lists what was chosen, what was rejected, why, and what would make
 | ADR | Decision | Rejected alternatives | Rationale | Revisit if |
 |---|---|---|---|---|
 | 01 | Android engine: **WebView** | GeckoView; Custom Tabs; Chromium fork | WebView's renderer is always out-of-process and sandboxed on API 30+ [R02] and patched by Google independently of Rift. GeckoView's isolated content processes are opt-in or in progress, and its Android site isolation was shipped then rolled back in Firefox 147 [R04][R05]. GeckoView would also add a large per-ABI payload and make Rift responsible for monthly engine updates. Custom Tabs gives no download control. | GeckoView ships default isolated processes with Fission, *and* download capture (PoC A3) proves unacceptable. |
-| 02 | Browser in a dedicated `:browser` process | ProfileStore-only disposal | Process death plus deleting the directory works on every provider. It also keeps keys out of the escape-reachable process. | — |
+| 02 | Browser in its own process, disposed of by ending it and deleting all its data (v2.1: in its own app, wiped by the system; ADR-04) | ProfileStore-only disposal | Process death plus deleting the data works on every provider. It also keeps keys out of the escape-reachable process. | — |
 | 03 | One rule engine: YARA-X (`pulley`) | libyara on Android plus YARA-X on Linux | One engine means one rule dialect, one test matrix, and a memory-safe implementation. `pulley` removes JIT; Cranelift on aarch64 had a 2026 sandbox-escape fix [R07]. YARA-X's C-API Android issue #344 is still open, so we use the Rust API [R06]. | PoC A5 fails (size or speed) → libyara on both platforms. |
-| 04 | Single APK in V1 | Two APKs (separate browser UID); work profile | Two APKs are the only stronger Android boundary, but cost install friction and double the release work. The interface is kept narrow so the split remains possible. | The threat model needs vault protection against a full browser-host compromise. |
+| 04 | **Two APKs in V1** (revised 20 Oct 2026): the browser in its own app with its own UID, wiped by the system at each reset | Single APK with a `:browser` process (v2.0); work profile | The revisit condition of v2.0 was met: the product must protect the vault and Rift's data against a full browser-host compromise ("real isolation", not only disposal). PoC A8 showed the UID boundary hides Rift's data entirely and that the system wipe is reliable and fast (under 1.7 s to a clean instance). The cost: two APKs to install, sign with one key, and release together. | A platform mechanism gives a stronger per-session identity (for example a per-session user or a supported VM) to third-party apps. |
 | 05 | Linux workers: seccomp + Landlock self-lockdown | Bubblewrap | Bubblewrap needs user namespaces, which Flatpak blocks and Ubuntu 23.10+ restricts [R13]. A syscall allowlist is the stronger control for fd-only workers. | — |
 | 06 | Linux PDF: PDFium | Poppler (GPL), MuPDF (AGPL) | Permissive license, the same engine family as Android's PdfRenderer, and heavy fuzzing. | — |
 | 07 | Vault: age format and an encrypted index file | libsodium plus a custom format; SQLite with encrypted fields; SQLCipher | Avoids designing our own crypto format. Encrypting all metadata leaks less than per-field encryption. `sodiumoxide` has been archived since 2021. | More than 10,000 objects → SQLCipher. |
@@ -674,6 +706,7 @@ Each decision lists what was chosen, what was rejected, why, and what would make
 | 11 | AI deferred to Phase 6, gated | AI in V1 | Uncertain marginal value over heuristics and Safe Browsing. Keeps V1 focused. | — |
 | 12 | Images: Rust decoders | Platform BitmapFactory, ImageDecoder | Memory-safe decoders. The libwebp CVE-2023-4863 is a precedent for C codec risk. | — |
 | 13 | License: MIT OR Apache-2.0 | GPL | Compatible with every chosen dependency (BSD, MIT, Apache, MPL). Can be revisited before outside contributions. | Maintainers choose otherwise. |
+| 14 | Network lock: a deny-all VPN for the browser UID plus an authenticated loopback proxy in the controller (v2.1) | Proxy only; `shouldInterceptRequest` filtering; a VPN with a userspace TCP/IP stack that forwards checked traffic | A8: a proxy alone is bypassed by WebRTC, by Chromium's implicit loopback rule, and by escaped native code. Request interception sees URLs, not resolved addresses, and misses WebSockets and WebRTC. A forwarding VPN would put a TCP/IP stack in the trusted core; dropping everything needs none, because loopback is not routed through a VPN. | A supported per-app firewall API appears, or the one-VPN limit proves unacceptable (then: reduced mode only). |
 
 ## 21. Repository and engineering conventions
 
@@ -732,9 +765,11 @@ Simulation-Rift/
 | A5 | Does YARA-X with `pulley` build and run on Android? | It builds with cargo-ndk for arm64 and x86_64, is 16 KB aligned, and matches inside the isolated service. Size and throughput are recorded. |
 | A6 | Are workers cut off from files and the network? | Inside the worker, a canary file in app storage gives `EACCES`; `socket(AF_INET)` and `connect` are denied. |
 | A7 | Is the RAM-backed seekable fd handoff possible? | ashmem/SharedMemory fd → `ParcelFileDescriptor` → seek and read works in the worker. |
+| A8 | Can the browser be isolated from Rift's data and the network beyond a process boundary? (v2.1) | From a separate browser APK: Rift's files unreachable, private services unbindable; a self-wipe leaves an empty data directory; behind the proxy and VPN, no request to a private or loopback address and no UDP leaves the device. |
 | L1 | Is the WebKit sandbox actually active in Flatpak? | The WebProcess shows seccomp and namespaces on Fedora and Ubuntu. Rift's detector refuses when it is absent. |
 | L2 | Does the worker lockdown hold? | Natively, inside Docker, and inside Flatpak: open, socket, execve, ptrace, and kill are denied. Allowed work succeeds. |
 | L3 | Is the sealed-memfd output immutable? | After sealing, writes from the worker fail; the controller verifies the seals. |
+| L4 | Can WebKitGTK run in a no-network Flatpak sub-sandbox behind a forwarding proxy? (v2.1) | Pages load through the controller's proxy; direct connections and DNS from the sandbox fail; the WebProcess sandbox is still active. |
 | X1 | Does the vault format detect damage? | Round trip works; truncation, tampering, swapped objects, and a wrong key are each detected. |
 | X2 | Can TUF be verified offline on Android targets? | A `tuftool` repository verifies through file transport. Tampering, rollback, expiry, and path traversal are rejected. Cross-compiles for Android. |
 | X3 | Are URL lookups fast and correct? | Canonicalization passes the published Safe Browsing examples; p95 lookup ≤ 5 ms with 1 million entries. |
@@ -765,6 +800,12 @@ Simulation-Rift/
 | S20 | Local mode traffic capture | No content-specific third-party requests from Rift | INV-11 |
 | S21 | Demo rule and indicator match | Expected finding with versions | §12 |
 | S22 | New pack adds or removes a rule | Cache invalidation is correct | §12.1 |
+| S23 | Code in the browser's `:web` process reads Rift's files, binds its private services, calls the core with a stale generation | Files unreachable; binds refused; stale calls refused | B2 |
+| S24 | Another app (different signer) binds the browser or the core, starts the browser, uses the proxy | Every attempt refused; the proxy answers 407 | B2, B7, INV-14 |
+| S25 | A page fetches loopback and private addresses | The requests never reach their destination; the refusals are listed | INV-14 |
+| S26 | A page uses WebRTC; browser-process code opens sockets and resolves DNS directly | No packet reaches a private or public address | INV-14 |
+| S27 | Reset after a page set cookies and storage | The system wiped the browser app: new process, no files, no state in the next session | INV-8 |
+| S28 | The network lock is lost mid-session (another VPN starts) | The session ends and the browser is wiped | INV-14 |
 
 Unit, property, and fuzz testing cover URL canonicalization, the table validator, protocol decoding, the policy decision table, session transitions, quota accounting, and the vault format. Harmless fixtures only: no live malware in CI or demos.
 
@@ -772,9 +813,11 @@ Unit, property, and fuzz testing cover URL canonicalization, the table validator
 
 | Risk | Residual after mitigation | Owner response |
 |---|---|---|
-| Engine exploit chain reaches `:browser` (same UID) | It can read app files and use non-auth-bound keys; the vault stays protected by auth-bound unwrap only | Document; keep the two-APK option (ADR-04); ship WebView minimum-version checks |
+| Engine exploit chain reaches the browser app's `:web` process | It has the browser UID: this session's browsing state, the browser window, and loopback; not Rift's data, keys or the network beyond loopback (while the lock holds) | Two APKs (ADR-04); system wipe each reset; network lock (ADR-14); WebView minimum-version checks |
+| Loopback services on the device | Escaped browser code can connect to other apps' local servers (pages cannot: the proxy refuses loopback) | Stated; no Android mechanism closes loopback for one app |
+| Only one VPN per device | Users of another VPN cannot have the network lock | Explicit reduced mode per session, labelled; never a silent fallback |
 | No site isolation within a session | A renderer compromise from one site can read other sites' data in the same session | One session at a time; encourage reset between unrelated sites |
-| Network coverage gaps (subresources, WebSocket, WebRTC) | Some traffic is unchecked | State coverage honestly; Phase 7 ProxyController study |
+| Network coverage gaps | With the lock, every connection is checked for destination class, but only main-frame navigations are checked against threat intelligence; HTTPS content is not inspected | State coverage honestly |
 | Download capture gaps | Some downloads are unsupported | Explicit UI message; no JS bridge |
 | Parser or decoder vulnerabilities | Contained by B3; kernel exploits remain | Updates; fuzzing; worker retirement |
 | Feed licensing | No real intelligence until rights are obtained | Demo packs; direct-adapter design |
@@ -871,7 +914,8 @@ Consulted on 17 Oct 2026. Verify again before release.
 | libsodium with a custom versioned format | age | Don't design crypto formats (ADR-07) |
 | SQLite with selected encrypted fields | Encrypted index file; memory-mapped hash tables for intel | Less leakage; simpler; safe update parsing (ADR-07/08) |
 | Platform image decoding | Rust decoders in the worker | Memory safety (ADR-12) |
-| Single app process hosting WebView | `:browser` process | Reliable disposal; keys out of the escape-reachable process (ADR-02) |
+| Single app process hosting WebView | `:browser` process (v2.0); a separate browser APK with its own UID, wiped by the system (v2.1) | Reliable disposal; Rift's data and keys out of reach of an engine escape (ADR-02, ADR-04) |
+| — | Network lock: deny-all VPN for the browser UID plus an authenticated egress proxy (v2.1) | Pages and escaped code cannot reach the LAN or loopback services through the browser (ADR-14) |
 | ProfileStore lifecycle | Process kill plus per-generation data directory | Works on every provider |
 | — | Per-session ephemeral quarantine key | Crypto-shredding makes disposal robust |
 | — | WebKit sandbox *verification*; WebView multi-process precondition | Known silent-fallback bug; fail closed |
