@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Only apps signed with the same key may hold it: the browser app. -->
+    <permission
+        android:name="org.simulationrift.poc.permission.RIFT"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="org.simulationrift.poc.permission.RIFT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The browser app's package must be visible to bind it (API 30). -->
+    <queries>
+        <package android:name="org.simulationrift.poc.browser" />
+    </queries>
+
+    <application android:allowBackup="false" android:label="Rift PoC controller">
+        <activity
+            android:name=".PocActivity"
+            android:exported="true"
+            android:launchMode="singleTask" />
+
+        <!-- The narrow interface the browser may use. -->
+        <service
+            android:name=".CoreService"
+            android:exported="true"
+            android:permission="org.simulationrift.poc.permission.RIFT" />
+
+        <!-- A deny-all VPN for the browser app's UID only. -->
+        <service
+            android:name=".BrowserVpn"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
+        <!-- Stands for everything the browser must not reach (vault, workers). -->
+        <service
+            android:name=".HiddenService"
+            android:exported="false" />
+    </application>
+</manifest>

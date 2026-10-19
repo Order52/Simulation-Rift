@@ -1,0 +1,381 @@
+10-20 01:50:58.228  8055  8085 I POC     : controller uid=10172 canary=/data/user/0/org.simulationrift.poc.controller/files/canary.txt
+10-20 01:50:58.232  8055  8085 I POC     : proxy port=43547 authport=36609
+10-20 01:50:58.746  8055  8085 I POC     : browser hello: uid=10173 pid=8088 process=org.simulationrift.poc.browser started=194082 now=194406
+10-20 01:50:58.747  8055  8085 I POC     : setup setup done
+10-20 01:50:59.329  8055  8190 I POC     : browse baseline mode=none port=0 started
+10-20 01:50:59.329  8055  8190 I POC     : browse baseline done
+10-20 01:50:59.601  8196  8222 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:50:59.607  8196  8222 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:50:59.608  8196  8222 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:50:59.608  8196  8222 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:50:59.608  8196  8222 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:50:59.610  8196  8222 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:50:59.618  8196  8222 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:50:59.619  8196  8222 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:50:59.620  8196  8222 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:50:59.697  8196  8222 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:50:59.699  8196  8222 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:51:00.342  8196  8222 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:51:06.693  8055  8352 I POC     : wipe after-baseline before: uid=10173 pid=8088 process=org.simulationrift.poc.browser started=194082 now=202223 files=52
+10-20 01:51:06.693  8088  8132 I POC     : browser wipe requested in pid 8088
+10-20 01:51:07.138  8055  8352 I POC     : wipe after-baseline answer=died during call (DeadObjectException) death_ms=57 fresh_ms=391 (bind 122 ms) after: uid=10173 pid=8367 process=org.simulationrift.poc.browser started=202687 now=202745 inventory=[cache/, cache/]
+10-20 01:51:07.138  8055  8352 I POC     : wipe after-baseline done
+10-20 01:51:07.637  8055  8425 I POC     : browse implicit mode=implicit port=43547 started
+10-20 01:51:07.637  8055  8425 I POC     : browse implicit done
+10-20 01:51:07.835  8431  8457 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:51:07.853  8431  8457 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:07.853  8431  8457 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:07.853  8431  8457 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:07.853  8431  8457 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:07.877  8431  8457 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:51:07.929  8431  8457 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:51:07.958  8431  8457 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:51:07.959  8431  8457 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:51:08.112  8431  8457 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:51:08.122  8431  8457 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:51:08.515  8431  8509 I POC     : web proxy override applied mode=implicit port=43547
+10-20 01:51:08.518  8431  8457 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:51:09.356  8055  8522 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:51:15.024  8055  8544 I POC     : wipe after-implicit before: uid=10173 pid=8367 process=org.simulationrift.poc.browser started=202687 now=210579 files=51
+10-20 01:51:15.024  8367  8385 I POC     : browser wipe requested in pid 8367
+10-20 01:51:15.776  8055  8544 I POC     : wipe after-implicit answer=died during call (DeadObjectException) death_ms=193 fresh_ms=671 (bind 274 ms) after: uid=10173 pid=8564 process=org.simulationrift.poc.browser started=211194 now=211356 inventory=[cache/, cache/]
+10-20 01:51:15.776  8055  8544 I POC     : wipe after-implicit done
+10-20 01:51:16.210  8055  8616 I POC     : browse proxy mode=proxy port=43547 started
+10-20 01:51:16.210  8055  8616 I POC     : browse proxy done
+10-20 01:51:16.526  8622  8648 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:51:16.531  8622  8648 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:16.531  8622  8648 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:16.531  8622  8648 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:16.531  8622  8648 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:16.534  8622  8648 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:51:16.542  8622  8648 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:51:16.544  8622  8648 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:51:16.544  8622  8648 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:51:16.570  8622  8648 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:51:16.593  8622  8648 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:51:16.802  8622  8699 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:51:16.808  8622  8648 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:51:17.371  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:17.615  8055  8522 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:51:17.652  8055  8522 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:51:17.656  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:21.731  8055  8714 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:51:23.241  8055  8742 I POC     : wipe after-proxy before: uid=10173 pid=8564 process=org.simulationrift.poc.browser started=211194 now=218838 files=51
+10-20 01:51:23.242  8564  8586 I POC     : browser wipe requested in pid 8564
+10-20 01:51:23.928  8055  8742 I POC     : wipe after-proxy answer=died during call (DeadObjectException) death_ms=172 fresh_ms=575 (bind 199 ms) after: uid=10173 pid=8762 process=org.simulationrift.poc.browser started=219408 now=219477 inventory=[cache/, cache/]
+10-20 01:51:23.928  8055  8742 I POC     : wipe after-proxy done
+10-20 01:51:24.256  8055  8809 I POC     : browse auth mode=auth port=36609 started
+10-20 01:51:24.256  8055  8809 I POC     : browse auth done
+10-20 01:51:24.495  8816  8841 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:51:24.517  8816  8841 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:24.517  8816  8841 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:24.517  8816  8841 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:24.517  8816  8841 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:24.521  8816  8841 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:51:24.573  8816  8841 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:51:24.577  8816  8841 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:51:24.577  8816  8841 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:51:24.620  8816  8841 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:51:24.622  8816  8841 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:51:25.077  8816  8891 I POC     : web proxy override applied mode=auth port=36609
+10-20 01:51:25.082  8816  8841 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:51:25.495  8055  8904 I POC     : proxy AUTH-REQUIRED GET http://localhost:8780/page.html?run=auth (header absent)
+10-20 01:51:25.731  8816  8816 I POC     : web auth request host=127.0.0.1 realm=rift token=true
+10-20 01:51:25.772  8055  8904 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:25.898  8055  8904 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:51:25.940  8055  8904 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:51:25.941  8055  8907 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:30.082  8055  8907 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:51:31.298  8055  8930 I POC     : browse timing1 mode=proxy port=43547 started
+10-20 01:51:31.298  8055  8930 I POC     : browse timing1 done
+10-20 01:51:31.434  8816  8932 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:51:31.434  8816  8932 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:31.434  8816  8932 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:31.435  8816  8932 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:31.435  8816  8932 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:31.440  8816  8932 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:51:31.478  8816  8932 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:51:31.492  8816  8932 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:51:31.497  8816  8932 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:51:31.499  8816  8932 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:51:31.502  8816  8932 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:51:31.585  8816  8934 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:51:31.590  8816  8932 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:51:31.859  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:32.258  8055  8714 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:51:32.333  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:32.361  8055  8522 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:51:36.385  8055  8714 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:51:37.716  8055  8952 I POC     : wipe timing1 before: uid=10173 pid=8762 process=org.simulationrift.poc.browser started=219408 now=233337 files=53
+10-20 01:51:37.720  8762  8781 I POC     : browser wipe requested in pid 8762
+10-20 01:51:38.469  8055  8952 I POC     : wipe timing1 answer=died during call (DeadObjectException) death_ms=53 fresh_ms=578 (bind 305 ms) after: uid=10173 pid=8968 process=org.simulationrift.poc.browser started=233847 now=233954 inventory=[cache/, cache/]
+10-20 01:51:38.469  8055  8952 I POC     : wipe timing1 done
+10-20 01:51:38.764  8055  9013 I POC     : browse timing2 mode=proxy port=43547 started
+10-20 01:51:38.764  8055  9013 I POC     : browse timing2 done
+10-20 01:51:39.016  9020  9045 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:51:39.021  9020  9045 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:39.022  9020  9045 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:39.022  9020  9045 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:39.022  9020  9045 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:39.077  9020  9045 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:51:39.086  9020  9045 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:51:39.092  9020  9045 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:51:39.093  9020  9045 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:51:39.175  9020  9045 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:51:39.178  9020  9045 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:51:39.582  9020  9096 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:51:39.585  9020  9045 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:51:39.961  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:40.266  8055  8714 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:51:40.318  8055  8714 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:51:40.326  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:44.448  8055  8714 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:51:45.655  8055  9129 I POC     : wipe timing2 before: uid=10173 pid=8968 process=org.simulationrift.poc.browser started=233847 now=241301 files=51
+10-20 01:51:45.655  8968  8991 I POC     : browser wipe requested in pid 8968
+10-20 01:51:46.212  8055  9129 I POC     : wipe timing2 answer=died during call (DeadObjectException) death_ms=114 fresh_ms=491 (bind 173 ms) after: uid=10173 pid=9147 process=org.simulationrift.poc.browser started=241714 now=241807 inventory=[cache/, cache/]
+10-20 01:51:46.212  8055  9129 I POC     : wipe timing2 done
+10-20 01:51:46.415  8055  9187 I POC     : browse timing3 mode=proxy port=43547 started
+10-20 01:51:46.415  8055  9187 I POC     : browse timing3 done
+10-20 01:51:46.639  9193  9218 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:51:46.644  9193  9218 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:46.644  9193  9218 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:46.644  9193  9218 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:46.644  9193  9218 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:46.648  9193  9218 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:51:46.680  9193  9218 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:51:46.681  9193  9218 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:51:46.682  9193  9218 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:51:46.698  9193  9218 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:51:46.725  9193  9218 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:51:46.898  9193  9267 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:51:46.901  9193  9218 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:51:47.441  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:47.674  8055  8714 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:51:47.690  8055  8714 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:51:47.691  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:51.804  8055  8714 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:51:53.034  8055  9300 I POC     : wipe timing3 before: uid=10173 pid=9147 process=org.simulationrift.poc.browser started=241714 now=248682 files=51
+10-20 01:51:53.042  9147  9166 I POC     : browser wipe requested in pid 9147
+10-20 01:51:53.598  8055  9300 I POC     : wipe timing3 answer=died during call (DeadObjectException) death_ms=121 fresh_ms=482 (bind 153 ms) after: uid=10173 pid=9319 process=org.simulationrift.poc.browser started=249110 now=249184 inventory=[cache/, cache/]
+10-20 01:51:53.598  8055  9300 I POC     : wipe timing3 done
+10-20 01:51:53.993  8055  9359 I POC     : browse timing4 mode=proxy port=43547 started
+10-20 01:51:53.993  8055  9359 I POC     : browse timing4 done
+10-20 01:51:54.208  9365  9390 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:51:54.258  9365  9390 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:54.258  9365  9390 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:51:54.258  9365  9390 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:54.258  9365  9390 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:51:54.266  9365  9390 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:51:54.294  9365  9390 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:51:54.297  9365  9390 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:51:54.298  9365  9390 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:51:54.322  9365  9390 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:51:54.324  9365  9390 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:51:54.657  9365  9440 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:51:54.660  9365  9390 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:51:55.116  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:55.274  8055  8714 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:51:55.323  8055  8714 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:51:55.324  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:51:59.462  8055  8522 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:52:00.714  8055  9472 I POC     : wipe timing4 before: uid=10173 pid=9319 process=org.simulationrift.poc.browser started=249110 now=256329 files=51
+10-20 01:52:00.714  9319  9338 I POC     : browser wipe requested in pid 9319
+10-20 01:52:01.299  8055  9472 I POC     : wipe timing4 answer=died during call (DeadObjectException) death_ms=69 fresh_ms=552 (bind 278 ms) after: uid=10173 pid=9491 process=org.simulationrift.poc.browser started=256782 now=256926 inventory=[cache/, cache/]
+10-20 01:52:01.300  8055  9472 I POC     : wipe timing4 done
+10-20 01:52:01.546  8055  9536 I POC     : browse timing5 mode=proxy port=43547 started
+10-20 01:52:01.546  8055  9536 I POC     : browse timing5 done
+10-20 01:52:01.769  9542  9567 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:52:01.774  9542  9567 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:01.775  9542  9567 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:01.775  9542  9567 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:01.775  9542  9567 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:01.779  9542  9567 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:52:01.790  9542  9567 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:52:01.805  9542  9567 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:52:01.805  9542  9567 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:52:01.830  9542  9567 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:52:01.832  9542  9567 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:52:02.057  9542  9567 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:52:02.065  9542  9617 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:52:02.622  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:02.969  8055  8522 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:52:02.990  8055  8522 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:52:02.990  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:07.098  8055  8522 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:52:08.494  8055  9649 I POC     : wipe timing5 before: uid=10173 pid=9491 process=org.simulationrift.poc.browser started=256782 now=264143 files=51
+10-20 01:52:08.495  9491  9511 I POC     : browser wipe requested in pid 9491
+10-20 01:52:08.934  8055  9649 I POC     : wipe timing5 answer=died during call (DeadObjectException) death_ms=32 fresh_ms=355 (bind 111 ms) after: uid=10173 pid=9668 process=org.simulationrift.poc.browser started=264438 now=264510 inventory=[cache/, cache/]
+10-20 01:52:08.934  8055  9649 I POC     : wipe timing5 done
+10-20 01:52:09.126  8055  9708 I POC     : browse timing6 mode=proxy port=43547 started
+10-20 01:52:09.126  8055  9708 I POC     : browse timing6 done
+10-20 01:52:09.408  9713  9740 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:52:09.412  9713  9740 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:09.412  9713  9740 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:09.412  9713  9740 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:09.412  9713  9740 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:09.414  9713  9740 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:52:09.423  9713  9740 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:52:09.425  9713  9740 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:52:09.425  9713  9740 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:52:09.440  9713  9740 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:52:09.441  9713  9740 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:52:09.628  9713  9790 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:52:09.628  9713  9740 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:52:10.299  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:10.596  8055  8522 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:52:10.611  8055  8522 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:52:10.612  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:14.675  8055  8714 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:52:16.069  8055  9822 I POC     : wipe timing6 before: uid=10173 pid=9668 process=org.simulationrift.poc.browser started=264438 now=271626 files=51
+10-20 01:52:16.081  9668  9687 I POC     : browser wipe requested in pid 9668
+10-20 01:52:16.570  8055  9822 I POC     : wipe timing6 answer=died during call (DeadObjectException) death_ms=71 fresh_ms=458 (bind 182 ms) after: uid=10173 pid=9839 process=org.simulationrift.poc.browser started=272108 now=272187 inventory=[cache/, cache/]
+10-20 01:52:16.570  8055  9822 I POC     : wipe timing6 done
+10-20 01:52:17.021  8055  9936 I POC     : browse timing7 mode=proxy port=43547 started
+10-20 01:52:17.022  8055  9936 I POC     : browse timing7 done
+10-20 01:52:17.355  9946  9972 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:52:17.364  9946  9972 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:17.364  9946  9972 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:17.364  9946  9972 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:17.364  9946  9972 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:17.403  9946  9972 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:52:17.436  9946  9972 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:52:17.446  9946  9972 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:52:17.447  9946  9972 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:52:17.467  9946  9972 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::6814:179a, 2606:4700:10::ac42:93f3
+10-20 01:52:17.484  9946  9972 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:52:17.712  9946 10027 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:52:17.722  9946  9972 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:52:18.246  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:18.497  8055  8714 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:52:18.609  8055  8714 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:52:18.617  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:22.685  8055  8714 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:52:23.874  8055 10108 I POC     : wipe timing7 before: uid=10173 pid=9839 process=org.simulationrift.poc.browser started=272108 now=279521 files=51
+10-20 01:52:23.877  9839  9868 I POC     : browser wipe requested in pid 9839
+10-20 01:52:24.277  8055 10108 I POC     : wipe timing7 answer=died during call (DeadObjectException) death_ms=40 fresh_ms=358 (bind 117 ms) after: uid=10173 pid=10126 process=org.simulationrift.poc.browser started=279845 now=279893 inventory=[cache/, cache/]
+10-20 01:52:24.277  8055 10108 I POC     : wipe timing7 done
+10-20 01:52:24.644  8055 10165 I POC     : browse timing8 mode=proxy port=43547 started
+10-20 01:52:24.644  8055 10165 I POC     : browse timing8 done
+10-20 01:52:24.888 10171 10196 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:52:24.893 10171 10196 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:24.893 10171 10196 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:24.893 10171 10196 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:24.893 10171 10196 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:24.897 10171 10196 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:52:24.912 10171 10196 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:52:24.913 10171 10196 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:52:24.914 10171 10196 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:52:24.998 10171 10196 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::ac42:93f3, 2606:4700:10::6814:179a
+10-20 01:52:25.005 10171 10196 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:52:25.416 10171 10247 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:52:25.428 10171 10196 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:52:25.743  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:26.333  8055  8714 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:52:26.343  8055  8714 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:52:26.345  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:30.449  8055  8522 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:52:31.664  8055 10290 I POC     : wipe timing8 before: uid=10173 pid=10126 process=org.simulationrift.poc.browser started=279845 now=287294 files=51
+10-20 01:52:31.664 10126 10148 I POC     : browser wipe requested in pid 10126
+10-20 01:52:32.195  8055 10290 I POC     : wipe timing8 answer=died during call (DeadObjectException) death_ms=95 fresh_ms=436 (bind 102 ms) after: uid=10173 pid=10308 process=org.simulationrift.poc.browser started=287709 now=287760 inventory=[cache/, cache/]
+10-20 01:52:32.196  8055 10290 I POC     : wipe timing8 done
+10-20 01:52:32.533  8055 10348 I POC     : browse timing9 mode=proxy port=43547 started
+10-20 01:52:32.533  8055 10348 I POC     : browse timing9 done
+10-20 01:52:32.841 10354 10379 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:52:32.869 10354 10379 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:32.870 10354 10379 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:32.870 10354 10379 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:32.873 10354 10379 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:32.878 10354 10379 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:52:32.895 10354 10379 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:52:32.897 10354 10379 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:52:32.899 10354 10379 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:52:33.020 10354 10379 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::ac42:93f3, 2606:4700:10::6814:179a
+10-20 01:52:33.022 10354 10379 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:52:33.396 10354 10430 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:52:33.399 10354 10379 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:52:33.832  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:34.116  8055  8522 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:52:34.160  8055  8522 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:52:34.165  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:38.288  8055  8522 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:52:39.528  8055 10463 I POC     : wipe timing9 before: uid=10173 pid=10308 process=org.simulationrift.poc.browser started=287709 now=295125 files=51
+10-20 01:52:39.528 10308 10327 I POC     : browser wipe requested in pid 10308
+10-20 01:52:40.137  8055 10463 I POC     : wipe timing9 answer=died during call (DeadObjectException) death_ms=69 fresh_ms=546 (bind 274 ms) after: uid=10173 pid=10482 process=org.simulationrift.poc.browser started=295621 now=295735 inventory=[cache/, cache/]
+10-20 01:52:40.137  8055 10463 I POC     : wipe timing9 done
+10-20 01:52:40.449  8055 10520 I POC     : browse timing10 mode=proxy port=43547 started
+10-20 01:52:40.449  8055 10520 I POC     : browse timing10 done
+10-20 01:52:40.686 10527 10552 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:52:40.709 10527 10552 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:40.710 10527 10552 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:40.710 10527 10552 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:40.710 10527 10552 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:40.714 10527 10552 I POC     : web connect 10.0.2.2:8780: ALLOWED connected
+10-20 01:52:40.724 10527 10552 I POC     : web connect 1.1.1.1:443: ALLOWED connected
+10-20 01:52:40.724 10527 10552 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:52:40.725 10527 10552 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:52:40.744 10527 10552 I POC     : web dns example.com: ALLOWED 172.66.147.243, 104.20.23.154, 2606:4700:10::ac42:93f3, 2606:4700:10::6814:179a
+10-20 01:52:40.745 10527 10552 I POC     : web bind hidden: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.HiddenService }
+10-20 01:52:40.941 10527 10601 I POC     : web proxy override applied mode=proxy port=43547
+10-20 01:52:40.943 10527 10552 I POC     : web bind core: ALLOWED connected: controller uid=10172 caller uid=10173 caller=org.simulationrift.poc.browser
+10-20 01:52:41.491  8055  8522 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:41.914  8055  8522 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:52:41.937  8055  8522 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:52:41.939  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:46.075  8055  8714 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:52:47.506  8055 10633 I POC     : wipe timing10 before: uid=10173 pid=10482 process=org.simulationrift.poc.browser started=295621 now=303084 files=51
+10-20 01:52:47.506 10482 10502 I POC     : browser wipe requested in pid 10482
+10-20 01:52:48.029  8055 10633 I POC     : wipe timing10 answer=died during call (DeadObjectException) death_ms=59 fresh_ms=458 (bind 195 ms) after: uid=10173 pid=10652 process=org.simulationrift.poc.browser started=303563 now=303625 inventory=[cache/, cache/]
+10-20 01:52:48.029  8055 10633 I POC     : wipe timing10 done
+10-20 01:52:48.473  8055 10702 I POC     : vpn consent needed: false
+10-20 01:52:48.516  8055  8055 I POC     : vpn established=true
+10-20 01:52:48.517  8055 10712 I POC     : vpn dropped proto0/v6 -> port 0 (#1)
+10-20 01:52:48.517  8055 10712 I POC     : vpn dropped ICMPv6/v6 -> port 0 (#1)
+10-20 01:52:48.534  8055 10712 I POC     : vpn dropped proto0/v6 -> port 0 (#2)
+10-20 01:52:49.476  8055 10702 I POC     : vpn-on on done
+10-20 01:52:49.553  8055 10712 I POC     : vpn dropped TCP -> 10.111.0.2:853 (#1)
+10-20 01:52:49.566  8055 10742 I POC     : browse vpn mode=auth port=36609 started
+10-20 01:52:49.566  8055 10742 I POC     : browse vpn done
+10-20 01:52:49.667 10748 10773 I POC     : web uid=10173 controller uid=10172 process=org.simulationrift.poc.browser:web
+10-20 01:52:49.670 10748 10773 I POC     : web read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:49.670 10748 10773 I POC     : web read /data/user/0/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/user/0/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:52:49.670 10748 10773 I POC     : web read /data/data/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:49.670 10748 10773 I POC     : web read /data/user_de/0/org.simulationrift.poc.controller: DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.poc.controller: open failed: ENOENT (No such file or directory)
+10-20 01:52:49.672  8055 10712 I POC     : vpn dropped TCP -> 10.0.2.2:8780 (#1)
+10-20 01:52:49.946 10748 10822 I POC     : web proxy override applied mode=auth port=36609
+10-20 01:52:50.560  8055 10835 I POC     : proxy AUTH-REQUIRED GET http://localhost:8780/page.html?run=vpn (header absent)
+10-20 01:52:50.703  8055 10712 I POC     : vpn dropped TCP -> 10.0.2.2:8780 (#2)
+10-20 01:52:50.711 10748 10748 I POC     : web auth request host=127.0.0.1 realm=rift token=true
+10-20 01:52:50.724  8055 10835 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:50.802  8055 10835 I POC     : proxy DENY GET 10.0.2.2:8780 (resolves to non-public 10.0.2.2)
+10-20 01:52:50.842  8055 10835 I POC     : proxy DENY GET 127.0.0.1:8780 (resolves to non-public 127.0.0.1)
+10-20 01:52:50.850  8055 10838 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:52:50.969  8055 10712 I POC     : vpn dropped UDP -> 10.0.2.2:3478 (#1)
+10-20 01:52:51.219  8055 10712 I POC     : vpn dropped UDP -> 10.0.2.2:3478 (#2)
+10-20 01:52:51.569  8055 10712 I POC     : vpn dropped TCP -> 10.111.0.2:853 (#2)
+10-20 01:52:52.677 10748 10773 I POC     : web connect 10.0.2.2:8780: DENIED SocketTimeoutException: failed to connect to /10.0.2.2 (port 8780) from /10.111.0.1 (port 37504) after 3000ms
+10-20 01:52:52.678  8055 10712 I POC     : vpn dropped TCP -> 1.1.1.1:443 (#1)
+10-20 01:52:53.048  8055 10712 I POC     : vpn dropped ICMPv6/v6 -> port 0 (#2)
+10-20 01:52:53.683  8055 10712 I POC     : vpn dropped TCP -> 1.1.1.1:443 (#2)
+10-20 01:52:54.974  8055 10838 I POC     : proxy ALLOW POST localhost:8780
+10-20 01:52:55.690 10748 10773 I POC     : web connect 1.1.1.1:443: DENIED SocketTimeoutException: failed to connect to /1.1.1.1 (port 443) from /10.111.0.1 (port 37358) after 3000ms
+10-20 01:52:55.692 10748 10773 I POC     : web connect 127.0.0.1:8780: ALLOWED connected
+10-20 01:52:55.692 10748 10773 I POC     : web udp 10.0.2.2:3478: ALLOWED sent (arrival is in fixture.log)
+10-20 01:52:55.694  8055 10712 I POC     : vpn dropped UDP -> 10.111.0.2:53 (#1)
+10-20 01:52:59.451  8055 10872 I POC     : wipe after-vpn before: uid=10173 pid=10652 process=org.simulationrift.poc.browser started=303563 now=314993 files=51
+10-20 01:52:59.465 10652 10670 I POC     : browser wipe requested in pid 10652
+10-20 01:53:00.012  8055 10872 I POC     : wipe after-vpn answer=died during call (DeadObjectException) death_ms=22 fresh_ms=451 (bind 227 ms) after: uid=10173 pid=10889 process=org.simulationrift.poc.browser started=315394 now=315562 inventory=[cache/, cache/]
+10-20 01:53:00.013  8055 10872 I POC     : wipe after-vpn done
+10-20 01:53:00.326  8055  8055 I POC     : vpn stopped
+10-20 01:53:00.356  8055 10712 I POC     : vpn read ended: read interrupted
+10-20 01:53:00.818  8055 10930 I POC     : vpn-off off done
+10-20 01:53:01.013 10958 10986 I POC     : outsider permission granted: false
+10-20 01:53:01.014 10958 10986 I POC     : outsider bind browser session: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.browser/.SessionService }
+10-20 01:53:01.015 10958 10986 I POC     : outsider bind controller core: DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.poc.controller/.CoreService }
+10-20 01:53:01.016 10958 10986 I POC     : outsider start browser page: DENIED SecurityException: Permission Denial: starting Intent { flg=0x10000000 cmp=org.simulationrift.poc.browser/.WebActivity (has extras) } from ProcessRecord{d394cb0 10958:org.simulationrift.poc.outsider/u0a174} (pid=10958, uid=10174) requires org.simulationrift.poc.permission.RIFT
+10-20 01:53:01.018 10958 10986 I POC     : outsider read /data/data/org.simulationrift.poc.controller/files/canary.txt: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.controller/files/canary.txt: open failed: ENOENT (No such file or directory)
+10-20 01:53:01.018 10958 10986 I POC     : outsider read /data/data/org.simulationrift.poc.browser: DENIED FileNotFoundException: /data/data/org.simulationrift.poc.browser: open failed: ENOENT (No such file or directory)
+10-20 01:53:01.020  8055  8714 I POC     : proxy ALLOW GET localhost:8780
+10-20 01:53:01.028 10958 10986 I POC     : outsider open proxy: ALLOWED HTTP/1.0 200 OK
+10-20 01:53:01.028  8055 10838 I POC     : proxy AUTH-REQUIRED GET http://localhost:8780/outsider-probe (header absent)
+10-20 01:53:01.029 10958 10986 I POC     : outsider auth proxy without token: ALLOWED HTTP/1.1 407 Proxy Authentication Required
+10-20 01:53:01.029 10958 10986 I POC     : outsider done

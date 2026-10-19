@@ -1,0 +1,133 @@
+01:50:59 UDP 11 bytes on 3478 from 127.0.0.1:61447 (STUN type 0x6573)
+01:51:00 GET /page.html?run=baseline from 127.0.0.1 via-host=localhost:8780
+01:51:00 GET /lan-probe?run=baseline from 127.0.0.1 via-host=10.0.2.2:8780
+01:51:01 GET /loopback-probe?run=baseline from 127.0.0.1 via-host=127.0.0.1:8780
+01:51:01 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:51:01 UDP 20 bytes on 3478 from 127.0.0.1:61729 (STUN type 0x0001)
+01:51:01 UDP 20 bytes on 3478 from 127.0.0.1:61729 (STUN type 0x0001)
+01:51:02 UDP 20 bytes on 3478 from 127.0.0.1:61729 (STUN type 0x0001)
+01:51:03 UDP 20 bytes on 3478 from 127.0.0.1:61729 (STUN type 0x0001)
+01:51:05 UDP 20 bytes on 3478 from 127.0.0.1:61729 (STUN type 0x0001)
+01:51:05 REPORT {"run":"baseline","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:51:08 UDP 11 bytes on 3478 from 127.0.0.1:49888 (STUN type 0x6573)
+01:51:09 GET /page.html?run=implicit from 127.0.0.1 via-host=localhost:8780
+01:51:09 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:51:09 GET /loopback-probe?run=implicit from 127.0.0.1 via-host=127.0.0.1:8780
+01:51:09 UDP 20 bytes on 3478 from 127.0.0.1:60859 (STUN type 0x0001)
+01:51:09 UDP 20 bytes on 3478 from 127.0.0.1:60859 (STUN type 0x0001)
+01:51:10 UDP 20 bytes on 3478 from 127.0.0.1:60859 (STUN type 0x0001)
+01:51:11 UDP 20 bytes on 3478 from 127.0.0.1:60859 (STUN type 0x0001)
+01:51:13 UDP 20 bytes on 3478 from 127.0.0.1:60859 (STUN type 0x0001)
+01:51:13 REPORT {"run":"implicit","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:51:16 UDP 11 bytes on 3478 from 127.0.0.1:62525 (STUN type 0x6573)
+01:51:17 GET /page.html?run=proxy from 127.0.0.1 via-host=localhost:8780
+01:51:17 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:51:17 UDP 20 bytes on 3478 from 127.0.0.1:63187 (STUN type 0x0001)
+01:51:18 UDP 20 bytes on 3478 from 127.0.0.1:63187 (STUN type 0x0001)
+01:51:18 UDP 20 bytes on 3478 from 127.0.0.1:63187 (STUN type 0x0001)
+01:51:19 UDP 20 bytes on 3478 from 127.0.0.1:63187 (STUN type 0x0001)
+01:51:21 UDP 20 bytes on 3478 from 127.0.0.1:63187 (STUN type 0x0001)
+01:51:21 REPORT {"run":"proxy","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:51:24 UDP 11 bytes on 3478 from 127.0.0.1:58972 (STUN type 0x6573)
+01:51:26 GET /page.html?run=auth from 127.0.0.1 via-host=localhost:8780
+01:51:26 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:51:26 UDP 20 bytes on 3478 from 127.0.0.1:58495 (STUN type 0x0001)
+01:51:26 UDP 20 bytes on 3478 from 127.0.0.1:58495 (STUN type 0x0001)
+01:51:27 UDP 20 bytes on 3478 from 127.0.0.1:58495 (STUN type 0x0001)
+01:51:28 UDP 20 bytes on 3478 from 127.0.0.1:58495 (STUN type 0x0001)
+01:51:30 UDP 20 bytes on 3478 from 127.0.0.1:58495 (STUN type 0x0001)
+01:51:30 REPORT {"run":"auth","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:51:31 UDP 11 bytes on 3478 from 127.0.0.1:51658 (STUN type 0x6573)
+01:51:32 GET /page.html?run=timing1 from 127.0.0.1 via-host=localhost:8780
+01:51:32 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:51:32 UDP 20 bytes on 3478 from 127.0.0.1:63125 (STUN type 0x0001)
+01:51:32 UDP 20 bytes on 3478 from 127.0.0.1:63125 (STUN type 0x0001)
+01:51:33 UDP 20 bytes on 3478 from 127.0.0.1:63125 (STUN type 0x0001)
+01:51:34 UDP 20 bytes on 3478 from 127.0.0.1:63125 (STUN type 0x0001)
+01:51:36 UDP 20 bytes on 3478 from 127.0.0.1:63125 (STUN type 0x0001)
+01:51:36 REPORT {"run":"timing1","cookie_before":"rift=auth","storage_before":"auth","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:51:39 UDP 11 bytes on 3478 from 127.0.0.1:65285 (STUN type 0x6573)
+01:51:40 GET /page.html?run=timing2 from 127.0.0.1 via-host=localhost:8780
+01:51:40 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:51:40 UDP 20 bytes on 3478 from 127.0.0.1:61565 (STUN type 0x0001)
+01:51:40 UDP 20 bytes on 3478 from 127.0.0.1:61565 (STUN type 0x0001)
+01:51:41 UDP 20 bytes on 3478 from 127.0.0.1:61565 (STUN type 0x0001)
+01:51:42 UDP 20 bytes on 3478 from 127.0.0.1:61565 (STUN type 0x0001)
+01:51:44 UDP 20 bytes on 3478 from 127.0.0.1:61565 (STUN type 0x0001)
+01:51:44 REPORT {"run":"timing2","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:51:46 UDP 11 bytes on 3478 from 127.0.0.1:57322 (STUN type 0x6573)
+01:51:47 GET /page.html?run=timing3 from 127.0.0.1 via-host=localhost:8780
+01:51:47 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:51:48 UDP 20 bytes on 3478 from 127.0.0.1:62420 (STUN type 0x0001)
+01:51:48 UDP 20 bytes on 3478 from 127.0.0.1:62420 (STUN type 0x0001)
+01:51:48 UDP 20 bytes on 3478 from 127.0.0.1:62420 (STUN type 0x0001)
+01:51:49 UDP 20 bytes on 3478 from 127.0.0.1:62420 (STUN type 0x0001)
+01:51:51 UDP 20 bytes on 3478 from 127.0.0.1:62420 (STUN type 0x0001)
+01:51:52 REPORT {"run":"timing3","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:51:54 UDP 11 bytes on 3478 from 127.0.0.1:59172 (STUN type 0x6573)
+01:51:55 GET /page.html?run=timing4 from 127.0.0.1 via-host=localhost:8780
+01:51:55 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:51:55 UDP 20 bytes on 3478 from 127.0.0.1:64253 (STUN type 0x0001)
+01:51:55 UDP 20 bytes on 3478 from 127.0.0.1:64253 (STUN type 0x0001)
+01:51:56 UDP 20 bytes on 3478 from 127.0.0.1:64253 (STUN type 0x0001)
+01:51:57 UDP 20 bytes on 3478 from 127.0.0.1:64253 (STUN type 0x0001)
+01:51:59 UDP 20 bytes on 3478 from 127.0.0.1:64253 (STUN type 0x0001)
+01:51:59 REPORT {"run":"timing4","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:52:02 UDP 11 bytes on 3478 from 127.0.0.1:64556 (STUN type 0x6573)
+01:52:02 GET /page.html?run=timing5 from 127.0.0.1 via-host=localhost:8780
+01:52:03 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:52:03 UDP 20 bytes on 3478 from 127.0.0.1:61934 (STUN type 0x0001)
+01:52:03 UDP 20 bytes on 3478 from 127.0.0.1:61934 (STUN type 0x0001)
+01:52:04 UDP 20 bytes on 3478 from 127.0.0.1:61934 (STUN type 0x0001)
+01:52:05 UDP 20 bytes on 3478 from 127.0.0.1:61934 (STUN type 0x0001)
+01:52:07 UDP 20 bytes on 3478 from 127.0.0.1:61934 (STUN type 0x0001)
+01:52:07 REPORT {"run":"timing5","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:52:09 UDP 11 bytes on 3478 from 127.0.0.1:55473 (STUN type 0x6573)
+01:52:10 GET /page.html?run=timing6 from 127.0.0.1 via-host=localhost:8780
+01:52:10 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:52:10 UDP 20 bytes on 3478 from 127.0.0.1:63008 (STUN type 0x0001)
+01:52:11 UDP 20 bytes on 3478 from 127.0.0.1:63008 (STUN type 0x0001)
+01:52:11 UDP 20 bytes on 3478 from 127.0.0.1:63008 (STUN type 0x0001)
+01:52:12 UDP 20 bytes on 3478 from 127.0.0.1:63008 (STUN type 0x0001)
+01:52:14 UDP 20 bytes on 3478 from 127.0.0.1:63008 (STUN type 0x0001)
+01:52:14 REPORT {"run":"timing6","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:52:17 UDP 11 bytes on 3478 from 127.0.0.1:50227 (STUN type 0x6573)
+01:52:18 GET /page.html?run=timing7 from 127.0.0.1 via-host=localhost:8780
+01:52:18 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:52:18 UDP 20 bytes on 3478 from 127.0.0.1:64813 (STUN type 0x0001)
+01:52:19 UDP 20 bytes on 3478 from 127.0.0.1:64813 (STUN type 0x0001)
+01:52:19 UDP 20 bytes on 3478 from 127.0.0.1:64813 (STUN type 0x0001)
+01:52:20 UDP 20 bytes on 3478 from 127.0.0.1:64813 (STUN type 0x0001)
+01:52:22 UDP 20 bytes on 3478 from 127.0.0.1:64813 (STUN type 0x0001)
+01:52:22 REPORT {"run":"timing7","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:52:25 UDP 11 bytes on 3478 from 127.0.0.1:62278 (STUN type 0x6573)
+01:52:26 GET /page.html?run=timing8 from 127.0.0.1 via-host=localhost:8780
+01:52:26 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:52:26 UDP 20 bytes on 3478 from 127.0.0.1:60816 (STUN type 0x0001)
+01:52:26 UDP 20 bytes on 3478 from 127.0.0.1:60816 (STUN type 0x0001)
+01:52:27 UDP 20 bytes on 3478 from 127.0.0.1:60816 (STUN type 0x0001)
+01:52:28 UDP 20 bytes on 3478 from 127.0.0.1:60816 (STUN type 0x0001)
+01:52:30 UDP 20 bytes on 3478 from 127.0.0.1:60816 (STUN type 0x0001)
+01:52:30 REPORT {"run":"timing8","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:52:33 UDP 11 bytes on 3478 from 127.0.0.1:61668 (STUN type 0x6573)
+01:52:34 GET /page.html?run=timing9 from 127.0.0.1 via-host=localhost:8780
+01:52:34 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:52:34 UDP 20 bytes on 3478 from 127.0.0.1:50056 (STUN type 0x0001)
+01:52:34 UDP 20 bytes on 3478 from 127.0.0.1:50056 (STUN type 0x0001)
+01:52:35 UDP 20 bytes on 3478 from 127.0.0.1:50056 (STUN type 0x0001)
+01:52:36 UDP 20 bytes on 3478 from 127.0.0.1:50056 (STUN type 0x0001)
+01:52:38 UDP 20 bytes on 3478 from 127.0.0.1:50056 (STUN type 0x0001)
+01:52:38 REPORT {"run":"timing9","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:52:40 UDP 11 bytes on 3478 from 127.0.0.1:54047 (STUN type 0x6573)
+01:52:41 GET /page.html?run=timing10 from 127.0.0.1 via-host=localhost:8780
+01:52:42 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:52:42 UDP 20 bytes on 3478 from 127.0.0.1:57463 (STUN type 0x0001)
+01:52:42 UDP 20 bytes on 3478 from 127.0.0.1:57463 (STUN type 0x0001)
+01:52:43 UDP 20 bytes on 3478 from 127.0.0.1:57463 (STUN type 0x0001)
+01:52:44 UDP 20 bytes on 3478 from 127.0.0.1:57463 (STUN type 0x0001)
+01:52:46 UDP 20 bytes on 3478 from 127.0.0.1:57463 (STUN type 0x0001)
+01:52:46 REPORT {"run":"timing10","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.0.2.15 host:[fec0::5054:ff:fe12:3456]"}
+01:52:50 GET /page.html?run=vpn from 127.0.0.1 via-host=localhost:8780
+01:52:51 GET /favicon.ico from 127.0.0.1 via-host=localhost:8780
+01:52:55 REPORT {"run":"vpn","cookie_before":"none","storage_before":"none","lan":"FETCHED","loopback":"FETCHED","webrtc":"candidates host:10.111.0.1"}
+01:53:01 GET /outsider-probe from 127.0.0.1 via-host=localhost:8780

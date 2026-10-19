@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Asks for the permission, but a different signer is never granted it. -->
+    <uses-permission android:name="org.simulationrift.poc.permission.RIFT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <queries>
+        <package android:name="org.simulationrift.poc.controller" />
+        <package android:name="org.simulationrift.poc.browser" />
+    </queries>
+
+    <application android:allowBackup="false" android:label="Rift PoC outsider">
+        <activity
+            android:name=".OutsiderActivity"
+            android:exported="true" />
+    </application>
+</manifest>

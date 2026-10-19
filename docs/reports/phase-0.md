@@ -19,6 +19,7 @@
 | A5 | Does YARA-X (pulley) build and run on Android? | **Pass** (arm64 run; x86_64 built only); adds 14 MB to the APK (arm64) | same | same |
 | A6 | Are workers cut off from files and the network? | **Pass**, with a hardening finding | same | same |
 | A7 | Does the RAM-backed seekable fd handoff work? | **Pass** (sealed memfd) | same | same |
+| A8 | Can the browser be isolated from Rift's data and from the network more strongly than by a process boundary? (added 20 Oct 2026) | **Pass** with a separate APK, a system wipe, a deny-all per-app VPN and an authenticated loopback proxy; four design findings; loopback stays reachable from escaped code | Android emulators API 30 (WebView 91) and API 36 (WebView 133), arm64 | [API 30](evidence/phase0-A8-browser-split-api30/), [API 36](evidence/phase0-A8-browser-split-api36/), [PoC](../../poc/android-browser-split/README.md) |
 
 ## Findings that changed the design
 
@@ -48,6 +49,16 @@
 11. **A worker from the system zygote is too slow; the app zygote is required (worker lifecycle).** On the API 36 emulator the median time from `bindIsolatedService` to connected was 304 ms against a 300 ms budget; from the app zygote with the native library preloaded it was 45 ms. The same test showed that the app's `kill(2)` on its worker fails with `EPERM`, that YARA-X's in-process timeout fires on time under Pulley, and that unbinding ends a worker stuck mid-scan within milliseconds. Unbinding is therefore the controller's kill switch on Android (architecture §8.6).
 12. **The X2 scenario script could pass a tamper test for the wrong reason (X2).** tuftool writes targets as links to the input files. Copied repositories shared those files, and on a device the links dangled, so "target modified → rejected" passed because the file was missing. The script now replaces links with copies after publishing, and every rejection must carry its expected reason (hash mismatch, signature threshold, size limit, and so on).
 
+13. **A browser in its own APK cannot even see Rift's data (A8).** With a different UID, code in the browser's `:web` process (where WebView runs, so where an engine escape lands) got `ENOENT` for the controller's files and data directories, not just `EACCES`: Android 11+ mounts only the app's own data directories into its namespace. Binding the controller's private service failed with `SecurityException`; only the one service exported under a `signature` permission connected. Another app with a different signer was refused on every door. This makes B2 a UID boundary instead of a process boundary (architecture ADR-04, revised).
+14. **The system can wipe the browser, so disposal does not depend on the browser's own cleanup (A8).** `ActivityManager.clearApplicationUserData()`, called by the browser app on itself, made the system kill every process of the package and delete all of its data (51–79 files after a page, none after). Over 28 wipes on API 30 and 36 the old process was gone 9–616 ms after the call, and a fresh process answered 0.36–1.7 s after it with an empty data directory; cookies and localStorage were gone in the next session. The controller's binding to the package dies for good (`onBindingDied`) and must be made again, and the controller must not start the browser until the fresh process has reported a clean inventory (the first harness raced and saw a new page's files).
+15. **A proxy alone is not a network boundary (A8).** Three ways around one were measured:
+    - Chromium bypasses a configured proxy for loopback and link-local addresses unless `removeImplicitRules()` is set; with the default rules, a page reached `127.0.0.1` directly.
+    - WebRTC sent STUN over UDP to a private address (`10.0.2.2:3478`) in every proxy mode, and WebView put the device's raw local address in its ICE candidates.
+    - Code in the browser process (as after an escape) connected directly to a private and a public address, sent UDP and resolved DNS.
+
+    A VPN that applies to the browser app's UID only and forwards nothing closed the last two: TCP to private and public addresses, UDP, DNS and DNS-over-TLS were all dropped, and the page's WebRTC candidates showed only the VPN's own address. Loopback is never routed through a VPN, so the proxy on 127.0.0.1 keeps working, and an escaped browser can still reach other loopback services: a stated residual risk.
+16. **WebView answers proxy authentication, so the loopback proxy need not be an open relay (A8).** A 407 challenge reaches `WebViewClient.onReceivedHttpAuthRequest` with host `127.0.0.1` and the proxy's realm; answering with a per-session token worked on WebView 91 and 133. Without the token another app got 407. Without authentication any app on the device could use Rift's proxy.
+
 ## Verified
 
 - **L2:** with lockdown active, the worker cannot:
@@ -76,7 +87,11 @@
 - **X2:** tough 0.24.0 with the filesystem transport rejects modified targets, unsigned metadata edits, a v1 replay after v2 was trusted, expired timestamps, an untrusted root, and timestamp metadata over 16 KiB, each for its expected reason. The arm64 Android build (tough with aws-lc-rs, cross-compiled with no changes) passes the same scenarios on the API 30 and API 36 emulators.
 - **X3:** all 33 published Safe Browsing canonicalization examples pass, plus the three published expression examples. Per-URL decision latency against 1,000,000 entries on the host: p50 11.9 µs, p95 26.0 µs, p99 41.8 µs. Parsing and fully validating the 20 MB table takes 3.8 ms.
 
+- **A8 (API 30 with WebView 91, API 36 with WebView 133):** separate UIDs for controller and browser; from the browser's `:web` process the controller's files and directories are invisible (`ENOENT`) and its private service unbindable; the `signature`-protected interface connects for the browser and refuses an app with another signer, which is also refused by the browser's session service and page activity. Fourteen system wipes per level each left an empty data directory. Behind the proxy with implicit rules removed, the page's requests to a private and a loopback address never reached the server. With the deny-all VPN, no UDP reached the STUN listener and direct TCP, UDP and DNS from the browser process were dropped.
+
 ## Unverified (so far)
+
+- A8 on API 33–35, on physical phones and OEM WebView builds; with another VPN app already active or set as always-on (only one VPN can run at a time); with the network lock lost mid-session.
 
 - L2/L3 on Fedora kernels, and inside Flatpak, where Flatpak's own seccomp filter also applies. (Ubuntu x86_64 passes in CI; there the ptrace negative control is inconclusive because Yama already blocks it.)
 - X2 on x86_64 Android and physical phones; the size of tough and aws-lc-rs inside Rift's shared library (the standalone binary, 4.8 MB, is an upper bound).

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="org.simulationrift.poc.permission.RIFT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <queries>
+        <package android:name="org.simulationrift.poc.controller" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="Rift PoC browser"
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- Only the controller (same signer) may start a page or bind the session. -->
+        <activity
+            android:name=".WebActivity"
+            android:exported="true"
+            android:permission="org.simulationrift.poc.permission.RIFT"
+            android:process=":web" />
+
+        <service
+            android:name=".SessionService"
+            android:exported="true"
+            android:permission="org.simulationrift.poc.permission.RIFT" />
+    </application>
+</manifest>

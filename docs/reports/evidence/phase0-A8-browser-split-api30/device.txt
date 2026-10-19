@@ -1,0 +1,2 @@
+android=11 sdk=30 abi=arm64-v8a
+Current WebView package (name, version): (com.google.android.webview, 91.0.4472.114)
