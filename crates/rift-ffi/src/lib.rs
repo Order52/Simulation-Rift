@@ -18,7 +18,9 @@ use rift_protocol::{Envelope, PROTOCOL_VERSION, Request, Response};
 
 uniffi::setup_scaffolding!();
 
+mod egress;
 mod scan;
+pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressStats};
 pub use scan::{
     Intel, IntelFailure, IntelStatus, PendingIntel, ScanFailure, ScanFinding, ScanJob, ScanStart,
     ScanStatus, Verdict,
@@ -274,6 +276,8 @@ struct SessionExtras {
     /// Scan verdicts; they go with the session, like the files they describe.
     cache: rift_core::scan::VerdictCache,
     verdicts: Vec<(String, Verdict)>,
+    /// The browser's only way to the network; dropping it closes every tunnel.
+    egress: Option<rift_core::egress::Egress>,
 }
 
 impl SessionExtras {
@@ -287,6 +291,7 @@ impl SessionExtras {
             reserved: 0,
             cache: rift_core::scan::VerdictCache::new(1024),
             verdicts: Vec::new(),
+            egress: None,
         }
     }
 }
@@ -576,6 +581,10 @@ impl Sessions {
         let mut state = self.lock()?;
         if let Some(extras) = state.extras.take() {
             extras.cancel.store(true, Ordering::SeqCst);
+            // Before disposal: no tunnel stays open into the next session.
+            if let Some(egress) = &extras.egress {
+                egress.stop();
+            }
         }
         Ok(state.manager.reset()?)
     }
@@ -606,6 +615,9 @@ impl Sessions {
         };
         if !extras.local_hosts.contains(&host) {
             extras.local_hosts.push(host);
+        }
+        if let Some(egress) = &extras.egress {
+            egress.set_local_hosts(extras.local_hosts.clone());
         }
         true
     }
@@ -1157,6 +1169,77 @@ mod tests {
             referer: None,
             content_disposition: None,
         }
+    }
+
+    /// Sends a CONNECT with this endpoint's credentials and returns the status line.
+    fn connect_through(endpoint: &EgressEndpoint, target: &str) -> std::io::Result<String> {
+        use std::io::{BufRead, Write};
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", endpoint.port))?;
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
+        let credentials = rift_core::egress::proxy_authorization(&endpoint.token);
+        stream.write_all(
+            format!("CONNECT {target} HTTP/1.1\r\nProxy-Authorization: {credentials}\r\n\r\n")
+                .as_bytes(),
+        )?;
+        let mut line = String::new();
+        std::io::BufReader::new(stream).read_line(&mut line)?;
+        Ok(line.trim_end().to_owned())
+    }
+
+    #[test]
+    fn the_egress_proxy_belongs_to_one_session_and_ends_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        assert!(
+            sessions.egress_stats(generation).is_none(),
+            "not started until asked for"
+        );
+        let endpoint = sessions.egress(generation).unwrap();
+        assert_eq!(
+            sessions.egress(generation).unwrap(),
+            endpoint,
+            "one proxy per session"
+        );
+        let target = format!("localhost:{}", serve(b"through the proxy"));
+
+        // Loopback needs the user's per-host exception, which reaches the running proxy.
+        assert_eq!(
+            connect_through(&endpoint, &target).unwrap(),
+            "HTTP/1.1 403 Forbidden"
+        );
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        assert_eq!(
+            connect_through(&endpoint, &target).unwrap(),
+            "HTTP/1.1 200 Connection Established"
+        );
+        let stats = sessions.egress_stats(generation).unwrap();
+        assert_eq!((stats.allowed, stats.denied), (1, 1));
+        assert_eq!(stats.recent[0].destination, target);
+        assert!(
+            stats.recent[0].reason.contains("private address"),
+            "{}",
+            stats.recent[0].reason
+        );
+
+        // Reset stops it; the next session gets a new port and token.
+        sessions.reset().unwrap();
+        assert!(
+            connect_through(&endpoint, &target).map_or(true, |line| line.is_empty()),
+            "the old proxy answers nothing"
+        );
+        assert!(matches!(
+            sessions.egress(generation),
+            Err(EgressFailure::NoActiveSession)
+        ));
+        let next = sessions.start().unwrap();
+        let fresh = sessions.egress(next).unwrap();
+        assert_ne!(fresh.token, endpoint.token);
+        assert_eq!(
+            connect_through(&fresh, &target).unwrap(),
+            "HTTP/1.1 403 Forbidden",
+            "exceptions do not carry over"
+        );
     }
 
     #[test]

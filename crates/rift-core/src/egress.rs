@@ -133,7 +133,7 @@ impl Egress {
         let realm = format!("rift-{}", random_hex(8)?);
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let port = listener.local_addr()?.port();
-        let expected = format!("Basic {}", base64(format!("rift:{token}").as_bytes()));
+        let expected = proxy_authorization(&token);
         let shared = Arc::new(Shared {
             expected_auth: Sha256::digest(expected.as_bytes()).into(),
             token,
@@ -673,6 +673,11 @@ fn valid_host_name(host: &str) -> bool {
 
 fn is_tchar(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b)
+}
+
+/// The `Proxy-Authorization` value that answers this proxy's challenge.
+pub fn proxy_authorization(token: &str) -> String {
+    format!("Basic {}", base64(format!("rift:{token}").as_bytes()))
 }
 
 fn random_hex(bytes: usize) -> io::Result<String> {
