@@ -7,6 +7,7 @@ pub mod download;
 pub mod egress;
 pub mod heuristics;
 pub mod intel;
+pub mod locker;
 pub mod pack;
 pub mod policy;
 pub mod scan;
