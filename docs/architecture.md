@@ -586,7 +586,7 @@ Each finding carries: source, rule or indicator ID, object hash, engine version,
 ### 13.2 TUF
 
 - Client: `tough` ≥ 0.24.0. This is above the 2026 advisory floors of 0.22.0 [R18].
-- The initial root is embedded in the app. Persisted state holds the trusted root and versions.
+- The initial root is embedded in the app. Persisted state holds the trusted root and versions. Rift saves the newest verified root itself (atomically) and starts each update from the newer of it and the embedded root; tough never reads back its own copy, so starting from the embedded root would let a mirror undo a rotation. Key policy and response plan: [key-policy.md](reports/key-policy.md).
 - Roles: root and targets keys offline; snapshot and timestamp keys on the maintainer machine.
 - Expiry: timestamp 7 d, snapshot 14 d, targets 90 d, root 365 d.
 - Offline import is a TUF repository directory or archive verified through a file transport, using exactly the same code path. On Android the user chooses the repository folder in the system picker (no lasting access is kept); the controller copies only plain files of `metadata/` and `targets/`, within count and size bounds, into Rift's own storage, and verifies the copy.

@@ -57,14 +57,14 @@ Host tests after this phase: rift-core 92 (+1 ignored network test), rift-ffi 8,
 - **Android beyond the emulators.** API 33 and 34 (x86_64) and API 35 with 16 KB pages (arm64) only; not yet API 36 or a phone. The import path for a user-chosen update is not built: release builds have no root and no install button, and debug builds install only the embedded demo database.
 - **YARA-X's own timeout on the device.** The hung-worker test hangs in Kotlin, so it shows the controller's deadline, not the engine's. A slow rule or input that trips YARA-X's 15 s limit (`Gap::Timeout`) is tested on the host only.
 - **Online updates.** Only offline import (a repository directory) exists. An HTTP transport over the core's own fetcher (INV-13 destination checks) is not written.
-- **Key policy.** The tool makes 1-of-1 keys per role on one machine. The §13.2 policy (offline root and targets keys, thresholds, root rotation) is not exercised. Tough's root rotation is not tested here.
+- **Key policy.** *Since 21 Oct:* built and tested on the host ([key-policy.md](key-policy.md)): one key per holder, a 2-of-3 root, 2-of-2 offline targets, and root rotation by cross-signing. Building it found finding 64 (a rotation could be undone), now fixed. No production key exists, and no rotation has been published to a device.
 - **Clock problems.** Expiry is enforced by tough against the system clock. A wrong clock surfaces as "expired" or a false "current"; the UI side of §13.2 ("clock problems are surfaced") is not built.
 - **Real-world coverage.** The demo pack has none, by design, and says so. Real feeds are blocked on licensing (§13.3).
 
 ## Could be improved
 
 - Scans in progress should stay pinned to their starting snapshot (§13.2). The store keeps one previous snapshot, but nothing yet tracks which jobs hold which snapshot.
-- `rift-pack` takes all four role keys from one directory. Separate key locations, and refusing to sign with the root key in day-to-day publishing, would match the policy better.
+- ~~`rift-pack` takes all four role keys from one directory.~~ Done: the release commands take one key per holder, and `publish-signed` refuses a root or targets key ([key-policy.md](key-policy.md)).
 - The verdict cache is in memory only. A persisted cache must be bound to the vault (Phase 4).
 - Run more than one scan worker at a time, with a limit, so that one hung worker does not hold up the queue (finding 5).
 - Short refusal messages in the UI, with tough's detail in the log only (finding 6).
