@@ -356,6 +356,9 @@ fn sniff(content: &[u8]) -> Option<PreviewKind> {
 pub enum PreviewFailure {
     #[error("the session this file belonged to has ended")]
     SessionEnded,
+    /// A vault preview: the vault was locked before the preview finished.
+    #[error("the vault was locked")]
+    Locked,
     #[error("the file is not in this session's quarantine")]
     NotFound,
     #[error("Rift previews PNG, JPEG, WebP, PDF and plain-text content only")]
@@ -386,13 +389,42 @@ pub struct PreviewBitmap {
     pub stride: u32,
 }
 
+/// What a preview belongs to; its result is accepted only while that lasts.
+#[derive(Debug)]
+enum PreviewOwner {
+    /// A quarantined file: the session generation must still be current.
+    Session {
+        sessions: Arc<Sessions>,
+        generation: u64,
+    },
+    /// A vault object: the vault must still be unlocked, in the same unlock (§14.2).
+    Vault {
+        vault: Arc<VaultHandle>,
+        unlock: u64,
+    },
+}
+
+impl PreviewOwner {
+    fn check(&self) -> Result<(), PreviewFailure> {
+        match self {
+            Self::Session {
+                sessions,
+                generation,
+            } if !sessions.is_current(*generation) => Err(PreviewFailure::SessionEnded),
+            Self::Vault { vault, unlock } if !vault.still_unlocked(*unlock) => {
+                Err(PreviewFailure::Locked)
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 /// One preview of one file by one fresh worker. The controller sends
 /// `hello_frame`, checks the reply with `accept_hello`, and only then passes
 /// `input` and `request_frame`; every reply is validated against the request.
 #[derive(Debug, uniffi::Object)]
 pub struct PreviewJob {
-    sessions: Arc<Sessions>,
-    generation: u64,
+    owner: PreviewOwner,
     kind: PreviewKind,
     hello: Envelope<Request>,
     request: Envelope<Request>,
@@ -436,16 +468,14 @@ impl PreviewJob {
 
     /// Validates the render reply. `region_bytes` is the size of the output
     /// region the controller created; the bitmap must fit in it. Fails if the
-    /// session ended meanwhile.
+    /// session ended (or the vault was locked) meanwhile.
     pub fn accept(
         &self,
         reply: Vec<u8>,
         region_bytes: u64,
     ) -> Result<PreviewBitmap, PreviewFailure> {
         let response = self.validate(&reply, &self.request)?;
-        if !self.sessions.is_current(self.generation) {
-            return Err(PreviewFailure::SessionEnded);
-        }
+        self.owner.check()?;
         match response {
             Response::Bitmap(header) => {
                 let expected = u64::from(header.stride).saturating_mul(u64::from(header.height));
@@ -741,42 +771,60 @@ impl Sessions {
                 });
             }
         };
-        let Some(kind) = sniff(&input) else {
-            // Plain text is decoded here, in memory-safe code with a bound,
-            // and never interpreted (§11.2).
-            return rift_core::text::plain_text(&input, MAX_TEXT_PREVIEW)
-                .map(|t| Preview::Text {
-                    text: t.text,
-                    truncated: t.truncated,
-                    replaced: t.replaced,
-                })
-                .ok_or(PreviewFailure::Unsupported);
-        };
         let job_id = self.next_job.fetch_add(1, Ordering::SeqCst);
-        let request = match kind {
-            PreviewKind::Image => Request::DecodeImage {
-                max_width,
-                max_height,
-                deadline_ms: PREVIEW_DEADLINE_MS,
-            },
-            PreviewKind::Pdf => Request::RenderPdfPage {
-                page: 0,
-                max_width,
-                max_height,
-                deadline_ms: PREVIEW_DEADLINE_MS,
-            },
+        let owner = PreviewOwner::Session {
+            sessions: self,
+            generation,
         };
-        Ok(Preview::Rendered {
-            job: Arc::new(PreviewJob {
-                sessions: self,
-                generation,
-                kind,
-                hello: envelope(job_id, generation, Request::Hello),
-                request: envelope(job_id.saturating_add(1), generation, request),
-                input,
-            }),
-        })
+        prepare_preview(owner, generation, job_id, input, max_width, max_height)
     }
+}
+
+/// Identifies `input` from its content, never from its name or label:
+/// images and PDFs get a job for a fresh worker, text is returned as
+/// bounded, escaped plain text. `generation` goes into the request
+/// envelopes, which the replies must match.
+fn prepare_preview(
+    owner: PreviewOwner,
+    generation: u64,
+    job_id: u64,
+    input: Vec<u8>,
+    max_width: u32,
+    max_height: u32,
+) -> Result<Preview, PreviewFailure> {
+    let Some(kind) = sniff(&input) else {
+        // Plain text is decoded here, in memory-safe code with a bound,
+        // and never interpreted (§11.2).
+        return rift_core::text::plain_text(&input, MAX_TEXT_PREVIEW)
+            .map(|t| Preview::Text {
+                text: t.text,
+                truncated: t.truncated,
+                replaced: t.replaced,
+            })
+            .ok_or(PreviewFailure::Unsupported);
+    };
+    let request = match kind {
+        PreviewKind::Image => Request::DecodeImage {
+            max_width,
+            max_height,
+            deadline_ms: PREVIEW_DEADLINE_MS,
+        },
+        PreviewKind::Pdf => Request::RenderPdfPage {
+            page: 0,
+            max_width,
+            max_height,
+            deadline_ms: PREVIEW_DEADLINE_MS,
+        },
+    };
+    Ok(Preview::Rendered {
+        job: Arc::new(PreviewJob {
+            owner,
+            kind,
+            hello: envelope(job_id, generation, Request::Hello),
+            request: envelope(job_id.saturating_add(1), generation, request),
+            input,
+        }),
+    })
 }
 
 impl Sessions {
@@ -1529,6 +1577,72 @@ mod tests {
         0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0, 0x05, 0x00, 0x01, 0xff,
         0x89, 0x99, 0x3d, 0x1d, 0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ];
+
+    #[test]
+    fn vault_previews_end_when_the_vault_locks() {
+        use rift_worker_ffi::WorkerEngine;
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        let url = format!("http://localhost:{}/", serve(PNG));
+        let file = sessions.download(generation, info(url)).unwrap();
+        let vault =
+            VaultHandle::create_with_passphrase(root(&dir) + "/vault", b"correct horse".to_vec())
+                .unwrap();
+        let kept = sessions
+            .save_to_vault(generation, file.id, vault.clone(), 0)
+            .unwrap();
+        sessions.reset().unwrap();
+
+        // After the session: the same worker exchange, from the vault's copy.
+        let rendered =
+            |vault: &Arc<VaultHandle>| match vault.clone().preview(kept.id.clone(), 64, 64) {
+                Ok(Preview::Rendered { job }) => job,
+                other => panic!("expected a worker job, got {other:?}"),
+            };
+        let job = rendered(&vault);
+        assert_eq!(
+            (job.kind(), job.input()),
+            (PreviewKind::Image, PNG.to_vec())
+        );
+        let worker = WorkerEngine::new(true, false);
+        job.accept_hello(worker.handle(job.hello_frame(), None).frame)
+            .unwrap();
+        let reply = worker.handle(job.request_frame(), Some(job.input())).frame;
+        assert!(job.accept(reply.clone(), 64 * 64 * 4).is_ok());
+
+        // Locked, then unlocked again: the earlier preview stays refused.
+        let pending = rendered(&vault);
+        vault.lock();
+        vault
+            .unlock_with_passphrase(b"correct horse".to_vec())
+            .unwrap();
+        let worker = WorkerEngine::new(true, false);
+        pending
+            .accept_hello(worker.handle(pending.hello_frame(), None).frame)
+            .unwrap();
+        let late = worker
+            .handle(pending.request_frame(), Some(pending.input()))
+            .frame;
+        assert!(matches!(
+            pending.accept(late, 64 * 64 * 4),
+            Err(PreviewFailure::Locked)
+        ));
+
+        vault.lock();
+        assert!(matches!(
+            vault.clone().preview(kept.id, 64, 64),
+            Err(PreviewFailure::Locked)
+        ));
+        vault
+            .unlock_with_passphrase(b"correct horse".to_vec())
+            .unwrap();
+        assert!(matches!(
+            vault.preview("00".repeat(16), 64, 64),
+            Err(PreviewFailure::NotFound)
+        ));
+    }
 
     #[test]
     fn previews_go_through_a_validated_worker_exchange() {

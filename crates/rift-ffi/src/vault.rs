@@ -7,6 +7,7 @@
 //! They cross as bytes, which both sides overwrite after use (best effort:
 //! Rift does not claim that every runtime copy is erased, §14.2).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rift_core::locker::{
@@ -15,7 +16,10 @@ use rift_core::locker::{
 use rift_core::text::escape_for_display;
 use rift_core::vault::{IndexEntry, VaultError};
 
-use crate::{Content, ReadFailure, Sessions};
+use crate::{
+    Content, MAX_PREVIEW_INPUT, Preview, PreviewFailure, PreviewOwner, ReadFailure, Sessions,
+    prepare_preview,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum VaultProtection {
@@ -122,6 +126,10 @@ pub fn vault_protection(dir: String) -> Option<VaultProtection> {
 #[derive(Debug, uniffi::Object)]
 pub struct VaultHandle {
     vault: Mutex<Vault>,
+    /// Counts locks, so that a preview started before a lock is refused
+    /// even if the vault was unlocked again meanwhile.
+    locks: AtomicU64,
+    next_job: AtomicU64,
 }
 
 #[uniffi::export]
@@ -191,8 +199,10 @@ impl VaultHandle {
         Ok(self.lock_state()?.unlock_with_secret(&secret)?)
     }
 
-    /// Drops the identity and the index from memory.
+    /// Drops the identity and the index from memory, and ends every
+    /// preview of a vault object that has not finished.
     pub fn lock(&self) {
+        self.locks.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut vault) = self.lock_state() {
             vault.lock();
         }
@@ -212,13 +222,62 @@ impl VaultHandle {
     pub fn remove(&self, id: String) -> Result<(), VaultFailure> {
         Ok(self.lock_state()?.remove(&id)?)
     }
+
+    /// Prepares a preview of object `id` exactly as for a quarantined file
+    /// (§11.3): the verified plaintext goes to a fresh isolated worker, or is
+    /// shown as escaped text. The result is refused if the vault is locked
+    /// before the worker answers.
+    pub fn preview(
+        self: Arc<Self>,
+        id: String,
+        max_width: u32,
+        max_height: u32,
+    ) -> Result<Preview, PreviewFailure> {
+        let unlock = self.locks.load(Ordering::SeqCst);
+        let input = {
+            let vault = self.lock_state().map_err(|_| PreviewFailure::Poisoned)?;
+            let entries = vault.entries().map_err(|_| PreviewFailure::Locked)?;
+            let size = entries
+                .iter()
+                .find(|e| e.id.to_hex() == id)
+                .ok_or(PreviewFailure::NotFound)?
+                .sealed
+                .size;
+            if size > MAX_PREVIEW_INPUT {
+                return Err(PreviewFailure::TooLarge {
+                    limit: MAX_PREVIEW_INPUT,
+                });
+            }
+            let mut input = Vec::new();
+            vault
+                .read(&id, &mut input)
+                .map_err(|e| PreviewFailure::Storage {
+                    detail: e.to_string(),
+                })?;
+            input
+        };
+        let job_id = self.next_job.fetch_add(2, Ordering::SeqCst);
+        let owner = PreviewOwner::Vault {
+            vault: self,
+            unlock,
+        };
+        // Vault previews belong to no session; generation 0 is never a session's.
+        prepare_preview(owner, 0, job_id, input, max_width, max_height)
+    }
 }
 
 impl VaultHandle {
     fn wrap(vault: Vault) -> Arc<Self> {
         Arc::new(Self {
             vault: Mutex::new(vault),
+            locks: AtomicU64::new(0),
+            next_job: AtomicU64::new(1),
         })
+    }
+
+    /// Unlocked, and not locked since `unlock` was read.
+    pub(crate) fn still_unlocked(&self, unlock: u64) -> bool {
+        self.locks.load(Ordering::SeqCst) == unlock && self.is_unlocked()
     }
 
     fn lock_state(&self) -> Result<MutexGuard<'_, Vault>, VaultFailure> {

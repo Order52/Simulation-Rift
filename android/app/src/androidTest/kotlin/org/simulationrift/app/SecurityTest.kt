@@ -835,6 +835,38 @@ class SecurityTest {
         }
     }
 
+    @Test
+    fun v4_keptFilesPreviewInAnIsolatedWorkerUntilLocked() {
+        destroyVault()
+        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+        awaitVault<Locker.State.Unlocked>()
+        allowFixtureHost()
+        val file = submit(activeGeneration(), fixture("/files/picture.png")).file!!
+        Core.keep(file.id)
+        awaitCondition("kept") { file.id in Locker.kept.value }
+        val entry = (Locker.state.value as Locker.State.Unlocked).entries.single()
+        resetAndAwait(activeGeneration())
+
+        // After the session: rendered from the vault's copy, by a fresh worker.
+        Locker.preview(entry.id)
+        val deadline = SystemClock.elapsedRealtime() + PREVIEW_TIMEOUT_MS
+        var preview = Locker.previews.value[entry.id]
+        while ((preview == null || preview.running) && SystemClock.elapsedRealtime() < deadline) {
+            SystemClock.sleep(50)
+            preview = Locker.previews.value[entry.id]
+        }
+        val bitmap = preview?.bitmap
+        assertNotNull("${preview?.failure}", bitmap)
+        assertEquals(emptyList<String>(), filesContaining(MARKER))
+
+        // Locking clears what is shown.
+        Locker.lock()
+        awaitVault<Locker.State.Locked>()
+        assertTrue(Locker.previews.value.isEmpty())
+        report("v4", "vault preview ${bitmap!!.width}x${bitmap.height} after the session ended; cleared on lock")
+        destroyVault()
+    }
+
     private fun destroyVault() {
         Locker.destroy()
         awaitVault<Locker.State.Absent>()

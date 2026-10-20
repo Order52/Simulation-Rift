@@ -617,25 +617,40 @@ object Core {
         val generation = currentGeneration ?: return
         val opened = sessions ?: return
         _previews.update { it + (fileId to Preview(fileId)) }
-        previewing.execute {
-            val started = android.os.SystemClock.elapsedRealtime()
-            val outcome = try {
-                when (val prepared = opened.preview(generation.toULong(), fileId, Previewer.MAX_SIDE.toUInt(), Previewer.MAX_SIDE.toUInt())) {
-                    is CorePreview.Rendered -> prepared.job.use { job -> Preview(fileId, bitmap = Previewer.render(app, job, service)) }
-                    is CorePreview.Text -> Preview(fileId, text = prepared.text, note = textNote(prepared))
-                }
-            } catch (e: PreviewFailure) {
-                Preview(fileId, failure = describe(e))
-            } catch (e: IsolatedWorker.Failed) {
-                Preview(fileId, failure = e.message)
-            } catch (e: Exception) {
-                Log.e(TAG, "preview failed", e)
-                Preview(fileId, failure = "the preview failed: ${e.javaClass.simpleName}")
-            }
-            Log.i(TAG, "preview of $fileId in generation $generation after ${android.os.SystemClock.elapsedRealtime() - started} ms: " +
-                (outcome.bitmap?.let { "${it.width}x${it.height}" } ?: outcome.text?.let { "text, ${it.length} chars" } ?: "failed: ${outcome.failure}"))
+        render(fileId, "generation $generation", service, { max -> opened.preview(generation.toULong(), fileId, max, max) }) { outcome ->
             if (generation == currentGeneration) _previews.update { it + (fileId to outcome) }
         }
+    }
+
+    /**
+     * Runs one prepared preview on the preview executor: a fresh isolated
+     * worker for images and PDFs, or the core's escaped text. `publish`
+     * receives the outcome, and decides whether it still belongs on screen.
+     */
+    internal fun render(
+        key: String,
+        owner: String,
+        service: Class<out Service>,
+        prepare: (UInt) -> CorePreview,
+        publish: (Preview) -> Unit,
+    ) = previewing.execute {
+        val started = android.os.SystemClock.elapsedRealtime()
+        val outcome = try {
+            when (val prepared = prepare(Previewer.MAX_SIDE.toUInt())) {
+                is CorePreview.Rendered -> prepared.job.use { job -> Preview(key, bitmap = Previewer.render(app, job, service)) }
+                is CorePreview.Text -> Preview(key, text = prepared.text, note = textNote(prepared))
+            }
+        } catch (e: PreviewFailure) {
+            Preview(key, failure = describe(e))
+        } catch (e: IsolatedWorker.Failed) {
+            Preview(key, failure = e.message)
+        } catch (e: Exception) {
+            Log.e(TAG, "preview failed", e)
+            Preview(key, failure = "the preview failed: ${e.javaClass.simpleName}")
+        }
+        Log.i(TAG, "preview of $key in $owner after ${android.os.SystemClock.elapsedRealtime() - started} ms: " +
+            (outcome.bitmap?.let { "${it.width}x${it.height}" } ?: outcome.text?.let { "text, ${it.length} chars" } ?: "failed: ${outcome.failure}"))
+        publish(outcome)
     }
 
     private fun textNote(t: CorePreview.Text) = listOfNotNull(
@@ -646,6 +661,7 @@ object Core {
 
     private fun describe(e: PreviewFailure): String = when (e) {
         is PreviewFailure.SessionEnded -> "the session this file belonged to has ended"
+        is PreviewFailure.Locked -> "the vault was locked"
         is PreviewFailure.NotFound -> "the file is not in this session's quarantine"
         is PreviewFailure.Unsupported -> "Rift previews PNG, JPEG, WebP, PDF and plain-text content only"
         is PreviewFailure.TooLarge -> "files larger than ${e.limit} bytes are not previewed"

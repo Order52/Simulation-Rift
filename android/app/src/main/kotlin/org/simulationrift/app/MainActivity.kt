@@ -458,6 +458,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun VaultItem(entry: VaultEntry) {
         var warning by remember { mutableStateOf(false) }
+        val previews by Locker.previews.collectAsState()
         Column(Modifier.testTag("vault-entry-${entry.id}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 "${entry.displayName} · ${entry.size} bytes · sha256 ${entry.sha256.take(16)}…" +
@@ -487,6 +488,7 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = { Locker.remove(entry.id) }, modifier = Modifier.testTag("vault-remove-${entry.id}")) { Text("Remove") }
                 }
             }
+            PreviewArea(entry.id, entry.displayName, previews[entry.id]) { Locker.preview(entry.id) }
         }
     }
 
@@ -571,10 +573,10 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun PreviewArea(fileId: String, name: String, preview: Core.Preview?) {
+    private fun PreviewArea(fileId: String, name: String, preview: Core.Preview?, start: () -> Unit = { Core.preview(fileId) }) {
         val bitmap = preview?.bitmap
         when {
-            preview == null -> OutlinedButton(onClick = { Core.preview(fileId) }, modifier = Modifier.testTag("preview-$fileId")) {
+            preview == null -> OutlinedButton(onClick = start, modifier = Modifier.testTag("preview-$fileId")) {
                 Text("Preview")
             }
             preview.running -> Text("Rendering in an isolated worker…")

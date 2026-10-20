@@ -14,7 +14,7 @@ The Android debug build works end to end on emulators, and its browser is now is
 | 1: Foundations (Rust core, protocol, formats) | **Done.** Unit, property and fuzz tests, strict lints, dependency policy. |
 | 2: Android vertical slice | **Done on emulators** (API 33–36, both ABIs, 16 KB pages), now on architecture 2.1 (browser app and network lock, [report](docs/reports/browser-isolation.md)). Gate still open: a physical phone. |
 | 3: Scanner and signed intelligence | **Done on emulators**, except the production key policy and real feeds. Scanning (two isolated workers at a time); signed updates imported from a folder you choose or fetched online through the core's own checked fetcher; refusals in one sentence; a warning when the clock is behind the database. |
-| 4: Vault | **Done on the API 35 emulator** ([report](docs/reports/phase-4.md)). Keystore key behind BiometricPrompt, or a passphrase; keep, export (warned), remove; locks on request, in the background and after 5 minutes. Open: a physical phone (the emulator's keystore is software only), a recovery passphrase, vault previews. |
+| 4: Vault | **Done on the API 35 emulator** ([report](docs/reports/phase-4.md)). Keystore key behind BiometricPrompt, or a passphrase; keep, export (warned), remove; locks on request, in the background and after 5 minutes. Kept files can be previewed in an isolated worker until the vault locks. Open: a physical phone (the emulator's keystore is software only), a recovery passphrase. |
 | 6: AI experiment | Not started; optional and gated by design. |
 | 7: Hardening and release | Not started. Next after Phase 4, for Android. |
 | 5: Linux app | Not started. **Last**, after all Android work, and **with Qt instead of GTK4** (decided 20 Oct 2026). The worker lockdown is proven in PoCs; the browser design will be revised for Qt before any code. |
@@ -44,14 +44,14 @@ The Android debug build works end to end on emulators, and its browser is now is
 | Previews | Images and PDFs render in an isolated worker (no files, no network, seccomp on the parser thread, deadlines, unbound after each job). Text is shown as escaped plain text. | P1, P2, S3–S7, S19 |
 | Scanning | Each download is checked by file hash and type in the core, then by YARA-X rules in a fresh isolated worker, two at a time, so a hung worker does not hold the queue. A scan keeps the database snapshot it started with. The best status is "Not flagged", never "safe". | S16a, S21a, S21b |
 | Signed threat database | TUF updates from a folder you choose (system picker) or online through the core's checked fetcher. Tampered, rolled-back, expired or wrongly signed updates are refused with a one-sentence reason (the full error goes to the log) and the old database stays. Debug builds embed a signed demo database. | S16, S17, S21, S22 |
-| Vault | "Keep in the vault" copies a quarantined file, sealed with age to an identity wrapped by an Android Keystore key (per-use authentication through the system prompt, device must be unlocked) or a passphrase. Nothing readable is written to disk. Locks on request, when Rift goes to the background, and after 5 minutes. Export only after a warning, to a place you choose. | S18, v1–v3 |
+| Vault | "Keep in the vault" copies a quarantined file, sealed with age to an identity wrapped by an Android Keystore key (per-use authentication through the system prompt, device must be unlocked) or a passphrase. Nothing readable is written to disk. Locks on request, when Rift goes to the background, and after 5 minutes. Export only after a warning, to a place you choose. | S18, v1–v4 |
 | Reset and recovery | Reset stops the proxy, crypto-shreds quarantine, has Android wipe the browser app and verifies the result. A kill in the middle of a reset is recovered on the next start; the browser is also wiped at every launch. | S12, S13, S14, S27 |
 
 ## Where it has been tested
 
 | Environment | Result |
 |---|---|
-| Host: macOS arm64, and CI on Ubuntu and macOS | 155 Rust tests, `clippy -D warnings`, `fmt`, `cargo deny`, 7 fuzz targets (short runs) and the Linux worker lockdown pass. |
+| Host: macOS arm64, and CI on Ubuntu and macOS | 156 Rust tests, `clippy -D warnings`, `fmt`, `cargo deny`, 7 fuzz targets (short runs) and the Linux worker lockdown pass. |
 | Android API 36, arm64 (local emulator, WebView 133) | **Full suite on architecture 2.1 (before the Phase 3 import and online tests and the vault): 31 instrumented tests plus S13/S14 pass** ([evidence](docs/reports/evidence/phase3-android-split-api36/)). |
 | Android API 35, 16 KB pages, arm64 (local emulator, WebView 124) | **Full suite with the vault: 36 instrumented tests plus S16d, S16f, S13 and S14 pass** ([evidence](docs/reports/evidence/phase4-vault-api35-16k/)). |
 | Android API 33 and 34, x86_64 (CI emulators, WebView 109 and 113) | **Full suite on architecture 2.1 passes** (CI run 39363201440, before the import, online and vault tests; [33](docs/reports/evidence/phase3-android-split-api33-x86_64/), [34](docs/reports/evidence/phase3-android-split-api34-x86_64/)), after the fixes for the first 2.1 run ([report](docs/reports/browser-isolation.md), findings 7–8). |
@@ -66,7 +66,7 @@ In order of priority:
 Android first; Linux is the last step.
 
 1. **Phase 3 leftovers:** ~~import screen~~, ~~online updates~~ and ~~clock warning~~ are done; open are the production key policy (offline keys, thresholds, rotation) and licensed real feeds.
-2. **Phase 4 leftovers:** ~~key providers, lock/unlock, keep and warned export, plaintext inventory~~ are done; open are a recovery passphrase, previews of kept files, scan summaries in the vault index, and settings for the lock policy.
+2. **Phase 4 leftovers:** ~~key providers, lock/unlock, keep and warned export, plaintext inventory~~ are done; ~~previews of kept files~~ are done; open are a recovery passphrase, scan summaries in the vault index, and settings for the lock policy.
 3. **Phase 7, hardening (Android):** long fuzz campaigns, fault injection, privacy network captures, a dependency review, release gates, and an external security review before any release claim.
 4. **Phones:** physical devices (every emulator level has passed on 2.1), which also settle the keystore's hardware backing and the lookup benchmark.
 5. **Phase 6 (optional):** the AI experiment, only if it adds measured value.

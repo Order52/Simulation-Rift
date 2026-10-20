@@ -58,6 +58,16 @@ object Locker {
     private val _kept = MutableStateFlow<Set<String>>(emptySet())
     val kept: StateFlow<Set<String>> = _kept
 
+    /**
+     * Previews of kept files, by vault object id: shown only while the vault
+     * stays unlocked, and cleared when it locks (§14.2).
+     */
+    private val _previews = MutableStateFlow<Map<String, Core.Preview>>(emptyMap())
+    val previews: StateFlow<Map<String, Core.Preview>> = _previews
+
+    // Counts locks; a preview finishing after a lock is not shown.
+    private val locks = java.util.concurrent.atomic.AtomicLong()
+
     /** How long the vault stays unlocked without a vault action (§14.2: 5 minutes). */
     @Volatile internal var inactivityMs: Long = 5 * 60 * 1000L
 
@@ -167,7 +177,9 @@ object Locker {
     fun lock(reason: String = "on request") = vaulting.execute {
         val vault = handle ?: return@execute
         if (!vault.isUnlocked()) return@execute
-        vault.lock()
+        locks.incrementAndGet()
+        _previews.value = emptyMap()
+        vault.lock() // also refuses the reply of any preview still running
         timeout?.cancel(false)
         Log.i(TAG, "vault locked: $reason")
         refresh()
@@ -210,9 +222,21 @@ object Locker {
         }
     }
 
+    /** Previews kept file `id` like a quarantined one (§11.3), in a fresh isolated worker. */
+    fun preview(id: String, service: Class<out android.app.Service> = PreviewService::class.java) = vaulting.execute {
+        val vault = handle?.takeIf { it.isUnlocked() } ?: return@execute
+        val unlock = locks.get()
+        _previews.update { it + (id to Core.Preview(id)) }
+        touch()
+        Core.render(id, "the vault", service, { max -> vault.preview(id, max, max) }) { outcome ->
+            if (locks.get() == unlock) _previews.update { it + (id to outcome) }
+        }
+    }
+
     fun remove(id: String) = vaulting.execute {
         act("The file was not removed") {
             unlocked().remove(id)
+            _previews.update { it - id }
             "Removed from the vault."
         }
     }
@@ -222,6 +246,8 @@ object Locker {
      * (a forgotten passphrase, an invalidated key) or is no longer wanted.
      */
     fun destroy() = vaulting.execute {
+        locks.incrementAndGet()
+        _previews.value = emptyMap()
         handle?.lock()
         handle = null
         timeout?.cancel(false)
