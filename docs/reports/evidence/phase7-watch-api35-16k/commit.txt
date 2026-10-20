@@ -1,0 +1,2 @@
+Full run (this directory): the code of e3f7fee, except that the browser still polled the page watch on its UI thread (moved to a background thread in e3f7fee). w1, s02, s12, s27, s28, n1 and n2 were run again on e3f7fee's own build: 7 of 7 passed.
+screens/recents-*: checked by hand on the same emulator and build (see docs/reports/phase-7.md, h1).

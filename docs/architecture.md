@@ -458,13 +458,47 @@ Rift checks user-entered URLs, main-frame navigations that the engine reports, a
 
 Rift **does not** claim to inspect subresources, WebSockets, WebRTC, service-worker fetches, or POST navigations. WebView's callbacks have documented gaps, and WebRTC data channels can reach local-network addresses without a permission prompt.
 
-Host-level enforcement of all engine traffic through `androidx.webkit.ProxyController` is a Phase 7 investigation. It is not a V1 claim. The diagnostics screen states the actual coverage. **Since architecture 2.1:** the browser app's WebView uses `ProxyController` with the implicit bypass rules removed, and the network lock makes the proxy its only route; x2 measured 0 bytes on real networks for the browser's UID while a page loaded through the proxy ([Phase 7](reports/phase-7.md)). That shows the route, not the destinations, which INV-13's tests cover.
+Host-level enforcement of all engine traffic through `androidx.webkit.ProxyController` is a Phase 7 investigation. It is not a V1 claim. The diagnostics screen states the actual coverage. **Since architecture 2.1:** the browser app's WebView uses `ProxyController` with the implicit bypass rules removed, and the network lock makes the proxy its only route; x2 measured 0 bytes on real networks for the browser's UID while a page loaded through the proxy ([Phase 7](reports/phase-7.md)). That shows the route, not the destinations, which INV-13's tests cover. **Since Phase 7:** the proxy also checks the destination of every connection the engine makes (subframes, scripts, images, WebSockets, service-worker fetches) against the installed threat database before it resolves the name, and refuses a listed one. For HTTPS it sees only the host, so only host-level indicators can match; for plain HTTP the whole URL is checked. Until then, the navigation check itself had never consulted the installed database (Phase 7 finding 56).
 
 ### 10.4 Verdict handling
 
 - **Known malicious:** blocked. A per-navigation "Inspect anyway in restricted session" is offered after a warning. It changes no confinement and grants no permission.
 - **Suspicious:** an interstitial in the trusted UI lists the specific heuristic facts.
 - **Not flagged:** proceeds and shows the database age. There is never a green "safe" badge.
+
+### 10.5 Live page watch
+
+While a page is open, the trusted UI shows, as it happens, what the page has tried to do and a status for the session. It is built only from **enforcement points the page cannot speak through**: native WebView callbacks in the browser app, and the controller's own proxy, network lock, navigation policy and download pipeline. No script is injected into pages and no channel is opened to them (INV-6), so a page can neither hide from the watch by detecting it nor feed it false reports.
+
+| What the page tries | Where Rift sees it | What happens |
+|---|---|---|
+| Open a known-malicious, suspicious or lookalike address; plain HTTP | Navigation policy (core) | Blocked, interstitial, or marked (§10.4) |
+| Load anything (a frame, script, image, WebSocket) from a listed host, or a listed plain-HTTP URL | Egress proxy, with the threat database (core) | Refused before the name is resolved (§10.3) |
+| Get the device's location | `onGeolocationPermissionsShowPrompt` (browser) | Denied. The browser app holds no location permission, so Android refuses even if the callback were bypassed |
+| Use the camera, microphone, MIDI or protected media | `onPermissionRequest` (browser) | Denied; the browser app holds none of these permissions |
+| Ask for a file from the device (upload) | `onShowFileChooser` (browser) | Denied (INV-6) |
+| Go fullscreen (which would hide the trusted bar) | `onShowCustomView` (browser) | Refused (INV-6) |
+| Open another app (`intent:`, `market:`, custom schemes) | Navigation policy (core) | Blocked |
+| Reach the local network, the device itself, or a link-local address | Egress proxy (core) | Refused (INV-13) |
+| Send traffic around the proxy (WebRTC, raw sockets, DNS) | Network lock (controller) | Dropped (INV-14) |
+| Deliver a file | Download capture (core) | Fetched into encrypted quarantine, scanned in an isolated worker, verdict shown |
+| Crash or compromise its renderer | `onRenderProcessGone` (browser) | Session ends and the browser app is wiped (INV-7); the home screen says why |
+
+**Status.** *Danger*: a known-malicious address, request or downloaded file. *Warning*: a request for location, camera, microphone, MIDI or files; a link to another app; a suspicious or lookalike address; an attempt on the local network; traffic around the proxy; a suspicious file. *Note*: an unencrypted page and other address notes, a protected-media or fullscreen request, a download, and a file that was not flagged or not fully scanned. With no Danger or Warning the status is *Nothing suspicious seen so far*, shown with what is watched. There is never a "safe" status. The status is the **session's**, not the current page's: what one page did can stay in the session (its storage, a service worker, a compromised renderer), so only a reset clears it.
+
+**Not seen** (the UI says so): what scripts do inside the page (fingerprinting, reading what is typed into the page, writing to the clipboard, mining), the content of HTTPS traffic (so path-level indicators match plain HTTP only), and pop-ups (the engine refuses them without a callback). The network lock's own background traffic (router and neighbour discovery, multicast, and the system's DNS and private-DNS checks to the lock's resolver address) is dropped but not reported.
+
+**Channel.** The browser reports what only the engine sees over the signature-checked Binder interface (`ICore.reportAttempt(generation, kind, origin)`: one-way, at most once a second per kind and origin; the core accepts only the current generation's registered browser and a known kind, and caps the origin). The core merges these with its own observations into one bounded log per session (64 kinds of event, repeats counted; a full list makes room for a higher level by dropping a lower one), which the browser's trusted bar polls once a second (`ICore.pageWatch`) and the home screen shows. The core reads its own sources (proxy refusals by sequence number, the lock's drops counted per session) when the log is read, so the browser cannot suppress them. Browser-reported events are only as trustworthy as the browser process: code that escaped the renderer *and* took over the browser process could suppress or forge them, which is why the core's own events and the wipe at reset do not depend on them. Tested by w1.
+
+### 10.6 What stays out of the device
+
+Besides the browser's separate UID, the network lock and the wipe (§8.3, §8.8, §15), the browser window keeps page content out of shared system state where Android allows it:
+
+- **Recents:** the browser window disables its recents screenshot (`setRecentsScreenshotEnabled(false)`, API 33+), so page images are not stored by the system for the task switcher.
+- **Keyboard:** text fields in pages ask the keyboard not to learn (`IME_FLAG_NO_PERSONALIZED_LEARNING`, set by the browser's WebView), so words typed into a hostile page should not enter the keyboard's dictionary. Keyboards may ignore the flag. Rift's own address bar does not set it yet (Compose exposes no way to), so addresses typed there can be learnt.
+- **Not closed:** a page can still write to the system clipboard after a user gesture; there is no WebView control for it (§24).
+
+An "isolated volume" for the browser is not something an ordinary Android app can create: apps cannot mount file systems, and the Android Virtualization Framework's VM permission (`MANAGE_VIRTUAL_MACHINE`) is signature/privileged. The equivalent the platform allows is the browser app's own UID and data directory, which only it can read and which Android deletes at every reset. On Linux (Phase 5) the browser will run in its own namespaces.
 
 ## 11. Rift Files: intake, quarantine, preview, export
 
@@ -828,13 +862,15 @@ Unit, property, and fuzz testing cover URL canonicalization, the table validator
 | The controller process dies while the browser runs | The lock goes with it. The browser exits when its binding to the core dies, but escaped code in the browser could stay running without the lock until the next launch wipes the app | The next launch wipes the browser before anything else (§15); Android's always-on VPN with "block connections without VPN" would close the gap, but it is a device setting Rift cannot set |
 | Sites that use HTTP authentication | The browser answers only the proxy's own challenge, so such sites cannot be signed in to | Stated; it keeps the proxy token from ever reaching a site |
 | No site isolation within a session | A renderer compromise from one site can read other sites' data in the same session | One session at a time; encourage reset between unrelated sites |
-| Network coverage gaps | With the lock, every connection is checked for destination class, but only main-frame navigations are checked against threat intelligence; HTTPS content is not inspected | State coverage honestly |
+| Network coverage gaps | With the lock, every connection is checked for destination class and against the threat database, but for HTTPS only by host; HTTPS content is not inspected | State coverage honestly |
 | Download capture gaps | Some downloads are unsupported | Explicit UI message; no JS bridge |
 | Parser or decoder vulnerabilities | Contained by B3; kernel exploits remain | Updates; fuzzing; worker retirement |
 | Feed licensing | No real intelligence until rights are obtained | Demo packs; direct-adapter design |
 | Signing-key compromise | Bounded by TUF thresholds and root rotation | Offline keys; documented response plan |
 | Android developer verification (enforced from 30 Sep 2026 in BR/ID/SG/TH; global rollout planned for 2027) [R22] | Sideloaded builds need a registered identity | Register the package name before distribution |
 | Same-user Linux processes | Can read an unlocked vault's files or memory | Out of scope; stated plainly |
+| Page writes to the clipboard | A page can put text on the system clipboard after a user gesture (for example a command meant to be pasted elsewhere) | Stated in the live page watch's "not seen" list; no WebView control exists |
+| A browser process taken over after a renderer escape | Could suppress or forge the browser-reported half of the live page watch | The core's own events (proxy, lock, navigation, downloads) and the wipe at reset do not depend on it |
 
 **Release gates:**
 
