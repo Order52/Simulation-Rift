@@ -185,6 +185,9 @@ object Core {
             app = context.applicationContext
             disposal = AndroidBrowserDisposal(app)
             Locker.open(app)
+            // An update's working copy left by a kill during an install (found by
+            // F4). First on the update executor, so before any new install.
+            updating.execute { File(app.filesDir, "rift/import").deleteRecursively() }
             worker.execute(::openAndStart)
         }
     }
@@ -515,7 +518,11 @@ object Core {
 
     /** Verifies with `verify`, has a fresh worker compile the rules, then installs; on any failure the current database stays. */
     private fun install(service: Class<out Service>, progress: String = "Checking the update…", verify: (Intel) -> PendingIntel) {
-        val intel = database ?: return
+        // Opened on the worker at start; until then (or if opening failed) there is nothing to install into.
+        val intel = database ?: run {
+            _intelMessage.value = "The threat database is not open yet, so nothing was installed. Try again in a moment."
+            return
+        }
         _intelMessage.value = progress
         updating.execute {
             _intelMessage.value = try {

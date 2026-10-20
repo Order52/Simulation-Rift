@@ -57,7 +57,7 @@ close_dialogs() {
 "$adb" logcat -b events -c
 close_dialogs
 
-# RIFT_HOST_ONLY=1 skips the instrumented tests (to rerun S13/S14 alone).
+# RIFT_HOST_ONLY=1 skips the instrumented tests (to rerun the host-driven steps alone).
 if [ "${RIFT_HOST_ONLY:-0}" != 1 ]; then
   echo "== instrumented tests"
   "$adb" logcat -c
@@ -171,149 +171,249 @@ scroll_down() {
 # The same, retried while the screen settles (bounded).
 tap_when() { i=0; until tap "$1" "$2"; do i=$((i + 1)); [ $i -lt 10 ] || return 1; sleep 1; done; }
 
-echo "== S16d: import through the system folder picker"
-# The user's path: the home screen's import button, Android's folder picker
-# (DocumentsUI), and the one-time access grant. The folder holds the build's
-# signed demo repository plus two files that are not part of it.
-update=/sdcard/Download/rift-s16d
-"$adb" shell rm -rf $update
-"$adb" push "$here/app/build/generated-intel/intel-demo/repo" $update >/dev/null
-"$adb" shell "echo x > $update/targets/.junk && echo x > $update/notes.txt"
-"$adb" shell am force-stop $pkg
-"$adb" logcat -c
-"$adb" shell am start -n $pkg/.MainActivity >/dev/null
-wait_log "session [0-9]+ active" 30 || true
-close_dialogs
-found=no
-for _ in $(seq 20); do
-  if tap id intel-import; then found=yes; break; fi
-  scroll_down
-  sleep 1
-done
-if [ $found = yes ] \
-  && { tap text rift-s16d || { tap_when text Download && tap_when text rift-s16d; }; } \
-  && tap_when text "use this folder" && tap_when text allow && wait_log "intel install:" 30; then
-  line="$("$adb" logcat -d -s Rift:I | tr -d '\r' | grep -E "intel (import|install):" | sed 's/.*: intel/intel/' | tr '\n' ';')"
-  case "$line" in
-    *"copied 8 files, skipped 1"*"Installed demo-"*) result S16d PASS "$line" ;;
-    *) result S16d FAIL "$line" ;;
-  esac
-else
-  # What the screen showed, to tell a layout problem from a stuck screen.
-  "$adb" exec-out screencap -p > "$out/s16d-screen.png" 2>/dev/null || true
-  "$adb" shell cat /data/local/tmp/rift-ui.xml > "$out/s16d-ui.xml" 2>/dev/null || true
-  result S16d FAIL "could not drive the folder picker (import button found: $found; last dump: $(tr -d '\r' < "$out/last-dump.txt" | tail -1))"
-fi
-"$adb" shell rm -rf $update
-
-echo "== S16f: a clock behind the database is shown"
-# Needs root (the step above S16d): the device clock is set two years back,
-# then restored from the host's clock. The database from S16d is installed.
-auto_time="$("$adb" shell settings get global auto_time | tr -d '\r')"
-[ "$auto_time" = 0 ] || auto_time=1
-"$adb" shell settings put global auto_time 0
-"$adb" shell am force-stop $pkg
-"$adb" shell date @$(($(date +%s) - 2 * 365 * 24 * 3600)) >/dev/null
-"$adb" shell am start -n $pkg/.MainActivity >/dev/null
-sleep 4
-close_dialogs
-seen=no
-for _ in $(seq 20); do
-  "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1 \
-    && "$adb" shell cat /data/local/tmp/rift-ui.xml | grep -q 'resource-id="intel-clock"' && { seen=yes; break; }
-  scroll_down
-  sleep 1
-done
-if [ $seen = no ]; then
-  # As for S16d. Without S16d's database there is nothing to warn about.
-  "$adb" exec-out screencap -p > "$out/s16f-screen.png" 2>/dev/null || true
-  "$adb" shell cat /data/local/tmp/rift-ui.xml > "$out/s16f-ui.xml" 2>/dev/null || true
-fi
-"$adb" shell date @$(date +%s) >/dev/null
-"$adb" shell settings put global auto_time "${auto_time:-1}"
-"$adb" shell am force-stop $pkg
-if [ $seen = yes ]; then result S16f PASS "the clock warning was shown"; else result S16f FAIL "no clock warning with the clock two years back"; fi
-
-echo "== S14: renderer crash"
-"$adb" shell am force-stop $pkg
-"$adb" logcat -c
-open_link "http://localhost:$port/s1.html?test=s14"
-wait_log "session [0-9]+ active" 15 || true
-sleep 4
-main_before="$(pid_of $pkg)"
-browser_pid="$(pid_of $browser:web)"
-renderer="$(renderer_pid)"
-generation="$("$adb" logcat -d -s Rift:I | tr -d '\r' | sed -n 's/.*session \([0-9]*\) active.*/\1/p' | tail -1)"
-echo "main=$main_before browser=$browser_pid renderer=$renderer generation=$generation" > "$out/s14.txt"
-if [ -n "$renderer" ]; then
-  "$adb" shell kill -SEGV "$renderer"
-  if wait_log "session $((generation + 1)) active" 15; then
-    main_after="$(pid_of $pkg)"
-    "$adb" logcat -d -s Rift:I | tr -d '\r' | grep -E "renderer gone|disposed|active" >> "$out/s14.txt"
-    echo "main_after=$main_after browser_after=$(pid_of $browser:web)" >> "$out/s14.txt"
-    if [ "$main_after" = "$main_before" ]; then
-      result S14 PASS "renderer killed; app alive (pid $main_after); session $generation torn down; $((generation + 1)) active"
-    else
-      result S14 FAIL "main process changed from $main_before to $main_after"
-    fi
-  else
-    result S14 FAIL "no new session after renderer death"
-  fi
-else
-  result S14 FAIL "renderer of $app_user not found"
-fi
-
-echo "== S13: kill during reset"
-"$adb" shell am force-stop $pkg
-"$adb" logcat -c
-open_link "http://localhost:$port/seed.html"
-wait_log "session [0-9]+ active" 15 || true
-sleep 5
-close_dialogs
-generation="$("$adb" logcat -d -s Rift:I | tr -d '\r' | sed -n 's/.*session \([0-9]*\) active.*/\1/p' | tail -1)"
-# The dump fails while the screen is not idle (a page still loading): retry, bounded.
-tries=0
-until "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1; do
-  tries=$((tries + 1))
-  [ $tries -lt 5 ] || break
-  sleep 2
-done
-bounds="$("$adb" shell cat /data/local/tmp/rift-ui.xml | tr -d '\r' | tr '>' '\n' | grep 'resource-id="reset"' | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p' | head -1)"
-main="$(pid_of $pkg)"
-marker=/data/data/$pkg/files/rift/session.marker
-if [ -n "$bounds" ] && [ -n "$main" ]; then
-  set -- $bounds
-  x=$((($1 + $3) / 2)); y=$((($2 + $4) / 2))
-  # Tap Reset, then kill the controller as soon as the marker says RESETTING.
+# RIFT_FAULT_ONLY=1 skips S16d, S16f, S14 and S13 (to rerun the fault rounds alone).
+if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
+  echo "== S16d: import through the system folder picker"
+  # The user's path: the home screen's import button, Android's folder picker
+  # (DocumentsUI), and the one-time access grant. The folder holds the build's
+  # signed demo repository plus two files that are not part of it.
+  update=/sdcard/Download/rift-s16d
+  "$adb" shell rm -rf $update
+  "$adb" push "$here/app/build/generated-intel/intel-demo/repo" $update >/dev/null
+  "$adb" shell "echo x > $update/targets/.junk && echo x > $update/notes.txt"
+  "$adb" shell am force-stop $pkg
   "$adb" logcat -c
-  # Bounded: if the tap never starts a reset, report that instead of spinning.
-  "$adb" shell "input tap $x $y & end=\$((\$(date +%s) + 20)); while ! grep -q RESETTING $marker; do [ \$(date +%s) -lt \$end ] || { echo no reset within 20 s; cat $marker; exit 0; }; done; kill -9 $main; echo killed main $main; cat $marker" \
-    | tr -d '\r' > "$out/s13.txt"
-  # The restarted core recovers, which wipes the browser app again, before
-  # presenting a session.
   "$adb" shell am start -n $pkg/.MainActivity >/dev/null
-  if wait_log "recovered interrupted session $generation" 20; then
+  wait_log "session [0-9]+ active" 30 || true
+  close_dialogs
+  found=no
+  for _ in $(seq 20); do
+    if tap id intel-import; then found=yes; break; fi
+    scroll_down
     sleep 1
-    # Cross-check of the browser's own inventory (§15 step 4) from outside:
-    # no file anywhere in the browser app.
-    leftovers="$("$adb" shell "find /data/data/$browser /data/user_de/0/$browser /sdcard/Android/data/$browser -type f 2>/dev/null" | tr -d '\r')"
-    {
-      echo "generation=$generation"
-      echo "after recovery: main=$(pid_of $pkg) browser=$(pid_of $browser:web)"
-      "$adb" logcat -d -s Rift:I RiftBrowser:I ActivityManager:I | tr -d '\r' | grep -E "Rift|simulationrift" | grep -E "disposed|wiped|wipe|active|Start proc|has died|exiting"
-      echo "after recovery: files in the browser app: ${leftovers:-none}"
-    } >> "$out/s13.txt"
-    if grep -q "RESETTING $generation" "$out/s13.txt" && [ -z "$leftovers" ]; then
-      result S13 PASS "killed while RESETTING $generation; recovery wiped the browser app (no files) before session $((generation + 1)) started"
+  done
+  if [ $found = yes ] \
+    && { tap text rift-s16d || { tap_when text Download && tap_when text rift-s16d; }; } \
+    && tap_when text "use this folder" && tap_when text allow && wait_log "intel install:" 30; then
+    line="$("$adb" logcat -d -s Rift:I | tr -d '\r' | grep -E "intel (import|install):" | sed 's/.*: intel/intel/' | tr '\n' ';')"
+    case "$line" in
+      *"copied 8 files, skipped 1"*"Installed demo-"*) result S16d PASS "$line" ;;
+      *) result S16d FAIL "$line" ;;
+    esac
+  else
+    # What the screen showed, to tell a layout problem from a stuck screen.
+    "$adb" exec-out screencap -p > "$out/s16d-screen.png" 2>/dev/null || true
+    "$adb" shell cat /data/local/tmp/rift-ui.xml > "$out/s16d-ui.xml" 2>/dev/null || true
+    result S16d FAIL "could not drive the folder picker (import button found: $found; last dump: $(tr -d '\r' < "$out/last-dump.txt" | tail -1))"
+  fi
+  "$adb" shell rm -rf $update
+
+  echo "== S16f: a clock behind the database is shown"
+  # Needs root (the step above S16d): the device clock is set two years back,
+  # then restored from the host's clock. The database from S16d is installed.
+  auto_time="$("$adb" shell settings get global auto_time | tr -d '\r')"
+  [ "$auto_time" = 0 ] || auto_time=1
+  "$adb" shell settings put global auto_time 0
+  "$adb" shell am force-stop $pkg
+  "$adb" shell date @$(($(date +%s) - 2 * 365 * 24 * 3600)) >/dev/null
+  "$adb" shell am start -n $pkg/.MainActivity >/dev/null
+  sleep 4
+  close_dialogs
+  seen=no
+  for _ in $(seq 20); do
+    "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1 \
+      && "$adb" shell cat /data/local/tmp/rift-ui.xml | grep -q 'resource-id="intel-clock"' && { seen=yes; break; }
+    scroll_down
+    sleep 1
+  done
+  if [ $seen = no ]; then
+    # As for S16d. Without S16d's database there is nothing to warn about.
+    "$adb" exec-out screencap -p > "$out/s16f-screen.png" 2>/dev/null || true
+    "$adb" shell cat /data/local/tmp/rift-ui.xml > "$out/s16f-ui.xml" 2>/dev/null || true
+  fi
+  "$adb" shell date @$(date +%s) >/dev/null
+  "$adb" shell settings put global auto_time "${auto_time:-1}"
+  "$adb" shell am force-stop $pkg
+  if [ $seen = yes ]; then result S16f PASS "the clock warning was shown"; else result S16f FAIL "no clock warning with the clock two years back"; fi
+
+  echo "== S14: renderer crash"
+  "$adb" shell am force-stop $pkg
+  "$adb" logcat -c
+  open_link "http://localhost:$port/s1.html?test=s14"
+  wait_log "session [0-9]+ active" 15 || true
+  sleep 4
+  main_before="$(pid_of $pkg)"
+  browser_pid="$(pid_of $browser:web)"
+  renderer="$(renderer_pid)"
+  generation="$("$adb" logcat -d -s Rift:I | tr -d '\r' | sed -n 's/.*session \([0-9]*\) active.*/\1/p' | tail -1)"
+  echo "main=$main_before browser=$browser_pid renderer=$renderer generation=$generation" > "$out/s14.txt"
+  if [ -n "$renderer" ]; then
+    "$adb" shell kill -SEGV "$renderer"
+    if wait_log "session $((generation + 1)) active" 15; then
+      main_after="$(pid_of $pkg)"
+      "$adb" logcat -d -s Rift:I | tr -d '\r' | grep -E "renderer gone|disposed|active" >> "$out/s14.txt"
+      echo "main_after=$main_after browser_after=$(pid_of $browser:web)" >> "$out/s14.txt"
+      if [ "$main_after" = "$main_before" ]; then
+        result S14 PASS "renderer killed; app alive (pid $main_after); session $generation torn down; $((generation + 1)) active"
+      else
+        result S14 FAIL "main process changed from $main_before to $main_after"
+      fi
     else
-      result S13 FAIL "marker or leftovers wrong; see s13.txt"
+      result S14 FAIL "no new session after renderer death"
     fi
   else
-    result S13 FAIL "no recovery logged"
+    result S14 FAIL "renderer of $app_user not found"
   fi
-else
-  result S13 FAIL "could not find the Reset control or the main process"
+
+  echo "== S13: kill during reset"
+  "$adb" shell am force-stop $pkg
+  "$adb" logcat -c
+  open_link "http://localhost:$port/seed.html"
+  wait_log "session [0-9]+ active" 15 || true
+  sleep 5
+  close_dialogs
+  generation="$("$adb" logcat -d -s Rift:I | tr -d '\r' | sed -n 's/.*session \([0-9]*\) active.*/\1/p' | tail -1)"
+  # The dump fails while the screen is not idle (a page still loading): retry, bounded.
+  tries=0
+  until "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    [ $tries -lt 5 ] || break
+    sleep 2
+  done
+  bounds="$("$adb" shell cat /data/local/tmp/rift-ui.xml | tr -d '\r' | tr '>' '\n' | grep 'resource-id="reset"' | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p' | head -1)"
+  main="$(pid_of $pkg)"
+  marker=/data/data/$pkg/files/rift/session.marker
+  if [ -n "$bounds" ] && [ -n "$main" ]; then
+    set -- $bounds
+    x=$((($1 + $3) / 2)); y=$((($2 + $4) / 2))
+    # Tap Reset, then kill the controller as soon as the marker says RESETTING.
+    "$adb" logcat -c
+    # Bounded: if the tap never starts a reset, report that instead of spinning.
+    "$adb" shell "input tap $x $y & end=\$((\$(date +%s) + 20)); while ! grep -q RESETTING $marker; do [ \$(date +%s) -lt \$end ] || { echo no reset within 20 s; cat $marker; exit 0; }; done; kill -9 $main; echo killed main $main; cat $marker" \
+      | tr -d '\r' > "$out/s13.txt"
+    # The restarted core recovers, which wipes the browser app again, before
+    # presenting a session.
+    "$adb" shell am start -n $pkg/.MainActivity >/dev/null
+    if wait_log "recovered interrupted session $generation" 20; then
+      sleep 1
+      # Cross-check of the browser's own inventory (§15 step 4) from outside:
+      # no file anywhere in the browser app.
+      leftovers="$("$adb" shell "find /data/data/$browser /data/user_de/0/$browser /sdcard/Android/data/$browser -type f 2>/dev/null" | tr -d '\r')"
+      {
+        echo "generation=$generation"
+        echo "after recovery: main=$(pid_of $pkg) browser=$(pid_of $browser:web)"
+        "$adb" logcat -d -s Rift:I RiftBrowser:I ActivityManager:I | tr -d '\r' | grep -E "Rift|simulationrift" | grep -E "disposed|wiped|wipe|active|Start proc|has died|exiting"
+        echo "after recovery: files in the browser app: ${leftovers:-none}"
+      } >> "$out/s13.txt"
+      if grep -q "RESETTING $generation" "$out/s13.txt" && [ -z "$leftovers" ]; then
+        result S13 PASS "killed while RESETTING $generation; recovery wiped the browser app (no files) before session $((generation + 1)) started"
+      else
+        result S13 FAIL "marker or leftovers wrong; see s13.txt"
+      fi
+    else
+      result S13 FAIL "no recovery logged"
+    fi
+  else
+    result S13 FAIL "could not find the Reset control or the main process"
+  fi
 fi
+
+# ---- Fault injection (Phase 7) ------------------------------------------------
+# The controller is killed (SIGKILL, as the OS or a crash would) at a random
+# moment while it keeps files into the vault (f1) or installs the threat
+# database (f3); after each kill, f2 or f4 checks what is left. RIFT_FAULT_ROUNDS
+# rounds of each (default 8); f-<step>-<round>.txt holds each step's output.
+
+# Runs fault step $2 (test method $1) in the controller; extra `-e` pairs follow.
+fault_step() { # method step [key value]…
+  method=$1 step=$2
+  shift 2
+  extra=""
+  while [ $# -ge 2 ]; do extra="$extra -e $1 $2"; shift 2; done
+  "$adb" shell am instrument -w -r -e class "$pkg.SecurityTest#$method" -e fault "$step" $extra \
+    $pkg.test/androidx.test.runner.AndroidJUnitRunner | tr -d '\r'
+}
+passed() { grep -q "^OK (1 test)" "$1"; }
+# A uniformly random delay in [0, $1) milliseconds, as seconds for sleep.
+random_delay() { od -An -N2 -tu2 /dev/urandom | awk -v max="$1" 'NR == 1 { printf "%.3f", ($1 % max) / 1000 }'; }
+# Kills the controller once the step logged $1 (within $2 s), after a random delay below $3 ms.
+kill_after() { # pattern timeout_s max_delay_ms
+  wait_log "$1" "$2" || return 1
+  delay="$(random_delay "$3")"
+  sleep "$delay"
+  "$adb" shell kill -9 "$(pid_of $pkg)" || return 1
+}
+# Appends this round's step results to fault.log (logcat is cleared each round).
+save_fault_log() { "$adb" logcat -d -s Rift:I | tr -d '\r' | grep -E "result f[0-9]" >> "$out/fault.log" || true; }
+: > "$out/fault.log"
+
+rounds="${RIFT_FAULT_ROUNDS:-8}"
+echo "== F1/F2: kill while keeping into the vault ($rounds rounds)"
+fault_step f0_prepareTheVault prepare > "$out/f-prepare.txt"
+if passed "$out/f-prepare.txt"; then
+  round=1 failures=0 summary=""
+  while [ $round -le $rounds ]; do
+    "$adb" logcat -c
+    fault_step f1_keepUntilKilled keep > "$out/f-keep-$round.txt" &
+    runner=$!
+    if kill_after "result f1: keeping from" 120 3000; then
+      wait $runner || true
+      log="$("$adb" logcat -d -s Rift:I | tr -d '\r')"
+      from="$(echo "$log" | sed -n 's/.*result f1: keeping from \([0-9]*\).*/\1/p' | tail -1)"
+      kept="$(echo "$log" | sed -n 's/.*result f1: kept \([0-9]*\).*/\1/p' | tail -1)"
+      kept="${kept:-$from}"
+      fault_step f2_theVaultIsWholeAfterTheKill check-vault kept "$kept" > "$out/f-check-vault-$round.txt"
+      save_fault_log
+      if passed "$out/f-check-vault-$round.txt"; then
+        summary="$summary $round:killed-${delay}s,kept-$kept"
+      else
+        failures=$((failures + 1)); summary="$summary $round:CHECK-FAILED"
+      fi
+    else
+      wait $runner || true
+      failures=$((failures + 1)); summary="$summary $round:NOT-STARTED"
+    fi
+    round=$((round + 1))
+  done
+  if [ $failures -eq 0 ]; then result F2 PASS "$rounds kills while keeping;$summary"; else result F2 FAIL "$failures of $rounds rounds;$summary"; fi
+else
+  result F2 FAIL "the vault could not be prepared; see f-prepare.txt"
+fi
+
+echo "== F3/F4: kill while installing the threat database ($rounds rounds)"
+# The first round is killed after the install finished, which measures it;
+# later rounds are killed at a random moment within that time.
+round=1 failures=0 summary="" install_ms=3000
+while [ $round -le $rounds ]; do
+  "$adb" logcat -c
+  fault_step f3_installUntilKilled install > "$out/f-install-$round.txt" &
+  runner=$!
+  if [ $round -eq 1 ]; then
+    started=0
+    if wait_log "result f3: outcome after" 120; then
+      install_ms="$("$adb" logcat -d -s Rift:I | tr -d '\r' | sed -n 's/.*result f3: outcome after \([0-9]*\) ms.*/\1/p' | tail -1)"
+      delay=after-install
+      "$adb" shell kill -9 "$(pid_of $pkg)" && started=1
+    fi
+  else
+    started=0
+    kill_after "result f3: installing" 120 "$install_ms" && started=1
+  fi
+  wait $runner || true
+  if [ $started -eq 1 ]; then
+    fault_step f4_theDatabaseIsWholeAfterTheKill check-intel > "$out/f-check-intel-$round.txt"
+    save_fault_log
+    if passed "$out/f-check-intel-$round.txt"; then
+      summary="$summary $round:killed-$delay"
+    else
+      failures=$((failures + 1)); summary="$summary $round:CHECK-FAILED"
+    fi
+  else
+    failures=$((failures + 1)); summary="$summary $round:NOT-STARTED"
+  fi
+  round=$((round + 1))
+done
+if [ $failures -eq 0 ]; then result F4 PASS "$rounds kills while installing (one install: ${install_ms} ms);$summary"; else result F4 FAIL "$failures of $rounds rounds;$summary"; fi
 
 echo "== inventory"
 "$adb" logcat -b events -d | tr -d '\r' | grep -E " am_(anr|crash) " >> "$out/anr.txt" || true

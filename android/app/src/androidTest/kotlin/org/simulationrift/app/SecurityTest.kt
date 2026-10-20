@@ -999,6 +999,122 @@ class SecurityTest {
         }
     }
 
+    // ---- Fault injection (Phase 7) ----------------------------------------------------
+    // run-tests.sh runs these one at a time with `-e fault <step>` and kills
+    // the controller (this process) at a random moment while f1 or f3 runs.
+    // In the normal suite they are skipped.
+
+    /** Skips the test unless the host asked for fault-injection step `step`. */
+    private fun faultStep(step: String) = org.junit.Assume.assumeTrue(
+        "a fault-injection step, run by run-tests.sh",
+        InstrumentationRegistry.getArguments().getString("fault") == step,
+    )
+
+    private fun keptEntries() = (Locker.state.value as Locker.State.Unlocked).entries
+
+    /** f0: a new, unlocked vault for the keep rounds. */
+    @Test
+    fun f0_prepareTheVault() {
+        faultStep("prepare")
+        destroyVault()
+        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+        awaitVault<Locker.State.Unlocked>()
+        report("f0", "vault created")
+    }
+
+    /** f1: keeps one downloaded file again and again until the host kills this process. */
+    @Test
+    fun f1_keepUntilKilled() {
+        faultStep("keep")
+        if (Locker.state.value !is Locker.State.Unlocked) {
+            Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
+            awaitVault<Locker.State.Unlocked>()
+        }
+        // After a kill, the restarted core recovers before a session is active.
+        val generation = activeGeneration()
+        allowFixtureHost()
+        val file = submit(generation, fixture("/files/notes.txt")).file!!
+        var kept = keptEntries().size
+        // The host starts its timer at this line.
+        report("f1", "keeping from $kept")
+        val deadline = SystemClock.elapsedRealtime() + FAULT_WINDOW_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            Core.keep(file.id)
+            awaitCondition("kept") { keptEntries().size > kept }
+            kept = keptEntries().size
+            report("f1", "kept $kept")
+        }
+        throw AssertionError("not killed within ${FAULT_WINDOW_MS} ms")
+    }
+
+    /**
+     * f2, after a kill during f1: the vault opens, holds every keep that
+     * completed (`-e kept N`, from f1's log) and at most the one in flight,
+     * stores nothing but its own files, and every entry decrypts to the
+     * bytes its index recorded; no plaintext is on disk.
+     */
+    @Test
+    fun f2_theVaultIsWholeAfterTheKill() {
+        faultStep("check-vault")
+        val completed = InstrumentationRegistry.getArguments().getString("kept")!!.toInt()
+        Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
+        val entries = awaitVault<Locker.State.Unlocked>().entries
+        assertTrue("${entries.size} entries after $completed completed keeps", entries.size in completed..completed + 1)
+        val vault = File(context.filesDir, "rift/vault")
+        val stored = vault.walkTopDown().filter { it.isFile }.map { it.relativeTo(vault).path }.toSet()
+        assertEquals(setOf("identity.pass", "index.age") + entries.map { "objects/${it.id}.age" }, stored - "index.age.prev")
+        val exported = File(context.cacheDir, "f2-export")
+        for (entry in entries) {
+            exported.delete()
+            // Each export shows the same message, so its file is what is awaited.
+            Locker.export(entry.id, android.net.Uri.fromFile(exported))
+            awaitCondition("exported ${entry.id}") { exported.length() == entry.size.toLong() }
+            val digest = java.security.MessageDigest.getInstance("SHA-256").digest(exported.readBytes())
+            assertEquals(entry.sha256, digest.joinToString("") { "%02x".format(it) })
+        }
+        exported.delete()
+        assertEquals(emptyList<String>(), filesContaining(MARKER))
+        Locker.lock()
+        awaitVault<Locker.State.Locked>()
+        report("f2", "${entries.size} entries after $completed completed keeps; stored ${stored.size} files; every entry decrypted to its recorded hash")
+    }
+
+    /** f3: installs the demo database, then waits for the host to kill this process. */
+    @Test
+    fun f3_installUntilKilled() {
+        faultStep("install")
+        // After a kill, the restarted core opens the database before anything can be installed.
+        assertNotNull(awaitIntel { it != null })
+        // The host starts its timer at this line.
+        report("f3", "installing")
+        val started = SystemClock.elapsedRealtime()
+        Core.installDemoIntel()
+        val outcome = awaitIntelMessage()
+        report("f3", "outcome after ${SystemClock.elapsedRealtime() - started} ms: $outcome")
+        SystemClock.sleep(FAULT_WINDOW_MS)
+        throw AssertionError("not killed within ${FAULT_WINDOW_MS} ms")
+    }
+
+    /**
+     * f4, after a kill during f3: the threat database is the old one or the
+     * new one, never damaged, and still finds the demo file; the install's
+     * working copy is gone.
+     */
+    @Test
+    fun f4_theDatabaseIsWholeAfterTheKill() {
+        faultStep("check-intel")
+        val status = awaitIntel { it != null }
+        assertTrue("$status", status is IntelStatus.Installed || status is IntelStatus.Missing)
+        if (status is IntelStatus.Installed) {
+            activeGeneration()
+            allowFixtureHost()
+            assertEquals(ScanStatus.KNOWN_MALICIOUS, verdictOf(download("/files/demo-file.txt").file!!.id).status)
+        }
+        val leftovers = File(context.filesDir, "rift/import").walkTopDown().filter { it.isFile }.map { it.path }.toList()
+        assertEquals(emptyList<String>(), leftovers)
+        report("f4", "database after the kill: $status")
+    }
+
     // ---- Licences (§25) ---------------------------------------------------------------
 
     /**
@@ -1546,6 +1662,8 @@ class SecurityTest {
         // DNS through the lock fails only after the resolver's own timeouts.
         const val ESCAPE_TIMEOUT_MS = 90_000L
         const val VAULT_TIMEOUT_MS = 20_000L
+        /** How long f1 and f3 wait to be killed before they fail. */
+        const val FAULT_WINDOW_MS = 60_000L
         const val PASSPHRASE = "correct horse battery"
         const val PIN = "1111"
         const val RECOVERY = "recovery passphrase of the test"
