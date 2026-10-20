@@ -1567,24 +1567,32 @@ class SecurityTest {
      * is far below, and an object at the bottom edge was found but a tap on
      * it landed on the navigation bar. Swiped in bounded steps along the
      * right-hand margin, which scrolls the column but holds no text field to
-     * focus (a focused field's keyboard covers the screen).
+     * focus (a focused field's keyboard covers the screen). Slowly, and down
+     * the column and then back up: on CI's API 34 the watch card was not
+     * reached in 30 quick swipes down, most likely because a fling carried
+     * it past the screen, and a search that only goes down never sees it again.
      */
     private fun scrollHomeTo(selector: androidx.test.uiautomator.BySelector, what: String): UiObject2 {
         assertNotNull("scrollable; in front: ${device.currentPackageName}", device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS))
         val x = device.displayWidth - 12
         val limit = device.displayHeight * 3 / 4
-        var last: android.graphics.Rect? = null
-        repeat(30) {
-            // Read after the column stops: a tap while it still flings only stops it.
-            val found = settled(selector)
-            if (found != null) {
-                // Higher, or as high as the column goes.
-                if (found.visibleBounds.bottom <= limit || found.visibleBounds == last) return found
-                last = found.visibleBounds
+        for (down in listOf(true, false)) {
+            var last: android.graphics.Rect? = null
+            repeat(20) {
+                // Read after the column stops: a tap while it still flings only stops it.
+                val found = settled(selector)
+                if (found != null) {
+                    // Higher, or as high as the column goes.
+                    if (found.visibleBounds.bottom <= limit || found.visibleBounds == last) return found
+                    last = found.visibleBounds
+                }
+                val (from, to) = if (down) limit to device.displayHeight / 2 else device.displayHeight / 2 to limit
+                // About half a second per swipe, so the column barely flings on release.
+                device.swipe(x, from, x, to, 100)
             }
-            device.swipe(x, device.displayHeight * 3 / 4, x, device.displayHeight / 2, 30)
         }
-        throw AssertionError("$what not reached; in front: ${device.currentPackageName}")
+        val shown = device.findObjects(By.textStartsWith("")).mapNotNull { it.text }.filter { it.isNotBlank() }
+        throw AssertionError("$what not reached; in front: ${device.currentPackageName}; on screen: $shown")
     }
 
     /** `selector`'s object once it is in the same place in two reads 300 ms apart (bounded), or null. */

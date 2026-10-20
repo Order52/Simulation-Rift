@@ -71,7 +71,7 @@ These were all found by tests, not by reading:
 1. age recipient encryption is not sender-authenticated, so the vault index is now HMAC-authenticated (X1).
 2. `tough` normalizes hostile target names instead of rejecting them, so Rift stages only allowlisted flat names (X2).
 3. Three idempotence bugs in URL canonicalization, found by property tests and fixed (X3).
-4. YARA-X 1.21.0 pins a Wasmtime version with seven advisories. These were triaged: six cannot apply to Rift's configuration and one is contained by worker confinement.
+4. YARA-X 1.21.0 pins a Wasmtime version with eight advisories (seven, plus one on 20 Oct 2026). These were triaged: seven cannot apply to Rift's configuration (one of them needs native aarch64 code, and Rift runs rules on Pulley) and one is contained by worker confinement.
 5. YARA-X timeouts start a thread, which would escape the Linux worker's per-thread seccomp/Landlock. The Linux supervisor now enforces deadlines by killing the worker, and the lockdown refuses to start if more than one thread exists.
 6. WebKitGTK's network process is not sandboxed in a native package, which supports shipping Flatpak first. The web-process check identifies processes by `comm`.
 7. WebView writes a record of visited origins (`AwOriginVisitLoggerPrefs.xml`) outside the per-session directory. Reset now deletes all shared preferences and checks the inventory against an allowlist.
@@ -141,7 +141,8 @@ Phase 2 findings, added to the list above: 15–26.
 57. (Phase 7) The live page watch first reported the system's own DNS and private-DNS checks to the lock's resolver address as direct connections. Those, ICMP, IPv6 hop-by-hop and multicast are now background traffic: dropped, not reported.
 58. (Phase 7) The browser laid pages out at zero height: with no layout parameters its WebView was `WRAP_CONTENT`, and every viewport unit (`100vh`) was 0 px, so pages sized by them collapsed. Found by automating H1; the WebView is now `MATCH_PARENT`, and r1 tests it.
 59. (Phase 7) A kill while the vault wrote its index left `index.age.tmp` (ciphertext, never read; found by F2 in CI on API 33). Unlock now removes it, as it already removed unlisted objects.
-60. (Phase 7) On CI's 320x640 screens w1 and l1 failed: they did not scroll to the home screen's watch card, and a tap came while the column still moved. Test fault only; both scroll until the object has stopped moving.
+60. (Phase 7) On CI's 320x640 screens w1 and l1 failed: they did not scroll to the home screen's watch card, and a tap came while the column still moved. Test fault only; both scroll until the object has stopped moving. On API 34 w1 still missed the card once, most likely flung past it; the search now swipes slowly and comes back up.
+61. (Phase 7) Two certificate advisories of 20 Oct 2026 reached the core's TLS (downloads and online updates): `rustls-webpki` 0.103.15 could accept paths through distrusted emSign intermediates (RUSTSEC-2026-0382), and `webpki-roots` 1.0.9 still listed them (RUSTSEC-2026-0381). Updated to 0.103.16 and 1.0.10; the live TLS test (example.com verified, a wrong-host certificate refused) passes. Two others are ignored with reasons in `deny.toml`: a Cranelift aarch64 bug Rift's Pulley execution cannot reach (RUSTSEC-2026-0379), and `basic-toml` being unmaintained, used only at build time (RUSTSEC-2026-0374).
 
 ### 2.8 Phase 4 code (vault)
 
@@ -234,7 +235,7 @@ Phase 2 findings, added to the list above: 15–26.
 | The vault key may be software-backed | Devices without a TEE (emulators) have only a software Keystore | The vault card shows the key's security level. On a device with only a software Keystore, the passphrase gives the same protection with no hardware claim. |
 | Removing the screen lock deletes the vault's key | Android's rule for auth-bound keys | The optional recovery passphrase opens the vault and a new key protects it again (v3). Without one the vault is lost; the card says so and offers deletion. |
 | Quarantine does not survive a process kill | Keys are ephemeral by design (crypto-shredding) | Intended. Users save to the vault to keep files. |
-| Upstream dependencies carry advisories (Wasmtime via YARA-X) | Rift cannot patch them | Scoped `cargo deny` exceptions with an exit condition: remove when YARA-X depends on Wasmtime ≥ 48.0.6. |
+| Upstream dependencies carry advisories (Wasmtime via YARA-X) | Rift cannot patch them | Scoped `cargo deny` exceptions with an exit condition: remove when YARA-X depends on Wasmtime ≥ 48.0.7. Advisories in crates Rift can update are fixed by updating (`rustls-webpki`, `webpki-roots` on 20 Oct 2026). |
 
 ## 5. What is left to finish the project
 
