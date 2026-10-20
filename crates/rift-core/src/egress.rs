@@ -18,12 +18,17 @@
 //! * Only two request forms exist: `CONNECT host:port` (HTTPS, WebSockets)
 //!   and an absolute `http://` URL. Anything else is refused before any
 //!   connection is made. The head is bounded and parsed strictly.
+//! * With a [`Screen`], a destination the threat intelligence lists is
+//!   refused before it is resolved: every subframe, script, image and
+//!   connection of a page, not only its main-frame address (§10.3).
 //!
-//! It does not inspect TLS: for HTTPS it sees the host name and port only.
-//! It is not a content filter and claims nothing about what a public site
-//! serves.
+//! It does not inspect TLS: for HTTPS it sees the host name and port only,
+//! so for HTTPS only host-level indicators can match; for plain HTTP the
+//! whole URL is checked. It is not a content filter and claims nothing about
+//! what a public site serves.
 
 use std::collections::{HashMap, VecDeque};
+use std::fmt;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -34,6 +39,7 @@ use std::time::Duration;
 use sha2::{Digest, Sha256};
 
 use crate::transfer::{DestinationError, check_destination};
+use crate::urlcanon::{self, CanonicalUrl};
 
 /// The longest request head the proxy reads (request line and headers).
 pub const MAX_HEAD_BYTES: usize = 16 * 1024;
@@ -69,11 +75,20 @@ impl Default for EgressPolicy {
     }
 }
 
+/// Threat intelligence for the proxy: which destinations are listed.
+pub trait Screen: Send + Sync + fmt::Debug {
+    /// The listed lookup expression that `url` matches, if any.
+    fn listed(&self, url: &CanonicalUrl) -> Option<String>;
+}
+
 /// Why a request was refused.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Refusal {
     #[error("{0}")]
     Destination(DestinationError),
+    /// The destination matched an indicator (the listed expression).
+    #[error("listed as malicious in the threat database ({0})")]
+    KnownMalicious(String),
     #[error("the name does not resolve")]
     DoesNotResolve,
     #[error("no connection could be made")]
@@ -84,10 +99,26 @@ pub enum Refusal {
     Busy,
 }
 
+impl Refusal {
+    /// A stable code for the trusted UI.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Destination(_) => "local-address",
+            Self::KnownMalicious(_) => "known-malicious",
+            Self::DoesNotResolve => "does-not-resolve",
+            Self::Unreachable => "unreachable",
+            Self::Malformed(_) => "malformed",
+            Self::Busy => "busy",
+        }
+    }
+}
+
 /// One refused destination, for the trusted UI. `host` is as the browser
 /// sent it (a validated host name or address literal), never escaped here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Denial {
+    /// Numbers this proxy's refusals from 1, so a reader can tell which are new.
+    pub seq: u64,
     pub host: String,
     pub port: u16,
     pub refusal: Refusal,
@@ -117,10 +148,13 @@ struct Shared {
     token: String,
     realm: String,
     policy: RwLock<EgressPolicy>,
+    screen: Option<Arc<dyn Screen>>,
     stopped: AtomicBool,
     live: Mutex<HashMap<u64, TcpStream>>,
     next_id: AtomicU64,
     denials: Mutex<VecDeque<Denial>>,
+    /// Refusals recorded so far (the last [`Denial::seq`]); written under `denials`.
+    recorded: AtomicU64,
     allowed: AtomicU64,
     denied: AtomicU64,
     unauthenticated: AtomicU64,
@@ -128,7 +162,8 @@ struct Shared {
 
 impl Egress {
     /// Listens on 127.0.0.1 with a fresh random port, token and realm.
-    pub fn start(policy: EgressPolicy) -> io::Result<Self> {
+    /// `screen`, if given, is asked about every destination before it is resolved.
+    pub fn start(policy: EgressPolicy, screen: Option<Arc<dyn Screen>>) -> io::Result<Self> {
         let token = random_hex(32)?;
         let realm = format!("rift-{}", random_hex(8)?);
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
@@ -139,10 +174,12 @@ impl Egress {
             token,
             realm,
             policy: RwLock::new(policy),
+            screen,
             stopped: AtomicBool::new(false),
             live: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(0),
             denials: Mutex::new(VecDeque::new()),
+            recorded: AtomicU64::new(0),
             allowed: AtomicU64::new(0),
             denied: AtomicU64::new(0),
             unauthenticated: AtomicU64::new(0),
@@ -324,6 +361,13 @@ fn serve(shared: &Shared, mut client: TcpStream) {
         let _sent = client.write_all(challenge.as_bytes());
         return;
     }
+    // Before resolving, so a listed name is not even looked up.
+    if let Some(matched) = shared.screen.as_deref().and_then(|s| listed(s, &request)) {
+        let refusal = Refusal::KnownMalicious(matched);
+        record_denial(shared, &request.target, refusal.clone());
+        let _sent = respond(&mut client, 403, "Forbidden", &refusal.to_string());
+        return;
+    }
     let upstream = match connect(&request.target, &policy) {
         Ok(upstream) => upstream,
         Err(refusal) => {
@@ -364,13 +408,37 @@ fn authorized(shared: &Shared, request: &Request) -> bool {
     }
 }
 
+/// The listed expression `request` matches: its whole URL for plain HTTP,
+/// and its host (and parent domains) for either form.
+fn listed(screen: &dyn Screen, request: &Request) -> Option<String> {
+    let host = &request.target.host;
+    let host = if host.contains(':') {
+        format!("[{host}]")
+    } else {
+        host.clone()
+    };
+    let mut urls = Vec::new();
+    if let Form::Absolute { origin_form } = &request.form {
+        urls.push(format!("http://{host}{origin_form}"));
+    }
+    urls.push(format!("http://{host}/"));
+    urls.iter()
+        .filter_map(|url| urlcanon::canonicalize(url.as_bytes()).ok())
+        .find_map(|url| screen.listed(&url))
+}
+
 fn record_denial(shared: &Shared, target: &Target, refusal: Refusal) {
     shared.denied.fetch_add(1, Ordering::Relaxed);
     let mut denials = lock(&shared.denials);
     if denials.len() >= MAX_DENIALS {
         denials.pop_front();
     }
+    let seq = shared
+        .recorded
+        .fetch_add(1, Ordering::Relaxed)
+        .saturating_add(1);
     denials.push_back(Denial {
+        seq,
         host: target.host.clone(),
         port: target.port,
         refusal,
@@ -723,13 +791,28 @@ mod tests {
     use std::io::BufRead;
 
     fn proxy(local_hosts: &[&str]) -> Egress {
-        Egress::start(EgressPolicy {
-            local_hosts: local_hosts.iter().map(|s| (*s).to_owned()).collect(),
-            head_timeout: Duration::from_secs(5),
-            connect_timeout: Duration::from_secs(5),
-            ..EgressPolicy::default()
-        })
+        Egress::start(
+            EgressPolicy {
+                local_hosts: local_hosts.iter().map(|s| (*s).to_owned()).collect(),
+                head_timeout: Duration::from_secs(5),
+                connect_timeout: Duration::from_secs(5),
+                ..EgressPolicy::default()
+            },
+            None,
+        )
         .unwrap()
+    }
+
+    /// Lists the given lookup expressions, as a threat database would.
+    #[derive(Debug)]
+    struct Listed(Vec<&'static str>);
+
+    impl Screen for Listed {
+        fn listed(&self, url: &CanonicalUrl) -> Option<String> {
+            url.expressions()
+                .into_iter()
+                .find(|e| self.0.contains(&e.as_str()))
+        }
     }
 
     fn auth(p: &Egress) -> String {
@@ -1003,12 +1086,79 @@ mod tests {
     }
 
     #[test]
+    fn listed_destinations_are_refused_before_resolving_or_connecting() {
+        let (port, rx) = upstream();
+        let p = Egress::start(
+            EgressPolicy {
+                local_hosts: vec!["localhost".into()],
+                ..EgressPolicy::default()
+            },
+            Some(Arc::new(Listed(vec![
+                "bad.invalid/",
+                "localhost/known-bad",
+            ]))),
+        )
+        .unwrap();
+        // A host-level indicator covers the host and its subdomains, for
+        // tunnels too; a path indicator, the plain-HTTP URL only. The
+        // .invalid names never resolve, so a refusal for them can only come
+        // from the screen.
+        for (request, expression) in [
+            (
+                "CONNECT bad.invalid:443 HTTP/1.1".to_owned(),
+                "bad.invalid/",
+            ),
+            (
+                "CONNECT cdn.bad.invalid:443 HTTP/1.1".to_owned(),
+                "bad.invalid/",
+            ),
+            (
+                "GET http://ads.bad.invalid/x.js HTTP/1.1".to_owned(),
+                "bad.invalid/",
+            ),
+            (
+                format!("GET http://localhost:{port}/known-bad HTTP/1.1"),
+                "localhost/known-bad",
+            ),
+        ] {
+            let (line, _) = ask(&p, &format!("{request}\r\n{}\r\n", auth(&p)));
+            assert_eq!(line, "HTTP/1.1 403 Forbidden", "{request}");
+            let denial = p.denials().pop().unwrap();
+            assert_eq!(
+                denial.refusal,
+                Refusal::KnownMalicious(expression.into()),
+                "{request}"
+            );
+            assert_eq!(denial.refusal.code(), "known-malicious");
+        }
+        assert!(
+            rx.recv_timeout(Duration::from_millis(300)).is_err(),
+            "nothing reached the server"
+        );
+        let seqs: Vec<u64> = p.denials().iter().map(|d| d.seq).collect();
+        assert_eq!(seqs, vec![1, 2, 3, 4]);
+        // A path indicator says nothing about the rest of the host.
+        let (line, _) = ask(
+            &p,
+            &format!(
+                "GET http://localhost:{port}/fine HTTP/1.1\r\n{}\r\n",
+                auth(&p)
+            ),
+        );
+        assert_eq!(line, "HTTP/1.1 200 OK");
+        assert_eq!(p.counts().allowed, 1);
+    }
+
+    #[test]
     fn the_connection_limit_is_enforced() {
-        let p = Egress::start(EgressPolicy {
-            max_connections: 1,
-            local_hosts: vec!["localhost".into()],
-            ..EgressPolicy::default()
-        })
+        let p = Egress::start(
+            EgressPolicy {
+                max_connections: 1,
+                local_hosts: vec!["localhost".into()],
+                ..EgressPolicy::default()
+            },
+            None,
+        )
         .unwrap();
         let (port, _rx) = upstream();
         let (line, _held) = ask(

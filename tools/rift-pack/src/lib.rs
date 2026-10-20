@@ -29,8 +29,11 @@ use tough::sign::{Sign, parse_keypair};
 
 /// The harmless file the demo pack's file indicator and marker rule match.
 pub const DEMO_FILE: &[u8] = b"Simulation-Rift demo file. It is harmless. RIFT-DEMO-MARKER\n";
-/// The demo pack's URL indicator. `.invalid` never resolves (RFC 6761).
+/// The demo pack's URL indicator, for one path. `.invalid` never resolves (RFC 6761).
 pub const DEMO_URL: &str = "http://rift-demo.invalid/known-bad";
+/// The demo pack's host indicator: every address on this host and its
+/// subdomains, also for HTTPS, where the proxy sees only the host.
+pub const DEMO_HOST: &str = "listed.rift-demo.invalid";
 const DEMO_RULES: &str = r#"// Simulation-Rift demo rules. They match only Rift's own test content.
 rule rift_demo_marker {
   strings:
@@ -226,7 +229,9 @@ pub fn write_demo_pack(dir: &Path, created: jiff::Timestamp) -> Result<Pack> {
             {"id": "demo-file", "source": "rift-demo", "confidence": "high",
              "description": "Demo indicator: Simulation-Rift's harmless test file."},
             {"id": "demo-url", "source": "rift-demo", "confidence": "high",
-             "description": "Demo indicator: a test address that never resolves."}
+             "description": "Demo indicator: a test address that never resolves."},
+            {"id": "demo-host", "source": "rift-demo", "confidence": "high",
+             "description": "Demo indicator: a test host that never resolves."}
         ],
         "rules": [
             {"id": "rift_demo_marker", "source": "rift-demo", "confidence": "high",
@@ -236,13 +241,16 @@ pub fn write_demo_pack(dir: &Path, created: jiff::Timestamp) -> Result<Pack> {
         ],
         "notices": ["DEMO: not real coverage. These indicators match only Simulation-Rift's own test content."]
     });
-    let url = urlcanon::canonicalize(DEMO_URL.as_bytes())
-        .map_err(|e| ToolError::Refused(format!("demo URL: {e}")))?;
-    let expression = url
-        .expressions()
-        .into_iter()
-        .find(|e| e == "rift-demo.invalid/known-bad")
-        .ok_or_else(|| ToolError::Refused("demo URL expression missing".into()))?;
+    let expression = |url: &str, wanted: &str| {
+        urlcanon::canonicalize(url.as_bytes())
+            .map_err(|e| ToolError::Refused(format!("demo URL: {e}")))?
+            .expressions()
+            .into_iter()
+            .find(|e| e == wanted)
+            .ok_or_else(|| ToolError::Refused(format!("demo expression {wanted} missing")))
+    };
+    let url = expression(DEMO_URL, "rift-demo.invalid/known-bad")?;
+    let host = expression(&format!("https://{DEMO_HOST}/"), &format!("{DEMO_HOST}/"))?;
     let files = [
         (
             pack::METADATA,
@@ -250,7 +258,11 @@ pub fn write_demo_pack(dir: &Path, created: jiff::Timestamp) -> Result<Pack> {
         ),
         (
             pack::URL_TABLE,
-            UrlTable::encode(vec![(urlcanon::expression_hash(&expression), 1)]).map_err(|e| {
+            UrlTable::encode(vec![
+                (urlcanon::expression_hash(&url), 1),
+                (urlcanon::expression_hash(&host), 2),
+            ])
+            .map_err(|e| {
                 ToolError::Pack(PackError::Table {
                     name: pack::URL_TABLE,
                     error: e,

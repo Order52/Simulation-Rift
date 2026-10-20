@@ -9,7 +9,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -144,6 +146,8 @@ object Core {
     // Database updates, one at a time and in order.
     private val updating = Executors.newSingleThreadExecutor { Thread(it, "rift-intel") }
     @Volatile private var database: Intel? = null
+    /** Counted down once the first attempt to open [database] is over, whatever its outcome. */
+    private val intelOpened = CountDownLatch(1)
 
     /** The worker component for the scan after each download; tests substitute misbehaving ones. */
     @Volatile internal var scanWorker: Class<out Service> = PreviewService::class.java
@@ -250,6 +254,8 @@ object Core {
         } catch (e: IntelFailure) {
             Log.e(TAG, "threat database unavailable", e)
             _intelMessage.value = "The threat database could not be opened: ${Scanner.describe(e)}"
+        } finally {
+            intelOpened.countDown()
         }
     }
 
@@ -334,7 +340,7 @@ object Core {
         val generation = currentGeneration ?: return null
         if (sessions?.egressStats(generation.toULong()) == null) return null
         return try {
-            sessions?.egress(generation.toULong())?.port?.toInt()
+            sessions?.egress(generation.toULong(), database)?.port?.toInt()
         } catch (e: EgressFailure) {
             null
         }
@@ -358,7 +364,8 @@ object Core {
             )
         }
         val endpoint = try {
-            opened.egress(generation.toULong())
+            // With the database, the proxy checks every request's destination (§10.3).
+            opened.egress(generation.toULong(), database)
         } catch (e: EgressFailure) {
             Log.e(TAG, "egress proxy unavailable", e)
             return SessionGrant.Refused("Rift's network proxy could not start, so the browser may not load pages.")
@@ -388,7 +395,7 @@ object Core {
         }
         val registered = browser?.takeIf { it.generation == generation }
         val sandboxVerified = registered?.sandbox?.verified == true
-        val decision = when (val d = navigator.decide(url, sandboxVerified)) {
+        val decision = when (val d = navigator.decide(url, sandboxVerified, database, nowUnix())) {
             is Navigation.Proceed -> NavigationDecision.Proceed(d.notes.map(::fact))
             is Navigation.Confirm -> NavigationDecision.Confirm(d.reasons.map(::fact), d.notes.map(::fact), displaySafe(url))
             is Navigation.Block -> return NavigationDecision.Block(fact(d.reason), d.inspectAnyway, displaySafe(url))
@@ -522,13 +529,15 @@ object Core {
 
     /** Verifies with `verify`, has a fresh worker compile the rules, then installs; on any failure the current database stays. */
     private fun install(service: Class<out Service>, progress: String = "Checking the update…", verify: (Intel) -> PendingIntel) {
-        // Opened on the worker at start; until then (or if opening failed) there is nothing to install into.
-        val intel = database ?: run {
-            _intelMessage.value = "The threat database is not open yet, so nothing was installed. Try again in a moment."
-            return
-        }
         _intelMessage.value = progress
         updating.execute {
+            // Opened on the session worker at start (before the first session,
+            // so that its proxy gets it); an install asked for sooner waits.
+            intelOpened.await(INTEL_OPEN_TIMEOUT_S, TimeUnit.SECONDS)
+            val intel = database ?: run {
+                _intelMessage.value = "The threat database could not be opened, so nothing was installed."
+                return@execute
+            }
             _intelMessage.value = try {
                 verify(intel).use { pending ->
                     Scanner.check(app, pending, service)
@@ -625,6 +634,7 @@ object Core {
         }
     }
 
+    private const val INTEL_OPEN_TIMEOUT_S = 30L
     private const val DEMO_INTEL = "intel-demo"
     private const val PRODUCTION_ROOT = "intel-root/root.json"
     private const val UPDATE_SOURCE = "intel-root/update-url.txt"

@@ -3,10 +3,13 @@
 //! asks for it, follows the session's local-host exceptions, and stops when
 //! the session ends, before the browser is wiped.
 
-use rift_core::egress::{Egress, EgressPolicy, Refusal};
-use rift_core::text::escape_for_display;
+use std::sync::Arc;
 
-use crate::{SessionFailure, Sessions};
+use rift_core::egress::{Egress, EgressPolicy, Refusal, Screen};
+use rift_core::text::escape_for_display;
+use rift_core::urlcanon::CanonicalUrl;
+
+use crate::{Intel, SessionFailure, Sessions};
 
 /// Where and how the browser reaches the proxy. The token is a secret: it
 /// goes to the browser over the signature-checked Binder interface only.
@@ -20,6 +23,11 @@ pub struct EgressEndpoint {
 /// A refused connection, already escaped for the trusted UI.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct EgressDenial {
+    /// Counts this session's refusals from 1, so a reader can tell which are new.
+    pub seq: u64,
+    /// Stable: `local-address`, `known-malicious`, `does-not-resolve`,
+    /// `unreachable`, `malformed` or `busy`.
+    pub code: String,
     pub destination: String,
     pub reason: String,
 }
@@ -52,17 +60,27 @@ impl From<SessionFailure> for EgressFailure {
 
 #[uniffi::export]
 impl Sessions {
-    /// This session's proxy, started on first use.
-    pub fn egress(&self, generation: u64) -> Result<EgressEndpoint, EgressFailure> {
+    /// This session's proxy, started on first use. With `intel`, every
+    /// destination is checked against the installed threat database (the
+    /// one current at each request) before it is resolved.
+    pub fn egress(
+        &self,
+        generation: u64,
+        intel: Option<Arc<Intel>>,
+    ) -> Result<EgressEndpoint, EgressFailure> {
         let mut state = self.lock()?;
         let extras = state
             .current(generation)
             .ok_or(EgressFailure::NoActiveSession)?;
         if extras.egress.is_none() {
-            let started = Egress::start(EgressPolicy {
-                local_hosts: extras.local_hosts.clone(),
-                ..EgressPolicy::default()
-            })
+            let screen = intel.map(|intel| Arc::new(IntelScreen(intel)) as Arc<dyn Screen>);
+            let started = Egress::start(
+                EgressPolicy {
+                    local_hosts: extras.local_hosts.clone(),
+                    ..EgressPolicy::default()
+                },
+                screen,
+            )
             .map_err(|e| EgressFailure::Start {
                 detail: e.to_string(),
             })?;
@@ -89,6 +107,8 @@ impl Sessions {
                 .denials()
                 .into_iter()
                 .map(|d| EgressDenial {
+                    seq: d.seq,
+                    code: d.refusal.code().to_owned(),
                     destination: escape_for_display(&if d.host.contains(':') {
                         format!("[{}]:{}", d.host, d.port)
                     } else {
@@ -107,5 +127,20 @@ fn describe(refusal: &Refusal) -> String {
             "a local or private address (pages may reach only public ones)".to_owned()
         }
         other => other.to_string(),
+    }
+}
+
+/// The installed snapshot's URL indicators, as the proxy's screen.
+#[derive(Debug)]
+struct IntelScreen(Arc<Intel>);
+
+impl Screen for IntelScreen {
+    fn listed(&self, url: &CanonicalUrl) -> Option<String> {
+        let pack = self.0.pack()?;
+        pack.urls
+            .matches(url)
+            .into_iter()
+            .next()
+            .map(|(expression, _)| expression)
     }
 }

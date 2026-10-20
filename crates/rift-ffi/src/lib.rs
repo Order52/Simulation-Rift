@@ -73,13 +73,24 @@ impl Navigator {
 
     /// Decides a navigation to `url`. `sandbox_verified` is the result of the
     /// platform's renderer checks (§8.4); without it everything is blocked.
-    /// Signed intelligence arrives in Phase 3, so until then no indicator
-    /// table is consulted and every decision says so.
-    pub fn decide(&self, url: String, sandbox_verified: bool) -> Navigation {
+    /// `intel`'s installed snapshot, if any, is consulted, and its freshness
+    /// at `now_unix` is noted; without one every decision says so.
+    pub fn decide(
+        &self,
+        url: String,
+        sandbox_verified: bool,
+        intel: Option<Arc<Intel>>,
+        now_unix: u64,
+    ) -> Navigation {
+        let pack = intel.and_then(|intel| intel.pack());
         let ctx = NavigationContext {
             sandbox_verified,
-            indicators: None,
-            intel_state: IntelState::Missing,
+            indicators: pack.as_deref().map(|pack| &pack.urls),
+            intel_state: match &pack {
+                None => IntelState::Missing,
+                Some(pack) if pack.is_stale(now_unix) => IntelState::Stale,
+                Some(_) => IntelState::Current,
+            },
             heuristics: &self.heuristics,
         };
         match policy::decide_navigation(url.as_bytes(), &ctx) {
@@ -960,7 +971,7 @@ mod tests {
     fn decisions_carry_codes_and_sentences() {
         let navigator = Navigator::new(vec!["paypal.com".into()], vec!["bit.ly".into()]);
         assert_eq!(
-            navigator.decide("https://example.org/".into(), false),
+            navigator.decide("https://example.org/".into(), false, None, 0),
             Navigation::Block {
                 reason: Fact {
                     code: "sandbox-unavailable".into(),
@@ -969,14 +980,14 @@ mod tests {
                 inspect_anyway: false,
             }
         );
-        match navigator.decide("https://paypa1.com/login".into(), true) {
+        match navigator.decide("https://paypa1.com/login".into(), true, None, 0) {
             Navigation::Confirm { reasons, notes } => {
                 assert_eq!(reasons.first().map(|r| r.code.as_str()), Some("lookalike"));
                 assert!(notes.iter().any(|n| n.code == "intel-missing"));
             }
             other => panic!("expected confirm, got {other:?}"),
         }
-        match navigator.decide("intent://scan/#Intent;end".into(), true) {
+        match navigator.decide("intent://scan/#Intent;end".into(), true, None, 0) {
             Navigation::Block { reason, .. } => assert_eq!(reason.code, "scheme-not-allowed"),
             other => panic!("expected block, got {other:?}"),
         }
@@ -1450,6 +1461,110 @@ mod tests {
         Ok(line.trim_end().to_owned())
     }
 
+    /// The first line of the proxy's answer to a plain-HTTP request for `url`.
+    fn get_through(endpoint: &EgressEndpoint, url: &str) -> std::io::Result<String> {
+        use std::io::{BufRead, Write};
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", endpoint.port))?;
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
+        let credentials = rift_core::egress::proxy_authorization(&endpoint.token);
+        stream.write_all(
+            format!("GET {url} HTTP/1.1\r\nProxy-Authorization: {credentials}\r\n\r\n").as_bytes(),
+        )?;
+        let mut line = String::new();
+        std::io::BufReader::new(stream).read_line(&mut line)?;
+        Ok(line.trim_end().to_owned())
+    }
+
+    #[test]
+    fn the_installed_database_checks_navigations_and_every_proxied_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        let navigator = Navigator::new(Vec::new(), Vec::new());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let notes_of = |navigation: Navigation| match navigation {
+            Navigation::Proceed { notes } | Navigation::Confirm { notes, .. } => notes,
+            other => panic!("expected no block, got {other:?}"),
+        };
+        let before =
+            notes_of(navigator.decide(rift_pack::DEMO_URL.into(), true, Some(intel.clone()), now));
+        assert!(
+            before.iter().any(|n| n.code == "intel-missing"),
+            "{before:?}"
+        );
+
+        // Started before the install: the screen reads the snapshot current at each request.
+        let endpoint = sessions.egress(generation, Some(intel.clone())).unwrap();
+        let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
+        install(&intel, trusted_root, repo);
+
+        match navigator.decide(rift_pack::DEMO_URL.into(), true, Some(intel.clone()), now) {
+            Navigation::Block {
+                reason,
+                inspect_anyway,
+            } => {
+                assert_eq!(reason.code, "known-malicious");
+                assert!(inspect_anyway);
+            }
+            other => panic!("expected a block, got {other:?}"),
+        }
+        let elsewhere = notes_of(navigator.decide(
+            "http://rift-demo.invalid/fine".into(),
+            true,
+            Some(intel.clone()),
+            now,
+        ));
+        assert!(
+            !elsewhere.iter().any(|n| n.code.starts_with("intel-")),
+            "{elsewhere:?}"
+        );
+
+        // A page's subresources, not only its address, refused before the
+        // name is looked up (.invalid never resolves, which gives a different
+        // refusal): a listed path over plain HTTP, and a listed host also
+        // through a tunnel, where only the host is visible.
+        assert_eq!(
+            get_through(&endpoint, rift_pack::DEMO_URL).unwrap(),
+            "HTTP/1.1 403 Forbidden"
+        );
+        let tunnel = format!("cdn.{}:443", rift_pack::DEMO_HOST);
+        assert_eq!(
+            connect_through(&endpoint, &tunnel).unwrap(),
+            "HTTP/1.1 403 Forbidden"
+        );
+        assert_eq!(
+            get_through(&endpoint, "http://rift-demo.invalid/fine").unwrap(),
+            "HTTP/1.1 403 Forbidden"
+        );
+        let stats = sessions.egress_stats(generation).unwrap();
+        let codes: Vec<(u64, &str)> = stats
+            .recent
+            .iter()
+            .map(|d| (d.seq, d.code.as_str()))
+            .collect();
+        assert_eq!(
+            codes,
+            vec![
+                (1, "known-malicious"),
+                (2, "known-malicious"),
+                (3, "does-not-resolve")
+            ]
+        );
+        assert_eq!(stats.recent[0].destination, "rift-demo.invalid:80");
+        assert!(
+            stats.recent[0]
+                .reason
+                .contains("rift-demo.invalid/known-bad"),
+            "{}",
+            stats.recent[0].reason
+        );
+        assert_eq!(stats.recent[1].destination, tunnel);
+    }
+
     #[test]
     fn the_egress_proxy_belongs_to_one_session_and_ends_with_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -1459,9 +1574,9 @@ mod tests {
             sessions.egress_stats(generation).is_none(),
             "not started until asked for"
         );
-        let endpoint = sessions.egress(generation).unwrap();
+        let endpoint = sessions.egress(generation, None).unwrap();
         assert_eq!(
-            sessions.egress(generation).unwrap(),
+            sessions.egress(generation, None).unwrap(),
             endpoint,
             "one proxy per session"
         );
@@ -1493,11 +1608,11 @@ mod tests {
             "the old proxy answers nothing"
         );
         assert!(matches!(
-            sessions.egress(generation),
+            sessions.egress(generation, None),
             Err(EgressFailure::NoActiveSession)
         ));
         let next = sessions.start().unwrap();
-        let fresh = sessions.egress(next).unwrap();
+        let fresh = sessions.egress(next, None).unwrap();
         assert_ne!(fresh.token, endpoint.token);
         assert_eq!(
             connect_through(&fresh, &target).unwrap(),
