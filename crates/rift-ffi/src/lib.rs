@@ -990,14 +990,106 @@ mod tests {
             .unwrap();
         let one = std::num::NonZeroU64::MIN;
         rift_pack::init_root(&keys, one, year, &root).unwrap();
-        rift_pack::write_demo_pack(&pack, now).unwrap();
-        let repo = dir.join("repo");
-        let release = rift_pack::Release::standard(one, now).unwrap();
-        rift_pack::publish(&root, &keys, &pack, &repo, &release).unwrap();
-        (
-            std::fs::read(root).unwrap(),
-            repo.to_string_lossy().into_owned(),
+        (std::fs::read(&root).unwrap(), publish_demo(dir, one, now))
+    }
+
+    /// Publishes a demo pack created at `created` as `version` of the
+    /// repository that [`demo_repository`] set up in `dir`.
+    fn publish_demo(
+        dir: &std::path::Path,
+        version: std::num::NonZeroU64,
+        created: jiff::Timestamp,
+    ) -> String {
+        let pack = dir.join(format!("pack-{version}"));
+        std::fs::create_dir(&pack).unwrap();
+        rift_pack::write_demo_pack(&pack, created).unwrap();
+        let repo = dir.join(format!("repo-{version}"));
+        let release = rift_pack::Release::standard(version, jiff::Timestamp::now()).unwrap();
+        rift_pack::publish(
+            &dir.join("root.json"),
+            &dir.join("keys"),
+            &pack,
+            &repo,
+            &release,
         )
+        .unwrap();
+        repo.to_string_lossy().into_owned()
+    }
+
+    /// Verifies and installs `repo`, with the rule check run by a confined worker.
+    fn install(intel: &Arc<Intel>, trusted_root: Vec<u8>, repo: String) -> IntelStatus {
+        use rift_worker_ffi::WorkerEngine;
+        let pending = intel.clone().verify_offline(trusted_root, repo).unwrap();
+        let checker = WorkerEngine::new(true, false);
+        pending
+            .accept_hello(checker.handle(pending.hello_frame(), None).frame)
+            .unwrap();
+        pending
+            .accept_load(
+                checker
+                    .handle(pending.load_frame(), Some(pending.rules()))
+                    .frame,
+            )
+            .unwrap();
+        pending.install(0).unwrap()
+    }
+
+    /// Runs `job` to completion in a confined worker.
+    fn run_scan(job: &ScanJob) -> Verdict {
+        use rift_worker_ffi::WorkerEngine;
+        let worker = WorkerEngine::new(true, false);
+        job.accept_hello(worker.handle(job.hello_frame(), None).frame)
+            .unwrap();
+        job.accept_load(worker.handle(job.load_frame(), Some(job.rules())).frame)
+            .unwrap();
+        job.finish(worker.handle(job.scan_frame(), Some(job.input())).frame)
+            .unwrap()
+    }
+
+    #[test]
+    fn a_running_scan_keeps_the_snapshot_it_started_with() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        let demo = sessions
+            .download(
+                generation,
+                info(format!("http://localhost:{}/", serve(rift_pack::DEMO_FILE))),
+            )
+            .unwrap();
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        let publisher = dir.path().join("publisher");
+        let (trusted_root, first) = demo_repository(&publisher);
+        let snapshot_of = |status: IntelStatus| match status {
+            IntelStatus::Installed { snapshot, .. } => snapshot,
+            other => panic!("not installed: {other:?}"),
+        };
+        let one = snapshot_of(install(&intel, trusted_root.clone(), first));
+
+        let Ok(ScanStart::Run { job }) =
+            sessions
+                .clone()
+                .scan(generation, demo.id.clone(), intel.clone())
+        else {
+            panic!("expected a worker job");
+        };
+        // A newer database is installed while the job waits for its worker.
+        let later = jiff::Timestamp::now()
+            .checked_add(jiff::SignedDuration::from_secs(1))
+            .unwrap();
+        let second = publish_demo(&publisher, std::num::NonZeroU64::new(2).unwrap(), later);
+        let two = snapshot_of(install(&intel, trusted_root, second));
+        assert_ne!(one, two);
+        // The job's rules, tables and verdict are the snapshot it started with.
+        let pinned = run_scan(&job);
+        assert_eq!(pinned.snapshot.as_deref(), Some(one.as_str()));
+        assert_eq!(pinned.status, ScanStatus::KnownMalicious);
+        // Its verdict is not current for the new snapshot: the next scan runs again.
+        let Ok(ScanStart::Run { job }) = sessions.clone().scan(generation, demo.id, intel) else {
+            panic!("expected a new worker job for the new snapshot");
+        };
+        assert_eq!(run_scan(&job).snapshot.as_deref(), Some(two.as_str()));
     }
 
     #[test]
