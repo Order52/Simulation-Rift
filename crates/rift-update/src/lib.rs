@@ -13,6 +13,8 @@
 //! through rift-core's own checked fetcher ([`CheckedTransport`]), so updates
 //! add no second HTTP or TLS stack and obey INV-13 like downloads.
 
+use std::fs::File;
+use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
@@ -22,6 +24,7 @@ use bytes::Bytes;
 use rift_core::download::{self, DownloadError, DownloadPolicy};
 use rift_core::pack::{self, Pack};
 use rift_core::snapshot::{InstallCheck, SnapshotError, SnapshotStore};
+use tough::schema::{Root, Signed};
 use tough::{
     FilesystemTransport, IntoVec, Limits, RepositoryLoader, TargetName, Transport, TransportError,
     TransportErrorKind, TransportStream,
@@ -241,14 +244,68 @@ pub fn import_offline(
     Ok(store.install(files, check)?)
 }
 
+/// The newest root this device verified, saved in the datastore (§13.2).
+///
+/// tough walks forward from the root it is given and never reads back the
+/// copy it keeps, so starting every update from the built-in root would let
+/// a mirror undo a rotation: it hides the newer roots and signs with the
+/// retired keys. Rift starts from the newer of the built-in root and this
+/// one, and writes it atomically (tough's own copy is rewritten in place).
+pub const TRUSTED_ROOT: &str = "trusted-root.json";
+
+/// The root to start from: the saved one if it is newer than `built_in`.
+/// A saved root that cannot be read or does not verify is refused, not
+/// replaced by the built-in one, which could bring the retired keys back.
+fn starting_root(built_in: &[u8], datastore: &Path) -> Result<(Vec<u8>, u64), UpdateError> {
+    let version = |bytes: &[u8], what: &str| -> Result<u64, UpdateError> {
+        let root: Signed<Root> = serde_json::from_slice(bytes)
+            .map_err(|e| UpdateError::Storage(format!("{what}: {e}")))?;
+        root.signed
+            .verify_role(&root)
+            .map_err(|e| UpdateError::Storage(format!("{what}: {e}")))?;
+        Ok(root.signed.version.get())
+    };
+    let path = datastore.join(TRUSTED_ROOT);
+    let saved = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((built_in.to_vec(), 0)),
+        Err(e) => return Err(UpdateError::Storage(format!("the saved trusted root: {e}"))),
+    };
+    let saved_version = version(&saved, "the saved trusted root")?;
+    // The built-in root is checked by tough; a newer one comes with an app update.
+    let built_in_version = version(built_in, "the built-in root").unwrap_or(0);
+    if saved_version > built_in_version {
+        Ok((saved, saved_version))
+    } else {
+        Ok((built_in.to_vec(), saved_version))
+    }
+}
+
+/// Temp file, fsync, rename, fsync the directory.
+fn save_root(datastore: &Path, root: &Signed<Root>) -> Result<(), UpdateError> {
+    let storage = |e: std::io::Error| UpdateError::Storage(format!("saving the trusted root: {e}"));
+    let bytes = serde_json::to_vec(root).map_err(|e| UpdateError::Storage(e.to_string()))?;
+    let temp = datastore.join(format!("{TRUSTED_ROOT}.tmp"));
+    {
+        let mut file = File::create(&temp).map_err(storage)?;
+        file.write_all(&bytes).map_err(storage)?;
+        file.sync_all().map_err(storage)?;
+    }
+    std::fs::rename(&temp, datastore.join(TRUSTED_ROOT)).map_err(storage)?;
+    File::open(datastore)
+        .and_then(|d| d.sync_all())
+        .map_err(storage)
+}
+
 async fn verify(
-    trusted_root: &[u8],
+    built_in_root: &[u8],
     transport: impl Transport + 'static,
     metadata: Url,
     targets: Url,
     datastore: &Path,
 ) -> Result<Verified, UpdateError> {
     std::fs::create_dir_all(datastore).map_err(|e| UpdateError::Storage(e.to_string()))?;
+    let (trusted_root, saved_version) = starting_root(built_in_root, datastore)?;
 
     let repo = RepositoryLoader::new(&trusted_root, metadata, targets)
         .transport(transport)
@@ -257,6 +314,11 @@ async fn verify(
         .load()
         .await
         .map_err(|e| refused(&e, Stage::Metadata))?;
+    // The whole metadata chain verified under this root: from now on it is
+    // where updates start, even if a pack file below turns out bad.
+    if repo.root().signed.version.get() > saved_version {
+        save_root(datastore, repo.root())?;
+    }
 
     let mut files = Vec::with_capacity(pack::FILES.len());
     for name in pack::FILES {

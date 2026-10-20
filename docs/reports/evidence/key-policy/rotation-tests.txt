@@ -1,0 +1,22 @@
+# cargo test -p rift-update --test rotation -- --nocapture (macOS arm64, 21 Oct 2026)
+# Before the saved trusted root (finding 64), the same test failed at the replay:
+#   a_rotation_is_followed_and_the_retired_keys_cannot_return ... FAILED
+#   panicked at crates/rift-update/tests/rotation.rs:225:35 (unwrap_err on an import that succeeded:
+#   the release signed with the retired keys, root v2 hidden, was installed)
+# After:
+result key policy root: root v1 expires 2027-10-20T21:50:01.140936Z: root 2 of 3, targets 2 of 2, snapshot 1 of 1, timestamp 1 of 1
+result key policy 1 of 2-of-3 root: root v1 is not signed by its own root threshold: Signature threshold of 2 not met for role root (1 valid signatures)
+result key policy shared key: key 3d2458644cc0bd85ace9c51582e4fa2cd895c4b6451bbdb402a24121b701edc4 signs both targets (offline) and timestamp (online)
+result key policy 1 of 2-of-2 targets: the targets are not signed by the targets threshold of root v1: Signature threshold of 2 not met for role targets (1 valid signatures)
+result key policy offline key online: /var/folders/4_/6nyg48vd5kx7n0b776d2q0hc0000gn/T/.tmp0D3GlS/a-root-c.pk8 is a root key; offline keys do not belong on the publishing machine
+test signatures_short_of_a_threshold_are_refused ... ok
+test the_tool_keeps_offline_and_online_keys_apart ... ok
+test a_threshold_root_installs_offline_signed_targets ... ok
+result key policy weak rotation: root v2 is not signed by the root threshold of v1: Signature threshold of 2 not met for role root (1 valid signatures)
+result key policy rotation: root v2 expires 2027-10-20T21:50:01.3959Z: root 2 of 3, targets 2 of 2, snapshot 1 of 1, timestamp 1 of 1; cross-signed by v1
+test a_rotation_needs_the_previous_root_threshold ... ok
+result key policy damaged saved root: the update could not be read: the saved trusted root: EOF while parsing an object at line 1 column 1500
+test a_damaged_saved_root_is_refused_not_replaced_by_the_built_in_one ... ok
+result key policy retired keys: the update could not be verified: Failed to verify timestamp metadata: Signature threshold of 1 not met for role timestamp (0 valid signatures)
+test a_rotation_is_followed_and_the_retired_keys_cannot_return ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s

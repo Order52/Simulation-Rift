@@ -1,0 +1,54 @@
+# rift-pack release commands end to end (macOS arm64, 21 Oct 2026)
+# script: the flow in key-policy.md, run in a scratch directory outside git; all keys made for this run and deleted
+
+== generation a, root v1
+public key ccf531e6a863ffa555570f457609bd598c9670b80c02b1749d24b931c7165f97 written to a-root-a.pub.json
+public key 46a91339dcfb15a86a6c31a2d572376f38b6141912cb97e49e534ef5623f8b3f written to a-root-b.pub.json
+public key efbf7505bb857415ddfe18cc527acb4f12cda4b9b7929f7ffd3285d83c004780 written to a-root-c.pub.json
+public key e4dd6b1ebcb9ef42d71a7d44937e5ef13fd54f9db5187381620a37a0eab6feea written to a-targets-a.pub.json
+public key 7b6321fc71b06a4f03c9c654664bc839667a44cbefdcc81bf601c80a6b2cb383 written to a-targets-b.pub.json
+public key 435a7ae2958dd34f65666649f1a538043eb4f74a272709e9f8cd4b4829725a27 written to a-snapshot.pub.json
+public key c71bddec9e83d5e21ca70904fe029cb322d25d140f4b342aed066f5b9223492c written to a-timestamp.pub.json
+unsigned root written to root-1.json
+rift-pack: root v1 is not signed by its own root threshold: Signature threshold of 2 not met for role root (0 valid signatures)
+(refused, as expected: unsigned)
+root-1.json signed by key ccf531e6a863ffa555570f457609bd598c9670b80c02b1749d24b931c7165f97
+root-1.json signed by key 46a91339dcfb15a86a6c31a2d572376f38b6141912cb97e49e534ef5623f8b3f
+root v1 expires 2027-10-01T00:00:00Z: root 2 of 3, targets 2 of 2, snapshot 1 of 1, timestamp 1 of 1
+== release 1
+unsigned targets v1 for ff1c5ae8005f1a9030c2cb3e2bcb27aba2fb106c1c1c9884be1d4b92e22c2e67 written to targets-1.json
+targets-1.json signed by key e4dd6b1ebcb9ef42d71a7d44937e5ef13fd54f9db5187381620a37a0eab6feea
+targets-1.json signed by key 7b6321fc71b06a4f03c9c654664bc839667a44cbefdcc81bf601c80a6b2cb383
+published snapshot and timestamp v1 to repo-1
+OK snapshot demo-20261020T214438Z (ff1c5ae8005f1a9030c2cb3e2bcb27aba2fb106c1c1c9884be1d4b92e22c2e67), targets v1, timestamp v1, demo=true, 1 file and 2 URL indicators, 2 rules
+== an offline key on the publishing machine
+rift-pack: a-root-c.pk8 is a root key; offline keys do not belong on the publishing machine
+(refused, as expected)
+== rotation to generation b, root v2
+public key 654944f9e988e2f679f29bd6acd93981f76b70c88b17b8cc7d3e99694f1463ef written to b-root-a.pub.json
+public key b3762404de2523043b7346ff615b043f1d29a3ab510407f69be2faad99236f90 written to b-root-b.pub.json
+public key bdea90e31379b599c58738f2481f8b95c9976cde25aea4169f95ba715ddc7e04 written to b-root-c.pub.json
+public key a62964c95303fd81bb52663140a747f15a4039cd285950cbdf011d336a80c86d written to b-targets-a.pub.json
+public key 928d5c597950662bf7126c1551af67a808dd3007dd767154e77804005724815f written to b-targets-b.pub.json
+public key b5707333af2bd1f6f005db824cc7495a3ee11245a55e98027cf0e97d7129e7a7 written to b-snapshot.pub.json
+public key 4a86191e7316c5143ae03b3b5b410424a12d8f06478502a7278d72566bcbdeab written to b-timestamp.pub.json
+unsigned root written to root-2.json
+root-2.json signed by key 654944f9e988e2f679f29bd6acd93981f76b70c88b17b8cc7d3e99694f1463ef
+root-2.json signed by key b3762404de2523043b7346ff615b043f1d29a3ab510407f69be2faad99236f90
+root-2.json signed by key efbf7505bb857415ddfe18cc527acb4f12cda4b9b7929f7ffd3285d83c004780
+rift-pack: root v2 is not signed by the root threshold of v1: Signature threshold of 2 not met for role root (1 valid signatures)
+(refused, as expected: one of v1's root keys)
+root-2.json signed by key 46a91339dcfb15a86a6c31a2d572376f38b6141912cb97e49e534ef5623f8b3f
+root v2 expires 2027-10-01T00:00:00Z: root 2 of 3, targets 2 of 2, snapshot 1 of 1, timestamp 1 of 1; cross-signed by v1
+unsigned targets v2 for ff1c5ae8005f1a9030c2cb3e2bcb27aba2fb106c1c1c9884be1d4b92e22c2e67 written to targets-2.json
+targets-2.json signed by key a62964c95303fd81bb52663140a747f15a4039cd285950cbdf011d336a80c86d
+targets-2.json signed by key 928d5c597950662bf7126c1551af67a808dd3007dd767154e77804005724815f
+published snapshot and timestamp v2 to repo-2
+OK snapshot demo-20261020T214438Z (ff1c5ae8005f1a9030c2cb3e2bcb27aba2fb106c1c1c9884be1d4b92e22c2e67), targets v2, timestamp v2, demo=true, 1 file and 2 URL indicators, 2 rules
+== retired generation a signs release 3 and hides root v2
+unsigned targets v3 for ff1c5ae8005f1a9030c2cb3e2bcb27aba2fb106c1c1c9884be1d4b92e22c2e67 written to targets-3.json
+targets-3.json signed by key e4dd6b1ebcb9ef42d71a7d44937e5ef13fd54f9db5187381620a37a0eab6feea
+targets-3.json signed by key 7b6321fc71b06a4f03c9c654664bc839667a44cbefdcc81bf601c80a6b2cb383
+published snapshot and timestamp v3 to repo-3
+REJECTED the update could not be verified: Failed to verify timestamp metadata: Signature threshold of 1 not met for role timestamp (0 valid signatures)
+(refused, as expected)
