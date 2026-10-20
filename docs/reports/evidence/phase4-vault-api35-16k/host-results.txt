@@ -1,4 +1,4 @@
-S16d FAIL (could not drive the folder picker (import button found: no; last dump: UI hierchary dumped to: /data/local/tmp/rift-ui.xml))
+S16d PASS (intel import: copied 8 files, skipped 1;intel install: Installed demo-20261020T071653Z.;)
 S16f PASS (the clock warning was shown)
-S14 PASS (renderer killed; app alive (pid 12270); session 17 torn down; 18 active)
-S13 PASS (killed while RESETTING 19; recovery wiped the browser app (no files) before session 20 started)
+S14 PASS (renderer killed; app alive (pid 12751); session 20 torn down; 21 active)
+S13 PASS (killed while RESETTING 22; recovery wiped the browser app (no files) before session 23 started)

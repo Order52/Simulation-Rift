@@ -1,8 +1,0 @@
-main=14503 browser=14626 renderer=14660 generation=3
-10-20 09:40:07.910 14503 14503 I Rift    : network lock active
-10-20 09:40:08.768 14503 14543 I Rift    : generation 2 disposed
-10-20 09:40:08.780 14503 14543 I Rift    : session 3 active; recovered interrupted session 2
-10-20 09:40:14.882 14503 14518 W Rift    : renderer gone (crashed=true) in generation 3; ending the session
-10-20 09:40:15.610 14503 14543 I Rift    : generation 3 disposed
-10-20 09:40:15.617 14503 14543 I Rift    : session 4 active
-main_after=14503 browser_after=

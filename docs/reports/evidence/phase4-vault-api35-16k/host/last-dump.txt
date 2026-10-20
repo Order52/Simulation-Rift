@@ -1,1 +1,0 @@
-UI hierchary dumped to: /data/local/tmp/rift-ui.xml
