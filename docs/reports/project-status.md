@@ -128,6 +128,7 @@ Phase 2 findings, added to the list above: 15–26.
 44. (Phase 4) The emulator's Keystore reports "software only". The vault card shows the security level, and hardware backing stays unverified until a phone is tested.
 45. (Phase 4) S16d's local failures: the address field had focus, and the keyboard covered the lower half where the script's swipes started, so the page never scrolled. The script now hides the keyboard first, only while Android reports it shown. Why the field had focus after a restart is not known.
 46. (Phase 4) On a cold CI emulator (API 34), Android took over 10 s to confirm the browser app's first data clear (9.2 s on the retry, about 0.4 s afterwards), which failed the first session. The clear confirmation now has its own 30 s bound and logs its duration; running out still fails the reset.
+47. (Phase 4, open) On CI (API 34, run 39379866862), s28 failed once: 50 ms after the test opened a new browser window (just after the wipe that followed losing the lock), Android removed the window's task ("remove task") and the window never showed. The outcome was safe (nothing loaded), but a user would have to open the window again. Rift's code removes no tasks; the cause is not confirmed (the force-stop of the clear and the new `singleTask` start may race). The test now opens the window up to three times and reports how many it needed.
 
 ### 2.8 Phase 4 code (vault)
 

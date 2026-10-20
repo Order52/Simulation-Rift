@@ -17,6 +17,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.io.File
 import java.net.HttpURLConnection
@@ -662,9 +663,18 @@ class SecurityTest {
             SystemClock.sleep(500)
             assertTrue("${NetworkLock.state.value}", NetworkLock.state.value is NetworkLock.State.Lost)
             // Without the lock the browser refuses to load anything.
-            openBrowser(next, fixture("/s1.html"))
-            assertNotNull("refusal", device.wait(Until.findObject(By.textContains("network lock is off")), UI_TIMEOUT_MS))
-            report("s28", "lock lost: ${NetworkLock.state.value}; session $generation -> $next; browser wiped")
+            // On CI (API 34) the new window's task was once removed by Android
+            // 50 ms after it started, right after the wipe; the window is
+            // opened again (bounded) and each attempt is reported.
+            var attempts = 0
+            var refusal: UiObject2? = null
+            while (refusal == null && attempts < WINDOW_ATTEMPTS) {
+                attempts++
+                openBrowser(next, fixture("/s1.html"))
+                refusal = device.wait(Until.findObject(By.textContains("network lock is off")), UI_TIMEOUT_MS)
+            }
+            assertNotNull("refusal after $attempts windows", refusal)
+            report("s28", "lock lost: ${NetworkLock.state.value}; session $generation -> $next; browser wiped; windows opened: $attempts")
         } finally {
             outsider("vpn" to "release")
             Core.dismissNotice()
@@ -1258,6 +1268,7 @@ class SecurityTest {
 
         /** A session start or reset includes the browser wipe, whose clear may take up to 30 s (AndroidBrowserDisposal). */
         const val SESSION_TIMEOUT_MS = 60_000L
+        const val WINDOW_ATTEMPTS = 3
 
         /** Intel messages that mean "still working". */
         val PROGRESS = setOf("Checking the update…", "Reading the update…", "Downloading the update…")
