@@ -22,6 +22,13 @@
 //!   refused before it is resolved: every subframe, script, image and
 //!   connection of a page, not only its main-frame address (§10.3).
 //!
+//! On Linux (§9.2) the browser host runs in a Flatpak sub-sandbox with no
+//! network at all, not even a loopback shared with the controller. Its
+//! forwarder hands every connection the engine makes to the controller over
+//! their private socketpair, and [`ForwardedEgress`] serves it. That socket
+//! is the authentication: there is no listener for anything else to reach,
+//! so no token is asked for. Everything else above applies unchanged.
+//!
 //! It does not inspect TLS: for HTTPS it sees the host name and port only,
 //! so for HTTPS only host-level indicators can match; for plain HTTP the
 //! whole URL is checked. It is not a content filter and claims nothing about
@@ -137,21 +144,37 @@ pub struct EgressCounts {
     pub unauthenticated: u64,
 }
 
-/// A running proxy. Dropping it stops it.
+/// A running proxy on loopback (Android). Dropping it stops it.
 #[derive(Debug)]
 pub struct Egress {
     shared: Arc<Shared>,
     port: u16,
+    token: String,
+    realm: String,
+}
+
+/// A running proxy with no listener (Linux): it serves the connections the
+/// browser host forwards. Dropping it stops it.
+#[derive(Debug)]
+pub struct ForwardedEgress {
+    shared: Arc<Shared>,
+}
+
+/// Basic proxy authentication for a loopback listener.
+#[derive(Debug)]
+struct TokenAuth {
+    /// SHA-256 of the expected `Proxy-Authorization` value: compared as
+    /// digests, so the comparison time does not depend on how much of a
+    /// guess was right.
+    expected: [u8; 32],
+    realm: String,
 }
 
 #[derive(Debug)]
 struct Shared {
-    /// SHA-256 of the expected `Proxy-Authorization` value: compared as
-    /// digests, so the comparison time does not depend on how much of a
-    /// guess was right.
-    expected_auth: [u8; 32],
-    token: String,
-    realm: String,
+    /// `None` for forwarded connections, which the private socket they
+    /// arrived on authenticates.
+    auth: Option<TokenAuth>,
     policy: RwLock<EgressPolicy>,
     screen: Option<Arc<dyn Screen>>,
     stopped: AtomicBool,
@@ -174,27 +197,25 @@ impl Egress {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let port = listener.local_addr()?.port();
         let expected = proxy_authorization(&token);
-        let shared = Arc::new(Shared {
-            expected_auth: Sha256::digest(expected.as_bytes()).into(),
-            token,
-            realm,
-            policy: RwLock::new(policy),
+        let shared = Arc::new(Shared::new(
+            Some(TokenAuth {
+                expected: Sha256::digest(expected.as_bytes()).into(),
+                realm: realm.clone(),
+            }),
+            policy,
             screen,
-            stopped: AtomicBool::new(false),
-            live: Mutex::new(HashMap::new()),
-            next_id: AtomicU64::new(0),
-            denials: Mutex::new(VecDeque::new()),
-            recorded: AtomicU64::new(0),
-            allowed: AtomicU64::new(0),
-            denied: AtomicU64::new(0),
-            unauthenticated: AtomicU64::new(0),
-        });
+        ));
         let accepting = Arc::clone(&shared);
         thread::Builder::new()
             .name("rift-egress".into())
             .stack_size(THREAD_STACK)
             .spawn(move || accept_loop(&accepting, &listener))?;
-        Ok(Self { shared, port })
+        Ok(Self {
+            shared,
+            port,
+            token,
+            realm,
+        })
     }
 
     pub fn port(&self) -> u16 {
@@ -203,35 +224,26 @@ impl Egress {
 
     /// The secret the browser answers the proxy's challenge with (user "rift").
     pub fn token(&self) -> &str {
-        &self.shared.token
+        &self.token
     }
 
     /// The challenge's realm, which the browser checks before answering, so
     /// that it never sends the token to a site that asks for credentials.
     pub fn realm(&self) -> &str {
-        &self.shared.realm
+        &self.realm
     }
 
     pub fn set_local_hosts(&self, hosts: Vec<String>) {
-        let mut policy = self
-            .shared
-            .policy
-            .write()
-            .unwrap_or_else(PoisonError::into_inner);
-        policy.local_hosts = hosts;
+        self.shared.set_local_hosts(hosts);
     }
 
     /// The most recent refusals, oldest first.
     pub fn denials(&self) -> Vec<Denial> {
-        lock(&self.shared.denials).iter().cloned().collect()
+        self.shared.denials()
     }
 
     pub fn counts(&self) -> EgressCounts {
-        EgressCounts {
-            allowed: self.shared.allowed.load(Ordering::Relaxed),
-            denied: self.shared.denied.load(Ordering::Relaxed),
-            unauthenticated: self.shared.unauthenticated.load(Ordering::Relaxed),
-        }
+        self.shared.counts()
     }
 
     /// Stops accepting and closes every open connection and tunnel.
@@ -245,17 +257,111 @@ impl Egress {
             &SocketAddr::from((Ipv4Addr::LOCALHOST, self.port)),
             Duration::from_secs(1),
         );
-        let live: Vec<TcpStream> = lock(&self.shared.live).drain().map(|(_, s)| s).collect();
-        for stream in live {
-            // Already closed is fine: the goal is that nothing stays open.
-            let _closed = stream.shutdown(Shutdown::Both);
-        }
+        self.shared.close_all();
     }
 }
 
 impl Drop for Egress {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+impl ForwardedEgress {
+    /// `screen`, if given, is asked about every destination before it is resolved.
+    pub fn new(policy: EgressPolicy, screen: Option<Arc<dyn Screen>>) -> Self {
+        Self {
+            shared: Arc::new(Shared::new(None, policy, screen)),
+        }
+    }
+
+    /// Serves one connection the browser host forwarded, on a thread of its
+    /// own. Only connections from the browser host's private socket belong
+    /// here: they are served without asking for a token. After [`stop`]
+    /// the connection is closed unserved.
+    ///
+    /// [`stop`]: Self::stop
+    pub fn serve(&self, client: TcpStream) -> io::Result<()> {
+        if self.shared.stopped.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let connection = Arc::clone(&self.shared);
+        thread::Builder::new()
+            .name("rift-egress-conn".into())
+            .stack_size(THREAD_STACK)
+            .spawn(move || serve(&connection, client))?;
+        Ok(())
+    }
+
+    pub fn set_local_hosts(&self, hosts: Vec<String>) {
+        self.shared.set_local_hosts(hosts);
+    }
+
+    /// The most recent refusals, oldest first.
+    pub fn denials(&self) -> Vec<Denial> {
+        self.shared.denials()
+    }
+
+    pub fn counts(&self) -> EgressCounts {
+        self.shared.counts()
+    }
+
+    /// Closes every open connection and tunnel; later connections are
+    /// closed unserved. Idempotent.
+    pub fn stop(&self) {
+        if !self.shared.stopped.swap(true, Ordering::SeqCst) {
+            self.shared.close_all();
+        }
+    }
+}
+
+impl Drop for ForwardedEgress {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+impl Shared {
+    fn new(auth: Option<TokenAuth>, policy: EgressPolicy, screen: Option<Arc<dyn Screen>>) -> Self {
+        Self {
+            auth,
+            policy: RwLock::new(policy),
+            screen,
+            stopped: AtomicBool::new(false),
+            live: Mutex::new(HashMap::new()),
+            next_id: AtomicU64::new(0),
+            denials: Mutex::new(VecDeque::new()),
+            recorded: AtomicU64::new(0),
+            allowed: AtomicU64::new(0),
+            denied: AtomicU64::new(0),
+            unauthenticated: AtomicU64::new(0),
+        }
+    }
+
+    fn set_local_hosts(&self, hosts: Vec<String>) {
+        let mut policy = self.policy.write().unwrap_or_else(PoisonError::into_inner);
+        policy.local_hosts = hosts;
+    }
+
+    fn denials(&self) -> Vec<Denial> {
+        lock(&self.denials).iter().cloned().collect()
+    }
+
+    fn counts(&self) -> EgressCounts {
+        EgressCounts {
+            allowed: self.allowed.load(Ordering::Relaxed),
+            denied: self.denied.load(Ordering::Relaxed),
+            unauthenticated: self.unauthenticated.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Closes every registered stream. Call after setting `stopped`.
+    fn close_all(&self) {
+        let live: Vec<TcpStream> = lock(&self.live).drain().map(|(_, s)| s).collect();
+        for stream in live {
+            // Already closed is fine: the goal is that nothing stays open.
+            let _closed = stream.shutdown(Shutdown::Both);
+        }
     }
 }
 
@@ -357,11 +463,13 @@ fn serve(shared: &Shared, mut client: TcpStream) {
             return;
         }
     };
-    if !authorized(shared, &request) {
+    if let Some(auth) = &shared.auth
+        && !authorized(auth, &request)
+    {
         shared.unauthenticated.fetch_add(1, Ordering::Relaxed);
         let challenge = format!(
             "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"{}\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-            shared.realm
+            auth.realm
         );
         let _sent = client.write_all(challenge.as_bytes());
         return;
@@ -399,14 +507,14 @@ fn serve(shared: &Shared, mut client: TcpStream) {
     tunnel(client, upstream, opening, leftover, policy.idle_timeout);
 }
 
-fn authorized(shared: &Shared, request: &Request) -> bool {
+fn authorized(auth: &TokenAuth, request: &Request) -> bool {
     let mut values = request
         .headers
         .iter()
         .filter(|(name, _)| name == "proxy-authorization");
     match (values.next(), values.next()) {
         (Some((_, value)), None) => {
-            <[u8; 32]>::from(Sha256::digest(value.as_bytes())) == shared.expected_auth
+            <[u8; 32]>::from(Sha256::digest(value.as_bytes())) == auth.expected
         }
         _ => false,
     }
@@ -1193,6 +1301,74 @@ mod tests {
             &format!("CONNECT localhost:{port} HTTP/1.1\r\n{}\r\n", auth(&p)),
         );
         assert_eq!(line, "HTTP/1.1 503 Service Unavailable");
+    }
+
+    /// A connection as the Linux forwarder hands it over: one end of a TCP
+    /// connection the controller did not accept itself.
+    fn forwarded(p: &ForwardedEgress, request: &str) -> (String, TcpStream) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let mut s = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (accepted, _) = listener.accept().unwrap();
+        drop(listener);
+        p.serve(accepted).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        s.write_all(request.as_bytes()).unwrap();
+        let mut reader = io::BufReader::new(s.try_clone().unwrap());
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        (line.trim_end().to_owned(), s)
+    }
+
+    #[test]
+    fn forwarded_connections_need_no_token_and_are_checked_the_same() {
+        let (port, rx) = upstream();
+        let p = ForwardedEgress::new(
+            EgressPolicy {
+                head_timeout: Duration::from_secs(5),
+                connect_timeout: Duration::from_secs(5),
+                ..EgressPolicy::default()
+            },
+            Some(Arc::new(Listed(vec!["bad.invalid/"]))),
+        );
+        // The same checks as on loopback: a listed host, then a local
+        // address the user did not allow, then a request form that does
+        // not exist.
+        let (line, _) = forwarded(&p, "CONNECT bad.invalid:443 HTTP/1.1\r\n\r\n");
+        assert_eq!(line, "HTTP/1.1 403 Forbidden");
+        let (line, _) = forwarded(&p, &format!("CONNECT localhost:{port} HTTP/1.1\r\n\r\n"));
+        assert_eq!(line, "HTTP/1.1 403 Forbidden");
+        let (line, _) = forwarded(&p, "GET /relative HTTP/1.1\r\n\r\n");
+        assert_eq!(line, "HTTP/1.1 400 Bad Request");
+        let codes: Vec<&str> = p.denials().iter().map(|d| d.refusal.code()).collect();
+        assert_eq!(codes, vec!["known-malicious", "local-address"]);
+        assert!(
+            rx.recv_timeout(Duration::from_millis(300)).is_err(),
+            "nothing reached the server"
+        );
+        // Allowed by the user for this session, it is served without any
+        // Proxy-Authorization header.
+        p.set_local_hosts(vec!["localhost".into()]);
+        let (line, mut s) = forwarded(
+            &p,
+            &format!("GET http://localhost:{port}/page HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+        );
+        assert_eq!(line, "HTTP/1.1 200 OK");
+        let head = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(head.starts_with("GET /page HTTP/1.1\r\n"), "{head}");
+        let counts = p.counts();
+        assert_eq!((counts.allowed, counts.unauthenticated), (1, 0));
+        // Stopping closes the open connection, and later ones go unserved.
+        p.stop();
+        let mut rest = Vec::new();
+        // EOF, not the 10 s read timeout: the tunnel was shut down.
+        assert!(s.read_to_end(&mut rest).is_ok(), "the tunnel was closed");
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let mut late = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (accepted, _) = listener.accept().unwrap();
+        p.serve(accepted).unwrap();
+        late.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut answer = Vec::new();
+        assert_eq!(late.read_to_end(&mut answer).unwrap(), 0, "closed unserved");
     }
 
     #[test]
