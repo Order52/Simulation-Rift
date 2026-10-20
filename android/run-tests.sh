@@ -143,7 +143,9 @@ result() { echo "$1 $2${3:+ ($3)}" | tee -a "$out/host-results.txt"; }
 
 # Taps the first node whose text (case-insensitive) or resource id is $2.
 tap() { # text|id value
-  "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1 || return 1
+  # The dump's own message is kept: it says why a dump failed (for example
+  # "could not get idle state"), which the failure records below include.
+  "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml > "$out/last-dump.txt" 2>&1 || return 1
   case $1 in text) match="text=\"$2\"" ;; id) match="resource-id=\"$2\"" ;; esac
   xy="$("$adb" shell cat /data/local/tmp/rift-ui.xml | tr -d '\r' | tr '>' '\n' | grep -iF "$match" | head -1 \
     | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p' \
@@ -190,7 +192,10 @@ if [ $found = yes ] \
     *) result S16d FAIL "$line" ;;
   esac
 else
-  result S16d FAIL "could not drive the folder picker (import button found: $found)"
+  # What the screen showed, to tell a layout problem from a stuck screen.
+  "$adb" exec-out screencap -p > "$out/s16d-screen.png" 2>/dev/null || true
+  "$adb" shell cat /data/local/tmp/rift-ui.xml > "$out/s16d-ui.xml" 2>/dev/null || true
+  result S16d FAIL "could not drive the folder picker (import button found: $found; last dump: $(tr -d '\r' < "$out/last-dump.txt" | tail -1))"
 fi
 "$adb" shell rm -rf $update
 
