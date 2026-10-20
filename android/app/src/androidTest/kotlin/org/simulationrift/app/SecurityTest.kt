@@ -1712,8 +1712,17 @@ class SecurityTest {
                 device.swipe(x, from, x, to, 100)
             }
         }
-        val shown = device.findObjects(By.textStartsWith("")).mapNotNull { it.text }.filter { it.isNotBlank() }
-        throw AssertionError("$what not reached; in front: ${device.currentPackageName}; on screen: $shown")
+        // Evidence for run-tests.sh, which pulls the evidence folder.
+        val name = "not-reached-" + what.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+        context.getExternalFilesDir("evidence")?.let { dir ->
+            device.dumpWindowHierarchy(File(dir, "$name.xml"))
+            device.takeScreenshot(File(dir, "$name.png"))
+        }
+        val shown = device.findObjects(By.textStartsWith("")).mapNotNull {
+            // An object gone between the find and the read has nothing to show.
+            try { it.text } catch (e: androidx.test.uiautomator.StaleObjectException) { null }
+        }.filter { it.isNotBlank() }
+        throw AssertionError("$what not reached; in front: ${device.currentPackageName}; on screen: $shown; see $name.xml")
     }
 
     /** `selector`'s object once it is in the same place in two reads 300 ms apart (bounded), or null. */
