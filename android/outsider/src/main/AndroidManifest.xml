@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Asks for Rift's permission like any app could; a signature
+         permission is never granted to a different signer. -->
+    <uses-permission android:name="org.simulationrift.permission.RIFT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <queries>
+        <package android:name="org.simulationrift.app" />
+        <package android:name="org.simulationrift.browser" />
+    </queries>
+
+    <application android:allowBackup="false" android:label="Rift outsider (test)">
+        <activity
+            android:name=".OutsiderActivity"
+            android:exported="true" />
+
+        <!-- S28: another VPN app starting, which revokes Rift's network lock.
+             It routes only this app's own traffic. -->
+        <service
+            android:name=".OutsiderVpn"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

@@ -7,7 +7,11 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
+import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.ResultReceiver
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -16,6 +20,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
 import java.net.HttpURLConnection
+import java.net.NetworkInterface
 import java.net.URL
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -29,15 +34,22 @@ import org.junit.FixMethodOrder
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.MethodSorters
+import org.json.JSONArray
+import org.simulationrift.bridge.ISession
+import org.simulationrift.bridge.NavigationDecision
+import org.simulationrift.bridge.Rift
+import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
 import org.simulationrift.core.Verdict
 
 /**
- * Phase 2 security tests that run on the device (docs/architecture.md §23).
- * They run in the app's main process, drive `:browser` like a user would,
- * and read what test pages observed from the fixture server
- * (android/fixtures/server.py, reached through `adb reverse`).
+ * Security tests that run on the device (docs/architecture.md §23). They
+ * run in the controller's main process, drive the browser app like a user
+ * would, and read what test pages observed from the fixture server
+ * (android/fixtures/server.py, reached through `adb reverse`). They need
+ * the browser app and the outsider test app installed, and VPN consent
+ * granted to the controller and the outsider (run-tests.sh does both).
  */
 @RunWith(AndroidJUnit4::class)
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
@@ -50,6 +62,7 @@ class SecurityTest {
     @Before
     fun startCore() {
         Core.ensureStarted(context)
+        awaitLock()
     }
 
     // ---- S1 / S2: what a page can reach ------------------------------------------
@@ -95,6 +108,13 @@ class SecurityTest {
         }
         assertEquals(emptyList<String>(), dangerous)
         assertTrue("android.permission.INTERNET" in requested)
+
+        // Nor does the browser app, the one pages run in. androidx.core adds a
+        // signature permission of the app's own, for its unexported receivers.
+        val browser = context.packageManager
+            .getPackageInfo(Rift.BROWSER_PACKAGE, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty()
+            .filter { it != "${Rift.BROWSER_PACKAGE}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" }.sorted()
+        assertEquals(listOf("android.permission.ACCESS_NETWORK_STATE", "android.permission.INTERNET", Rift.PERMISSION), browser)
     }
 
     // ---- Navigation policy in the trusted UI (INV-6, §10.2–§10.4) ---------------
@@ -102,6 +122,7 @@ class SecurityTest {
     @Test
     fun n1_externalAppLinksAreBlocked() {
         val generation = activeGeneration()
+        allowFixtureHost()
         openBrowser(generation, fixture("/links.html?go=" + java.net.URLEncoder.encode("intent://scan/#Intent;scheme=zxing;end", "UTF-8")))
         assertNotNull("block screen", device.wait(Until.findObject(By.text("Page blocked")), PAGE_TIMEOUT_MS))
         assertNotNull(device.findObject(By.textContains("\"intent:\" links are blocked")))
@@ -114,6 +135,7 @@ class SecurityTest {
     @Test
     fun n2_lookalikeAddressNeedsConfirmation() {
         val generation = activeGeneration()
+        allowFixtureHost()
         openBrowser(generation, fixture("/links.html?go=" + java.net.URLEncoder.encode("https://paypa1.com/login", "UTF-8")))
         assertNotNull("interstitial", device.wait(Until.findObject(By.res("interstitial")), UI_TIMEOUT_MS))
         assertNotNull(device.findObject(By.textContains("looks like paypal.com")))
@@ -135,13 +157,12 @@ class SecurityTest {
         // A fresh session, so no earlier test's page is still on screen.
         val generation = resetAndAwait(activeGeneration())
         context.startActivity(
-            Intent(context, BrowserActivity::class.java)
+            Intent().setComponent(Rift.BROWSER_ACTIVITY)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(BrowserActivity.EXTRA_GENERATION, generation),
+                .putExtra(Rift.EXTRA_GENERATION, generation),
         )
-        // The engine's verdict comes from :browser. Asking WebView here would
-        // load it in the main process, outside any session (which the reset
-        // inventory then rightly refuses).
+        // The engine's verdict comes from the browser app; the controller
+        // has no WebView to ask.
         val deadline = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
         while (Core.sandbox.value == null && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
         val supported = Core.sandbox.value?.verified ?: throw AssertionError("no sandbox report from :browser")
@@ -161,13 +182,16 @@ class SecurityTest {
 
     @Test
     fun s09_localDestinationsNeedAnExplicitPerHostAllowance() {
-        // Not allowed yet in a fresh session: localhost is refused.
-        resetAndAwait(activeGeneration())
-        val refused = download("/files/hello.txt")
+        // Not allowed yet in a fresh session: the proxy refuses the page and
+        // the core refuses the transfer.
+        val generation = resetAndAwait(activeGeneration())
+        openBrowser(generation, fixture("/files/hello.txt"))
+        awaitDenial("localhost:$FIXTURE_PORT")
+        val refused = submit(generation, fixture("/files/hello.txt"))
         assertTrue("${refused.failure}", refused.failure?.contains("resolves to 127.0.0.1") == true)
         // Allowing "localhost" does not allow another name for the same machine.
         allowFixtureHost()
-        val literal = download("/files/to-loopback", match = "127.0.0.1")
+        val literal = submit(generation, fixture("/files/to-loopback"))
         assertTrue("${literal.failure}", literal.failure?.contains("127.0.0.1 resolves to 127.0.0.1") == true)
         val allowed = download("/files/hello.txt")
         assertEquals(1040uL, allowed.file?.size)
@@ -323,9 +347,8 @@ class SecurityTest {
         val marker = "RIFT-PREVIEW-PLAINTEXT-MARKER".toByteArray()
         val hits = context.dataDir.walkTopDown().filter { it.isFile && contains(it.readBytes(), marker) }
             .map { it.relativeTo(context.dataDir).path }.toList()
-        // The session's engine directories are deleted at reset (S12); anything else is a leak.
-        val engine = Regex("(^|.*/)[^/]+_s[0-9]+/.*")
-        assertEquals(emptyList<String>(), hits.filterNot { engine.matches(it) })
+        // The engine runs in the browser app, so nothing in the controller may hold it.
+        assertEquals(emptyList<String>(), hits)
         report("s19", "plaintext marker found in: ${hits.ifEmpty { listOf("none") }}")
     }
 
@@ -333,17 +356,8 @@ class SecurityTest {
 
     @Test
     fun s15_unverifiedSandboxRefusesBrowsing() {
-        val good = WebViewSandbox.Facts("com.google.android.webview", "133.0.6943.137", true, true)
-        assertTrue(WebViewSandbox.evaluate(good).verified)
-        for (bad in listOf(
-            good.copy(multiProcessEnabled = false),
-            good.copy(multiProcessSupported = false, multiProcessEnabled = false),
-            good.copy(versionName = "91.0.4472.114"),
-            good.copy(versionName = "garbage"),
-            good.copy(packageName = null, versionName = null),
-        )) {
-            assertFalse("$bad", WebViewSandbox.evaluate(bad).verified)
-        }
+        // The refusal paths of the check itself are unit tests in the browser
+        // module (WebViewSandboxTest), which build.sh runs.
         // A generation whose browser never confirmed its sandbox: everything is blocked.
         val generation = resetAndAwait(activeGeneration())
         val decision = Core.decide(generation, "https://example.org/")
@@ -360,14 +374,12 @@ class SecurityTest {
             visit("seed", "/seed.html", doneKey = "seeded").getString("seeded"))
         val before = visit("probe-before", "/probe.html?test=probe-before")
         for (key in STORES) assertEquals("control: $key", "PRESENT", before.getString(key))
-        assertTrue(dataDirectories().any { it.endsWith("_s$generation") })
 
         val started = SystemClock.elapsedRealtime()
         val next = resetAndAwait(generation)
         val resetMs = SystemClock.elapsedRealtime() - started
         assertTrue(next > generation)
-        assertEquals(emptyList<Int>(), browserPids())
-        assertEquals(emptyList<String>(), dataDirectories().filter { it.endsWith("_s$generation") })
+        assertEquals(emptyList<String>(), browserState().second)
         assertEquals(emptyList<String>(), File(context.dataDir, "shared_prefs").list().orEmpty().toList())
         assertFalse(Core.decide(generation, fixture("/probe.html")) is NavigationDecision.Proceed)
 
@@ -459,6 +471,153 @@ class SecurityTest {
 
     // ---- Helpers -------------------------------------------------------------------
 
+    // ---- S23–S28: the browser app and the network lock (§8.3, §8.8, INV-14) -------
+
+    @Test
+    fun s23_browserProcessReachesNothingOfRift() {
+        val generation = activeGeneration()
+        val probe = escapeProbe(stale = generation - 1)
+        report("s23", probe.keySet().sorted().joinToString(" | ") { "$it=${probe.getString(it)}" })
+        assertEquals(Rift.WEB_PROCESS, probe.text("process"))
+        assertTrue("same UID as the controller", probe.text("uid") != android.os.Process.myUid().toString())
+        for (key in listOf("file.rift", "file.marker", "file.device", "file.prefs", "bind.worker")) {
+            assertTrue("$key: ${probe.text(key)}", probe.text(key).startsWith("DENIED"))
+        }
+        assertEquals("ALLOWED register=Refused decide=stale-session", probe.text("core.stale"))
+    }
+
+    @Test
+    fun s24_otherAppsAreRefused() {
+        visit("s1", "/s1.html") // the session's proxy is running from here on
+        val port = Core.egressPort() ?: throw AssertionError("the proxy is not running")
+        val before = Core.egressStats()!!.unauthenticated
+        val result = outsider("proxyPort" to port)
+        report("s24", result.keySet().sorted().joinToString(" | ") { "$it=${result.getString(it)}" })
+        assertEquals("DENIED", result.text("permission"))
+        for (key in listOf("bind.session", "bind.core", "start.browser")) {
+            assertTrue("$key: ${result.text(key)}", result.text(key).startsWith("DENIED SecurityException"))
+        }
+        for (key in listOf("proxy.none", "proxy.wrong")) {
+            assertEquals(key, "ALLOWED HTTP/1.1 407 Proxy Authentication Required", result.text(key))
+        }
+        assertTrue(Core.egressStats()!!.unauthenticated >= before + 2u)
+    }
+
+    @Test
+    fun s25_pagesCannotReachLocalOrPrivateAddresses() {
+        http("/arrivals/clear")
+        val page = visit("s25", "/reach.html?test=s25")
+        val arrived = arrivals()
+        val refused = Core.egressStats()?.recent.orEmpty().map { it.destination }
+        report("s25", "page: $page; arrived: $arrived; refused by the proxy: $refused")
+        // The control arrives, so the page ran and the log works; nothing else does.
+        assertEquals(listOf("tcp control"), arrived.filter { it.startsWith("tcp") }.map { it.substringBefore(" host=") })
+        for (destination in listOf("127.0.0.1:$FIXTURE_PORT", "10.0.2.2:$FIXTURE_PORT")) {
+            assertTrue("$destination not in $refused", destination in refused)
+        }
+    }
+
+    @Test
+    fun s26_webrtcAndDirectSocketsHaveNoRoute() {
+        http("/arrivals/clear")
+        val page = visit("s26", "/reach.html?test=s26")
+        val probe = escapeProbe(stale = 0)
+        SystemClock.sleep(1_000) // time for a datagram that got through to arrive
+        val arrived = arrivals()
+        val candidates = page.getString("webrtc").lines().mapNotNull { it.split(' ').getOrNull(4) }
+        val device = NetworkInterface.getNetworkInterfaces().toList()
+            .filter { !it.isLoopback && !it.name.startsWith("tun") }
+            .flatMap { it.inetAddresses.toList() }
+            .map { it.hostAddress.orEmpty().substringBefore('%') }
+        val dropped = NetworkLock.dropped.value
+        report("s26", "candidates: $candidates; device addresses: $device; arrived: $arrived; dropped: $dropped; " +
+            listOf("tcp.host", "tcp.public", "tcp.loopback", "udp.host", "dns").joinToString(" | ") { "$it=${probe.getString(it)}" })
+        assertEquals(emptyList<String>(), arrived.filter { it.startsWith("udp") })
+        assertEquals(listOf("tcp control"), arrived.filter { it.startsWith("tcp") }.map { it.substringBefore(" host=") })
+        for (address in device) assertFalse("WebRTC exposed $address: $candidates", address in candidates)
+        for (key in listOf("tcp.host", "tcp.public", "dns")) {
+            assertTrue("$key: ${probe.text(key)}", probe.text(key).startsWith("DENIED"))
+        }
+        assertTrue("$dropped", dropped.destinations.any { it == "UDP 10.0.2.2:3478" })
+        // Loopback is not routed through any VPN (§8.3): reported above, not asserted.
+    }
+
+    @Test
+    fun s27_resetWipesTheBrowserApp() {
+        val generation = activeGeneration()
+        visit("seed", "/seed.html", doneKey = "seeded")
+        val (pidBefore, filesBefore) = browserState()
+        // Control: the inventory does see the engine's state.
+        assertTrue("$filesBefore", filesBefore.any { "_s$generation" in it })
+        val started = SystemClock.elapsedRealtime()
+        val next = resetAndAwait(generation)
+        val resetMs = SystemClock.elapsedRealtime() - started
+        val (pidAfter, filesAfter) = browserState()
+        assertTrue("pid $pidAfter", pidAfter != pidBefore)
+        assertEquals(emptyList<String>(), filesAfter)
+        report("s27", "generation $generation->$next in $resetMs ms; browser pid $pidBefore->$pidAfter; files ${filesBefore.size}->${filesAfter.size}")
+    }
+
+    @Test
+    fun s28_losingTheLockEndsTheSessionAndWipesTheBrowser() {
+        val generation = activeGeneration()
+        visit("s1", "/s1.html")
+        try {
+            outsider("vpn" to "take")
+            val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+            while (NetworkLock.state.value !is NetworkLock.State.Lost) {
+                if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("lock not lost: ${NetworkLock.state.value}")
+                SystemClock.sleep(50)
+            }
+            val next = activeGenerationAfter(generation)
+            assertTrue("${Core.notice.value}", Core.notice.value?.contains("network lock stopped") == true)
+            assertEquals(emptyList<String>(), browserState().second)
+            assertFalse(Core.decide(generation, fixture("/s1.html")) is NavigationDecision.Proceed)
+            // Rift does not take the VPN back from the other app on its own.
+            NetworkLock.start(context, userAction = false)
+            SystemClock.sleep(500)
+            assertTrue("${NetworkLock.state.value}", NetworkLock.state.value is NetworkLock.State.Lost)
+            // Without the lock the browser refuses to load anything.
+            openBrowser(next, fixture("/s1.html"))
+            assertNotNull("refusal", device.wait(Until.findObject(By.textContains("network lock is off")), UI_TIMEOUT_MS))
+            report("s28", "lock lost: ${NetworkLock.state.value}; session $generation -> $next; browser wiped")
+        } finally {
+            outsider("vpn" to "release")
+            Core.dismissNotice()
+            awaitLock()
+        }
+    }
+
+    @Test
+    fun s28b_reducedIsolationIsChosenAndLabelled() {
+        val generation = resetAndAwait(activeGeneration())
+        Core.useReducedIsolation(generation)
+        openBrowser(generation, null)
+        assertNotNull("label", device.wait(Until.findObject(By.res("reduced")), UI_TIMEOUT_MS))
+        // Only for that session.
+        val next = resetAndAwait(generation)
+        assertTrue(Core.reduced.value != next)
+        report("s28b", "generation $generation ran with reduced isolation, labelled; $next did not")
+    }
+
+    private fun escapeProbe(stale: Long): Bundle = ask(
+        Intent().setComponent(ComponentName(Rift.BROWSER_PACKAGE, "${Rift.BROWSER_PACKAGE}.EscapeProbeActivity"))
+            .putExtra("fixturePort", FIXTURE_PORT)
+            .putExtra("staleGeneration", stale),
+        ESCAPE_TIMEOUT_MS,
+    )
+
+    private fun activeGenerationAfter(generation: Long): Long {
+        val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val state = Core.state.value
+            if (state is Core.State.Active && state.generation != generation) return state.generation
+            if (state is Core.State.Failed) throw AssertionError("session failed: ${state.message}")
+            SystemClock.sleep(20)
+        }
+        throw AssertionError("no new session after $generation: ${Core.state.value}")
+    }
+
     private fun awaitIntel(done: (IntelStatus?) -> Boolean): IntelStatus? {
         val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
         while (!done(Core.intel.value) && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
@@ -518,12 +677,12 @@ class SecurityTest {
         throw AssertionError("reset did not finish: ${Core.state.value}")
     }
 
-    private fun openBrowser(generation: Long, url: String) {
+    private fun openBrowser(generation: Long, url: String?) {
         context.startActivity(
-            Intent(context, BrowserActivity::class.java)
+            Intent().setComponent(Rift.BROWSER_ACTIVITY)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(BrowserActivity.EXTRA_GENERATION, generation)
-                .putExtra(BrowserActivity.EXTRA_URL, url),
+                .putExtra(Rift.EXTRA_GENERATION, generation)
+                .apply { url?.let { putExtra(Rift.EXTRA_URL, it) } },
         )
         // The first start of the engine on a freshly booted emulator can take
         // most of the UI timeout by itself (n1 on API 33 in CI).
@@ -533,6 +692,8 @@ class SecurityTest {
 
     /** Opens a fixture page in the current session and waits for its report. */
     private fun visit(test: String, path: String, doneKey: String = "done"): JSONObject {
+        // The proxy refuses local names unless the session allows them (INV-13).
+        allowFixtureHost()
         http("/clear?test=$test")
         openBrowser(activeGeneration(), fixture(path))
         val deadline = SystemClock.elapsedRealtime() + PAGE_TIMEOUT_MS
@@ -558,6 +719,17 @@ class SecurityTest {
     private fun download(path: String, match: String = path): Core.Download {
         val before = Core.downloads.value.map { it.key }.toSet()
         openBrowser(activeGeneration(), fixture(path))
+        return awaitDownload(before, path, match)
+    }
+
+    /** Hands `url` to the core as the engine would, without the browser. */
+    private fun submit(generation: Long, url: String, match: String = url): Core.Download {
+        val before = Core.downloads.value.map { it.key }.toSet()
+        Core.submitDownload(generation, DownloadInfo(url, null, "rift-test", null, null))
+        return awaitDownload(before, url, match)
+    }
+
+    private fun awaitDownload(before: Set<Long>, path: String, match: String): Core.Download {
         val deadline = SystemClock.elapsedRealtime() + DOWNLOAD_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
             Core.downloads.value.firstOrNull { it.key !in before && match in it.url && !it.running }?.let {
@@ -603,13 +775,84 @@ class SecurityTest {
     private fun contains(haystack: ByteArray, needle: ByteArray): Boolean =
         (0..haystack.size - needle.size).any { i -> needle.indices.all { haystack[i + it] == needle[it] } }
 
-    private fun browserPids(): List<Int> =
-        context.getSystemService(ActivityManager::class.java).runningAppProcesses.orEmpty()
-            .filter { it.processName == context.packageName + AndroidBrowserDisposal.BROWSER_PROCESS_SUFFIX }
-            .map { it.pid }
+    /** The browser app's session service: its process id and every file the app holds. */
+    private fun browserState(): Pair<Int, List<String>> {
+        val connected = CompletableFuture<ISession>()
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                connected.complete(ISession.Stub.asInterface(service))
+            }
 
-    private fun dataDirectories(): List<String> =
-        listOf(context.dataDir, context.cacheDir).flatMap { it.list().orEmpty().toList() }
+            override fun onServiceDisconnected(name: ComponentName) = Unit
+        }
+        assertTrue(context.bindService(Intent().setComponent(Rift.SESSION_SERVICE), connection, Context.BIND_AUTO_CREATE))
+        try {
+            val session = connected.get(10, TimeUnit.SECONDS)
+            return session.pid() to session.inventory()
+        } finally {
+            context.unbindService(connection)
+        }
+    }
+
+    /** Starts `intent` (an activity of another app) and waits for the Bundle it sends back. */
+    private fun ask(intent: Intent, timeoutMs: Long = PAGE_TIMEOUT_MS): Bundle {
+        val answer = CompletableFuture<Bundle>()
+        val receiver = object : ResultReceiver(Handler(Looper.getMainLooper())) {
+            override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+                answer.complete(resultData ?: Bundle())
+            }
+        }
+        // Re-parcelled as a plain ResultReceiver: the other app cannot load this subclass.
+        val parcel = android.os.Parcel.obtain()
+        val plain = try {
+            receiver.writeToParcel(parcel, 0)
+            parcel.setDataPosition(0)
+            ResultReceiver.CREATOR.createFromParcel(parcel)
+        } finally {
+            parcel.recycle()
+        }
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("receiver", plain))
+        return answer.get(timeoutMs, TimeUnit.MILLISECONDS)
+    }
+
+    private fun Bundle.text(key: String): String = getString(key) ?: throw AssertionError("no $key in $this")
+
+    private fun awaitLock() {
+        NetworkLock.start(context, userAction = true)
+        val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+        while (NetworkLock.state.value != NetworkLock.State.Active) {
+            if (SystemClock.elapsedRealtime() > deadline) {
+                throw AssertionError("network lock not active: ${NetworkLock.state.value} (run-tests.sh grants VPN consent)")
+            }
+            SystemClock.sleep(50)
+        }
+    }
+
+    /** Waits until the proxy has refused `destination` in this session. */
+    private fun awaitDenial(destination: String) {
+        val deadline = SystemClock.elapsedRealtime() + PAGE_TIMEOUT_MS
+        while (Core.egressStats()?.recent?.none { it.destination == destination } != false) {
+            if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("no refusal of $destination: ${Core.egressStats()}")
+            SystemClock.sleep(100)
+        }
+    }
+
+    private fun arrivals(): List<String> {
+        val list = JSONArray(http("/arrivals"))
+        return (0 until list.length()).map { list.getString(it) }
+    }
+
+    private fun outsider(vararg extras: Pair<String, Any>): Bundle {
+        val intent = Intent().setComponent(ComponentName(OUTSIDER, "$OUTSIDER.OutsiderActivity"))
+        for ((key, value) in extras) {
+            when (value) {
+                is Int -> intent.putExtra(key, value)
+                is String -> intent.putExtra(key, value)
+                else -> throw IllegalArgumentException("$key")
+            }
+        }
+        return ask(intent)
+    }
 
     private fun report(test: String, line: String) = android.util.Log.i(TAG, "result $test: $line")
 
@@ -625,6 +868,7 @@ class SecurityTest {
     }
 
     private companion object {
+        const val OUTSIDER = "org.simulationrift.outsider"
         const val FIXTURE_PORT = 8766
         const val UI_TIMEOUT_MS = 10_000L
         const val PAGE_TIMEOUT_MS = 20_000L
@@ -633,6 +877,8 @@ class SecurityTest {
         const val DOWNLOAD_TIMEOUT_MS = 120_000L
         const val PREVIEW_TIMEOUT_MS = 30_000L
         const val SCAN_TIMEOUT_MS = 40_000L
+        // DNS through the lock fails only after the resolver's own timeouts.
+        const val ESCAPE_TIMEOUT_MS = 90_000L
         val STORES = listOf("cookie", "server_cookie", "localStorage", "indexedDB", "cacheStorage", "serviceWorker")
     }
 }

@@ -1,4 +1,4 @@
-package org.simulationrift.app
+package org.simulationrift.bridge
 
 import android.os.Bundle
 
@@ -6,8 +6,8 @@ import android.os.Bundle
 data class Fact(val code: String, val text: String)
 
 /**
- * A navigation decision as it crosses from the core to `:browser`. Plain
- * Kotlin on purpose: `:browser` never loads the Rust library.
+ * A navigation decision as it crosses from the core to the browser. Plain
+ * Kotlin on purpose: the browser never loads the Rust library.
  */
 sealed interface NavigationDecision {
     data class Proceed(val notes: List<Fact>) : NavigationDecision

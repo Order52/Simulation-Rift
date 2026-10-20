@@ -12,7 +12,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.update
+import org.simulationrift.bridge.Fact
+import org.simulationrift.bridge.IBrowser
+import org.simulationrift.bridge.NavigationDecision
+import org.simulationrift.bridge.NetworkMode
+import org.simulationrift.bridge.SessionGrant
+import org.simulationrift.core.DisposalException
 import org.simulationrift.core.DownloadFailure
+import org.simulationrift.core.EgressFailure
+import org.simulationrift.core.EgressStats
 import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.Intel
 import org.simulationrift.core.IntelFailure
@@ -33,10 +41,16 @@ import org.simulationrift.core.Fact as CoreFact
 
 const val TAG = "Rift"
 
+/** Whether browsing may start in the browser, and the facts behind the answer (§8.4, INV-7). */
+data class SandboxReport(val verified: Boolean, val detail: String)
+
+/** The browser's report on its network (§8.8): the proxy override, and whether its default network is the lock. */
+data class NetworkReport(val proxied: Boolean, val locked: Boolean, val detail: String)
+
 /**
  * The trusted controller (main process only). rift-core makes every decision;
- * this object sequences it for Android and tracks which `:browser` belongs to
- * which generation.
+ * this object sequences it for Android and tracks which browser window
+ * belongs to which generation.
  */
 object Core {
     sealed interface State {
@@ -51,8 +65,9 @@ object Core {
         data class Failed(val message: String) : State
     }
 
-    private class RegisteredBrowser(val generation: Long, val binder: IBrowser) {
+    private class RegisteredBrowser(val generation: Long, val binder: IBrowser, val mode: NetworkMode) {
         @Volatile var sandbox: SandboxReport? = null
+        @Volatile var network: NetworkReport? = null
     }
 
     /** One download of the current session, as the home screen shows it. */
@@ -66,6 +81,18 @@ object Core {
     /** Last renderer-sandbox report, for the diagnostics screen. */
     private val _sandbox = MutableStateFlow<SandboxReport?>(null)
     val sandbox: StateFlow<SandboxReport?> = _sandbox
+
+    /** Last network report from the browser, for the diagnostics screen. */
+    private val _network = MutableStateFlow<NetworkReport?>(null)
+    val network: StateFlow<NetworkReport?> = _network
+
+    /** Why the last session ended on its own (the lock was lost), until the next one starts. */
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice
+
+    /** The generation the user chose to run without the network lock, if any (§8.8). */
+    private val _reduced = MutableStateFlow<Long?>(null)
+    val reduced: StateFlow<Long?> = _reduced
 
     private val _downloads = MutableStateFlow<List<Download>>(emptyList())
     val downloads: StateFlow<List<Download>> = _downloads
@@ -124,6 +151,7 @@ object Core {
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "rift-core") }
     private val started = AtomicBoolean(false)
     private lateinit var app: Context
+    private lateinit var disposal: AndroidBrowserDisposal
 
     // Written only on [worker]; read by transfers (the Rust object is thread-safe).
     @Volatile private var sessions: Sessions? = null
@@ -148,6 +176,7 @@ object Core {
         check(Application.getProcessName() == context.packageName) { "rift-core runs in the main process only" }
         if (started.compareAndSet(false, true)) {
             app = context.applicationContext
+            disposal = AndroidBrowserDisposal(app)
             worker.execute(::openAndStart)
         }
     }
@@ -181,9 +210,16 @@ object Core {
         _state.value = State.Opening
         if (database == null) openIntel()
         val opened = try {
-            Sessions.open(File(app.filesDir, "rift").path, AndroidBrowserDisposal(app))
+            Sessions.open(File(app.filesDir, "rift").path, disposal)
         } catch (e: SessionFailure) {
             fail(null, e)
+            return
+        }
+        try {
+            // Recovery has already wiped the browser if a session was interrupted.
+            disposal.wipeOnceThisLaunch()
+        } catch (e: DisposalException) {
+            fail(opened, "The browser app could not be wiped before the first session: ${e.message}")
             return
         }
         sessions = opened
@@ -216,11 +252,16 @@ object Core {
 
     private fun fail(opened: Sessions?, e: SessionFailure) {
         Log.e(TAG, "session failure", e)
+        fail(opened, describe(e))
+    }
+
+    private fun fail(opened: Sessions?, message: String) {
+        Log.e(TAG, "session failure: $message")
         currentGeneration = null
         // Recovery happens only through a fresh open, which repeats cleanup.
         opened?.close()
         sessions = null
-        _state.value = State.Failed(describe(e))
+        _state.value = State.Failed(message)
     }
 
     // UniFFI renders errors as field lists, so the sentences are written here.
@@ -239,12 +280,77 @@ object Core {
         is DownloadFailure.Poisoned -> "session state is unusable after an internal error"
     }
 
-    // ---- Interface for :browser (via CoreService) ----------------------------
+    // ---- Network lock (§8.8) ------------------------------------------------------
 
-    fun registerBrowser(generation: Long, binder: IBrowser): Boolean {
-        if (generation != currentGeneration) return false
-        browser = RegisteredBrowser(generation, binder)
-        return true
+    /**
+     * The user's explicit choice to run the current session without the
+     * network lock, when it cannot run. It lasts for this generation only,
+     * and the browser labels the session for its whole life.
+     */
+    fun useReducedIsolation(generation: Long) {
+        if (generation == currentGeneration) _reduced.value = generation
+    }
+
+    /** The lock was taken away: a session that relied on it ends, and the browser is wiped (S28). */
+    fun networkLockLost() {
+        val generation = currentGeneration ?: return
+        if (_reduced.value == generation) return
+        _notice.value = "Session $generation ended because the network lock stopped. Turn the lock on again to keep browsing isolated."
+        reset(generation)
+    }
+
+    fun dismissNotice() {
+        _notice.value = null
+    }
+
+    /** What the current session's egress proxy did, or null before the browser first used it. */
+    fun egressStats(): EgressStats? {
+        val generation = currentGeneration ?: return null
+        return sessions?.egressStats(generation.toULong())
+    }
+
+    /**
+     * The current session's proxy port, if it has started (diagnostics and
+     * S24). The port is not a secret: the proxy refuses requests without the
+     * session's token.
+     */
+    fun egressPort(): Int? {
+        val generation = currentGeneration ?: return null
+        if (sessions?.egressStats(generation.toULong()) == null) return null
+        return try {
+            sessions?.egress(generation.toULong())?.port?.toInt()
+        } catch (e: EgressFailure) {
+            null
+        }
+    }
+
+    // ---- Interface for the browser app (via CoreService) -----------------------------
+
+    /**
+     * Registers the browser window of `generation` and hands it this
+     * session's proxy. Without the lock (and without the user's choice of
+     * reduced isolation for this session) browsing is refused.
+     */
+    fun registerBrowser(generation: Long, binder: IBrowser): SessionGrant {
+        if (generation != currentGeneration) return SessionGrant.Refused("This browser window belongs to a session that has ended.")
+        val opened = sessions ?: return SessionGrant.Refused("No session is active.")
+        val mode = when {
+            _reduced.value == generation -> NetworkMode.REDUCED
+            NetworkLock.active -> NetworkMode.LOCKED
+            else -> return SessionGrant.Refused(
+                "The network lock is off, so the browser may not load pages. Open Rift to turn it on, or to choose reduced isolation for this session.",
+            )
+        }
+        val endpoint = try {
+            opened.egress(generation.toULong())
+        } catch (e: EgressFailure) {
+            Log.e(TAG, "egress proxy unavailable", e)
+            return SessionGrant.Refused("Rift's network proxy could not start, so the browser may not load pages.")
+        }
+        browser = RegisteredBrowser(generation, binder, mode)
+        _network.value = null
+        Log.i(TAG, "browser registered for generation $generation, network $mode")
+        return SessionGrant.Granted(endpoint.port.toInt(), endpoint.token, endpoint.realm, mode)
     }
 
     fun reportSandbox(generation: Long, report: SandboxReport) {
@@ -253,16 +359,37 @@ object Core {
         _sandbox.value = report
     }
 
+    fun reportNetwork(generation: Long, report: NetworkReport) {
+        val registered = browser?.takeIf { it.generation == generation } ?: return
+        registered.network = report
+        _network.value = report
+        Log.i(TAG, "browser network in generation $generation: proxied=${report.proxied} locked=${report.locked}")
+    }
+
     fun decide(generation: Long, url: String): NavigationDecision {
         if (generation != currentGeneration) {
             return NavigationDecision.Block(Fact("stale-session", "This browser window belongs to a session that has ended."), false, displaySafe(url))
         }
-        val sandboxVerified = browser?.takeIf { it.generation == generation }?.sandbox?.verified == true
-        return when (val d = navigator.decide(url, sandboxVerified)) {
+        val registered = browser?.takeIf { it.generation == generation }
+        val sandboxVerified = registered?.sandbox?.verified == true
+        val decision = when (val d = navigator.decide(url, sandboxVerified)) {
             is Navigation.Proceed -> NavigationDecision.Proceed(d.notes.map(::fact))
             is Navigation.Confirm -> NavigationDecision.Confirm(d.reasons.map(::fact), d.notes.map(::fact), displaySafe(url))
-            is Navigation.Block -> NavigationDecision.Block(fact(d.reason), d.inspectAnyway, displaySafe(url))
+            is Navigation.Block -> return NavigationDecision.Block(fact(d.reason), d.inspectAnyway, displaySafe(url))
         }
+        // INV-14: nothing loads unless every request goes through the proxy,
+        // behind the lock unless the user chose reduced isolation.
+        val network = registered?.network
+        val bounded = network != null && network.proxied &&
+            (registered.mode == NetworkMode.REDUCED || (network.locked && NetworkLock.active))
+        if (!bounded) {
+            return NavigationDecision.Block(
+                Fact("network-unbounded", "Rift could not confirm that this browser reaches the network only through its proxy, so the page was not loaded."),
+                false,
+                displaySafe(url),
+            )
+        }
+        return decision
     }
 
     fun typed(input: String): String = typedAddress(input)

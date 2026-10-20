@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- The only permission (§8.2). Camera, microphone, location, storage and
-         the rest are absent, so the OS denies them whatever a page asks. -->
+    <!-- The only permission (§8.2), for rift-core's own transfers and the
+         egress proxy. Camera, microphone, location, storage and the rest are
+         absent from both apps, so the OS denies them whatever a page asks. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The browser app must be visible to bind and start it (API 30). -->
+    <queries>
+        <package android:name="org.simulationrift.browser" />
+    </queries>
 
     <application
         android:allowBackup="false"
@@ -13,16 +19,6 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:zygotePreloadName=".PreviewZygotePreload">
-
-        <!-- Privacy defaults (INV-11): no WebView usage metrics, and Safe
-             Browsing (which sends URL hash prefixes to Google) stays off until
-             the user opts in. -->
-        <meta-data
-            android:name="android.webkit.WebView.MetricsOptOut"
-            android:value="true" />
-        <meta-data
-            android:name="android.webkit.WebView.EnableSafeBrowsing"
-            android:value="false" />
 
         <!-- Trusted controller: UI, rift-core, sessions. -->
         <activity
@@ -48,21 +44,25 @@
             </intent-filter>
         </activity>
 
-        <!-- Browser host (§8.3): its own process so that killing it and deleting
-             its data directory disposes of a session. Same UID as the app, so
-             it is a lifecycle boundary, not a security identity. -->
-        <activity
-            android:name=".BrowserActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:process=":browser" />
-
-        <!-- The core's interface for :browser: navigation decisions and session
-             requests only. No vault or export operations (§8.3 c). -->
+        <!-- The core's interface for the browser app (§8.3): navigation
+             decisions and session requests only, no vault, file or export
+             operations. Exported under the signature permission, and every
+             call checks the browser app's UID and signer. -->
         <service
             android:name=".CoreService"
-            android:exported="false" />
+            android:exported="true"
+            android:permission="org.simulationrift.permission.RIFT" />
+
+        <!-- The network lock (§8.8): a VPN for the browser app only, which
+             forwards nothing. -->
+        <service
+            android:name=".NetworkLockService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
 
         <!-- Untrusted-input worker (§8.6): random isolated UID, isolated_app
              domain, no permissions, no app files. Forked from the app zygote,

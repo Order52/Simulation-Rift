@@ -14,7 +14,7 @@ android {
         minSdk = 30
         targetSdk = 36
         versionCode = 1
-        versionName = "0.2.0-phase2"
+        versionName = "0.3.0-phase3"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -60,7 +60,8 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.webkit:webkit:1.17.1")
+    // The controller never depends on WebView (§8.4): only the browser app does.
+    implementation(project(":bridge"))
     implementation("androidx.core:core-ktx:1.17.0")
     // UniFFI's Kotlin bindings call the Rust library through JNA.
     implementation("net.java.dev.jna:jna:5.19.1@aar")

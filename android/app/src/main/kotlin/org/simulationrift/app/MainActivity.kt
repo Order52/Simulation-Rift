@@ -1,9 +1,11 @@
 package org.simulationrift.app
 
 import android.content.Intent
+import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +39,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import org.simulationrift.bridge.Rift
+import org.simulationrift.core.EgressStats
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
 import org.simulationrift.core.Verdict
@@ -46,11 +54,26 @@ class MainActivity : ComponentActivity() {
     /** A link handed to Rift by another app, opened once a session is active. */
     private var pendingLink by mutableStateOf<String?>(null)
 
+    /** Android's one-time VPN consent for the network lock (§8.8). */
+    private val consent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) NetworkLock.start(this, userAction = true)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Core.ensureStarted(this)
-        pendingLink = linkFrom(intent)
+        // Silently only if the user consented before and the lock was not
+        // taken away since; otherwise the network card asks.
+        NetworkLock.start(this, userAction = false)
+        // Not when Android recreates the activity (after a crash or a kill):
+        // a link handed over before then is not opened again without the user.
+        if (savedInstanceState == null) pendingLink = linkFrom(intent)
         setContent { MaterialTheme { Home() } }
+    }
+
+    private fun turnOnLock() {
+        val request = VpnService.prepare(this)
+        if (request == null) NetworkLock.start(this, userAction = true) else consent.launch(request)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -65,11 +88,12 @@ class MainActivity : ComponentActivity() {
         else -> null
     }
 
+    /** Starts the browser app's window for `generation`; it refuses to load pages without the lock's terms. */
     private fun browse(generation: Long, input: String?) {
         startActivity(
-            Intent(this, BrowserActivity::class.java)
-                .putExtra(BrowserActivity.EXTRA_GENERATION, generation)
-                .apply { input?.let { putExtra(BrowserActivity.EXTRA_URL, it) } },
+            Intent().setComponent(Rift.BROWSER_ACTIVITY)
+                .putExtra(Rift.EXTRA_GENERATION, generation)
+                .apply { input?.let { putExtra(Rift.EXTRA_URL, it) } },
         )
     }
 
@@ -77,9 +101,12 @@ class MainActivity : ComponentActivity() {
     private fun Home() {
         val state by Core.state.collectAsState()
         val sandbox by Core.sandbox.collectAsState()
+        val lock by NetworkLock.state.collectAsState()
+        val reduced by Core.reduced.collectAsState()
         val link = pendingLink
         val active = state as? Core.State.Active
-        if (active != null && link != null) {
+        val mayBrowse = active != null && (lock == NetworkLock.State.Active || reduced == active.generation)
+        if (active != null && link != null && mayBrowse) {
             pendingLink = null
             browse(active.generation, link)
         }
@@ -90,9 +117,11 @@ class MainActivity : ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text("Simulation Rift", style = MaterialTheme.typography.headlineMedium)
+                NoticeCard()
                 SessionCard(state)
+                NetworkCard(lock, active?.generation, reduced)
                 if (active != null) {
-                    BrowseCard(active.generation)
+                    if (mayBrowse) BrowseCard(active.generation)
                     DownloadsCard()
                 }
                 IntelCard()
@@ -126,6 +155,87 @@ class MainActivity : ComponentActivity() {
                         Text("No new session starts until cleanup succeeds.")
                         Button(onClick = Core::retry) { Text("Retry cleanup") }
                     }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun NoticeCard() {
+        val notice by Core.notice.collectAsState()
+        val text = notice ?: return
+        Card(Modifier.fillMaxWidth().testTag("notice"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text)
+                OutlinedButton(onClick = Core::dismissNotice) { Text("Dismiss") }
+            }
+        }
+    }
+
+    /**
+     * The network lock (§8.8): what it is doing, and the user's choices when
+     * it cannot run. Reduced isolation is offered only then, for one session.
+     */
+    @Composable
+    private fun NetworkCard(lock: NetworkLock.State, generation: Long?, reduced: Long?) {
+        val dropped by NetworkLock.dropped.collectAsState()
+        var stats by remember { mutableStateOf<EgressStats?>(null) }
+        LaunchedEffect(generation) {
+            while (true) {
+                // Off the UI thread: it takes the session lock, which a reset holds while it wipes the browser.
+                stats = withContext(Dispatchers.IO) { Core.egressStats() }
+                delay(STATS_REFRESH_MS)
+            }
+        }
+        val isReduced = generation != null && reduced == generation
+        Card(Modifier.fillMaxWidth().testTag("network")) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Browser network", style = MaterialTheme.typography.titleMedium)
+                val (summary, problem) = when (lock) {
+                    NetworkLock.State.Active -> "Network lock on. The browser has no route to any network; it reaches websites only " +
+                        "through Rift's proxy, which refuses local and private addresses." to false
+                    NetworkLock.State.Off, NetworkLock.State.Starting -> "Starting the network lock…" to false
+                    NetworkLock.State.NeedsConsent -> "The network lock needs Android's VPN permission. Rift's VPN routes nothing " +
+                        "anywhere: it only takes away the browser's direct network access, so its one way out is Rift's proxy." to true
+                    is NetworkLock.State.Lost -> "The network lock stopped: ${lock.reason}." to true
+                    is NetworkLock.State.Unavailable -> "The network lock cannot run: ${lock.reason}." to true
+                }
+                Text(summary, color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface, modifier = Modifier.testTag("lock-state"))
+                if (isReduced) {
+                    Text(
+                        "This session runs with reduced isolation: pages can reach your local network through WebRTC, " +
+                            "and a compromised browser is not limited to Rift's proxy.",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("reduced-session"),
+                    )
+                }
+                if (problem) {
+                    Button(onClick = ::turnOnLock, modifier = Modifier.testTag("lock-on")) { Text("Turn on the network lock") }
+                    if (generation != null && !isReduced) {
+                        Text(
+                            "If you need another VPN, you can browse this one session with reduced isolation instead.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        OutlinedButton(onClick = { Core.useReducedIsolation(generation) }, modifier = Modifier.testTag("use-reduced")) {
+                            Text("Reduced isolation for this session")
+                        }
+                    }
+                }
+                if (lock == NetworkLock.State.Active && dropped.packets > 0) {
+                    Text(
+                        "Dropped by the lock: ${dropped.packets} packets, to " + dropped.destinations.take(6).joinToString() +
+                            (if (dropped.destinations.size > 6) ", …" else ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("lock-dropped"),
+                    )
+                }
+                stats?.let { s ->
+                    Text(
+                        "Proxy this session: ${s.allowed} connections allowed, ${s.denied} refused.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("egress"),
+                    )
+                    s.recent.takeLast(5).forEach { d -> Text("Refused ${d.destination}: ${d.reason}", style = MaterialTheme.typography.bodySmall) }
                 }
             }
         }
@@ -291,6 +401,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private companion object {
+        const val STATS_REFRESH_MS = 1_000L
+    }
+
     @Composable
     private fun DiagnosticsCard(sandbox: SandboxReport?) {
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -301,8 +415,14 @@ class MainActivity : ComponentActivity() {
                         ?: "Renderer sandbox: checked when the browser starts.",
                     modifier = Modifier.testTag("sandbox"),
                 )
+                val network by Core.network.collectAsState()
+                Text(
+                    network?.let { "Browser network: ${it.detail}" } ?: "Browser network: checked when the browser starts.",
+                    modifier = Modifier.testTag("network-report"),
+                )
                 Text("Checked: addresses you type, links opened in Rift, and main-frame navigations the engine reports.")
                 Text("Not checked: subresources, frames, WebSockets, WebRTC, service-worker fetches and form posts (§10.3).")
+                Text("All of those still go through Rift's proxy, which refuses local and private addresses.")
                 Text("Address checks use a built-in list; the threat database is used for downloaded files.")
                 Text("Safe Browsing is off, so no addresses or hashes are sent to Google.")
             }

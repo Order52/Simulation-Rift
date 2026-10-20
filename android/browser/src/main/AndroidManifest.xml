@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- WebView cannot work without INTERNET; the network lock bounds it from
+         outside (§8.8). ACCESS_NETWORK_STATE lets the browser confirm that its
+         default network is the lock before it loads a page. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- The controller must be visible to bind its CoreService (API 30). -->
+    <queries>
+        <package android:name="org.simulationrift.app" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <!-- Privacy defaults (INV-11): no WebView usage metrics, and Safe
+             Browsing (which sends URL hash prefixes to Google) stays off until
+             the user opts in. -->
+        <meta-data
+            android:name="android.webkit.WebView.MetricsOptOut"
+            android:value="true" />
+        <meta-data
+            android:name="android.webkit.WebView.EnableSafeBrowsing"
+            android:value="false" />
+
+        <!-- The browser host (§8.3). No launcher entry: only the controller,
+             which holds the signature permission, can start it. -->
+        <activity
+            android:name=".BrowserActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:permission="org.simulationrift.permission.RIFT"
+            android:process=":web" />
+
+        <!-- Inventory and system wipe for the controller (§15), in the default
+             process, which never loads WebView. -->
+        <service
+            android:name=".SessionService"
+            android:exported="true"
+            android:permission="org.simulationrift.permission.RIFT" />
+
+        <!-- androidx.startup initializers (profile installer, emoji, process
+             lifecycle) would write files at every start. A fresh browser must
+             hold no file at all (§15 step 4), so none runs. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="remove" />
+    </application>
+</manifest>

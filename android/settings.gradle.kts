@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "simulation-rift"
-include(":app")
+include(":bridge", ":app", ":browser", ":outsider")

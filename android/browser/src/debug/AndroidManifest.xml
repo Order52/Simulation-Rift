@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: S23 and S26 run escape probes as code in the :web
+     process, where a WebView escape would land. Release builds have none. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".EscapeProbeActivity"
+            android:exported="true"
+            android:permission="org.simulationrift.permission.RIFT"
+            android:process=":web" />
+    </application>
+</manifest>

@@ -1,7 +1,9 @@
 #!/bin/sh
 # Builds rift-ffi (controller) and rift-worker-ffi (isolated worker) for both
-# ABIs, generates their Kotlin bindings, builds the debug APK, and checks that
-# every bundled .so is aligned for 16 KB pages.
+# ABIs, generates their Kotlin bindings, and builds the debug APKs: the
+# controller (app), the browser (browser), and the outsider test app, which
+# is signed with a throwaway key of its own. Checks that the controller has
+# no WebView and that every bundled .so is aligned for 16 KB pages.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 : "${ANDROID_HOME:=$HOME/Library/Android/sdk}"
@@ -44,29 +46,36 @@ cp "$keys/root.json" "$intel/root.json"
 rm -rf "$intel/pack"
 
 cd "$here"
-# Only :browser code may use WebView: loading it in the main process creates
-# app_webview/ outside any session (Phase 2, finding 12). A static check, so
-# it catches direct use, not every path that might load the provider.
-for f in $(grep -rlE 'android\.webkit|androidx\.webkit' app/src/main/kotlin app/src/debug/kotlin); do
-  case "$(basename "$f")" in
-    BrowserActivity.kt | WebViewSandbox.kt) ;;
-    *) echo "ERROR: $f uses WebView outside :browser" >&2; exit 1 ;;
-  esac
-done
-for f in $(grep -rl 'WebViewSandbox\.facts(' app/src/main/kotlin app/src/debug/kotlin); do
-  [ "$(basename "$f")" = BrowserActivity.kt ] || { echo "ERROR: $f asks WebView for its facts outside :browser" >&2; exit 1; }
-done
-"${GRADLE:-./gradlew}" --quiet assembleDebug assembleDebugAndroidTest
+# The controller never uses WebView (§8.4): only the browser app, under its
+# own UID, may. A static check of the sources, then of the built code below.
+if grep -rlE 'android\.webkit|androidx\.webkit' app/src bridge/src; then
+  echo "ERROR: the controller or the bridge uses WebView" >&2; exit 1
+fi
+# The outsider's throwaway signing key (S24, S28), never committed.
+mkdir -p build
+[ -f build/outsider.jks ] || "$JAVA_HOME/bin/keytool" -genkeypair -keystore build/outsider.jks -storepass rift-outsider \
+  -keypass rift-outsider -alias outsider -keyalg EC -groupname secp256r1 -validity 30 -dname "CN=Rift outsider test" >/dev/null 2>&1
+"${GRADLE:-./gradlew}" --quiet assembleDebug assembleDebugAndroidTest :browser:testDebugUnitTest
 
 # Every native library in the APK, including JNA's, must be 16 KB aligned (§8.1).
 readelf="$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -1)"
 apk=app/build/outputs/apk/debug/app-debug.apk
 libs="$(mktemp -d)"
 trap 'rm -rf "$libs"' EXIT
-unzip -q -o "$apk" 'lib/*' -d "$libs"
+unzip -q -o "$apk" 'lib/*' 'classes*.dex' -d "$libs"
+# No AndroidX WebView library at all, and no Rift class that touches
+# android.webkit. (Unused androidx.core helpers name MimeTypeMap and
+# WebView.findAddress; nothing of Rift's reaches them.)
+dexdump="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/dexdump"
+webkit="$(for dex in "$libs"/classes*.dex; do
+  "$dexdump" -d "$dex" | LC_ALL=C awk '/Class descriptor/ { c = $4 } /Landroidx\/webkit\// || (/Landroid\/webkit\// && c ~ /Lorg\/simulationrift\//) { print c }'
+done | sort -u)"
+if [ -n "$webkit" ]; then
+  echo "ERROR: WebView code in the controller APK: $webkit" >&2; exit 1
+fi
 for so in "$libs"/lib/*/*.so; do
   align="$("$readelf" -lW "$so" | awk '$1 == "LOAD" { print $NF }' | sort -u | tr '\n' ' ')"
   echo "$(basename "$(dirname "$so")")/$(basename "$so") $(wc -c < "$so" | tr -d ' ') bytes, LOAD alignment: $align"
   case "$align" in *0x1000\ *|*0x1000) echo "ERROR: 4 KB-aligned segment in $so" >&2; exit 1 ;; esac
 done
-ls -l "$apk"
+ls -l "$apk" browser/build/outputs/apk/debug/browser-debug.apk outsider/build/outputs/apk/debug/outsider-debug.apk

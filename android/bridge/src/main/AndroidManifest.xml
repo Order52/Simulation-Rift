@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Merged into both apps. Each defines the permission, so whichever is
+     installed first, only apps signed with Rift's key can hold it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <permission
+        android:name="org.simulationrift.permission.RIFT"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="org.simulationrift.permission.RIFT" />
+</manifest>

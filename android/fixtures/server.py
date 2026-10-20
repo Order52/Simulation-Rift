@@ -8,12 +8,20 @@ Pages report what they observed with fetch("/report?test=..&key=..&value=..").
 The instrumentation tests read the reports back from /results?test=..; the
 app itself has no test hooks and no JavaScript bridge.
 
+For the network lock (S25, S26) the server also records every request for
+/hit/<name>, whichever address it arrived on, and every datagram on UDP
+3478 (where test pages point WebRTC's STUN and the escape probe sends UDP).
+The emulator reaches both on the host's loopback through 10.0.2.2, so an
+arrival means something got past the lock. /arrivals lists them and
+/arrivals/clear empties the list.
+
 Usage: python3 -I server.py [port]
 """
 
 import http.server
 import json
 import pathlib
+import socket
 import sys
 import struct
 import threading
@@ -27,6 +35,8 @@ PRIVATE = b"cookie-gated fixture\n" * 50
 SESSION_COOKIE = "rift_login=1"
 BIG = 101 * 1024 * 1024  # just over the 100 MiB per-object limit
 LOCK = threading.Lock()
+ARRIVALS: list[str] = []
+STUN_PORT = 3478
 # Embedded in the preview fixtures, so plaintext left on disk can be searched for.
 MARKER = b"RIFT-PREVIEW-PLAINTEXT-MARKER"
 # Byte for byte rift_pack::DEMO_FILE: the demo database's hash and marker
@@ -102,6 +112,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             with LOCK:
                 body = json.dumps(REPORTS.get(query.get("test", ""), {})).encode()
             return self.send_bytes(body, "application/json")
+        if url.path.startswith("/hit/"):
+            with LOCK:
+                ARRIVALS.append(f"tcp {url.path[5:]} host={self.headers.get('Host')}")
+            print(f"HIT {url.path} Host={self.headers.get('Host')}", flush=True)
+            return self.send_bytes(b"hit", "text/plain", [("Access-Control-Allow-Origin", "*")])
+        if url.path == "/arrivals":
+            with LOCK:
+                body = json.dumps(ARRIVALS).encode()
+            return self.send_bytes(body, "application/json")
+        if url.path == "/arrivals/clear":
+            with LOCK:
+                ARRIVALS.clear()
+            return self.send_bytes(b"ok", "text/plain")
         if url.path == "/clear":
             with LOCK:
                 REPORTS.pop(query.get("test", ""), None)
@@ -187,10 +210,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         sys.stderr.write("%s %s\n" % (self.address_string(), fmt % args))
 
 
+def listen_udp() -> None:
+    """Records every datagram: none may arrive while the lock holds."""
+    udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp.bind(("127.0.0.1", STUN_PORT))
+    while True:
+        data, address = udp.recvfrom(2048)
+        with LOCK:
+            ARRIVALS.append(f"udp {len(data)} bytes from {address[0]}:{address[1]} starting {data[:24]!r}")
+        print(f"UDP {len(data)} bytes on {STUN_PORT} from {address[0]}:{address[1]}", flush=True)
+
+
 def main() -> None:
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8766
+    threading.Thread(target=listen_udp, daemon=True).start()
     server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"serving {WEB_ROOT} on http://127.0.0.1:{port}", flush=True)
+    print(f"serving {WEB_ROOT} on http://127.0.0.1:{port}, UDP on {STUN_PORT}", flush=True)
     server.serve_forever()
 
 

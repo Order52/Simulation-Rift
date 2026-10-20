@@ -1,0 +1,53 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>reach</title>
+<script src="/report.js"></script>
+<p id="out">running</p>
+<script>
+// S25 and S26: what a page (no escape) can reach. Each /hit/<name> request
+// that arrives is recorded by the fixture server, so the test reads the
+// truth there; what fetch() says here is only reported. The control goes
+// to the page's own origin, which the session allows.
+(async () => {
+  const port = location.port;
+  async function attempt(name, url) {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 4000);
+    try {
+      await fetch(url, {mode: 'no-cors', cache: 'no-store', signal: c.signal});
+      await report(name, 'answered');
+    } catch (e) {
+      await report(name, 'FAILED ' + e.name);
+    }
+    clearTimeout(t);
+  }
+  await attempt('control', `/hit/control`);
+  await attempt('loopback', `http://127.0.0.1:${port}/hit/loopback`);
+  await attempt('emulator_host', `http://10.0.2.2:${port}/hit/emulator-host`);
+  await attempt('loopback_v6', `http://[::1]:${port}/hit/loopback-v6`);
+  await new Promise(done => {
+    try {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/hit/websocket`);
+      const t = setTimeout(() => { ws.close(); report('websocket', 'timeout').then(done); }, 4000);
+      ws.onopen = () => { clearTimeout(t); report('websocket', 'open').then(done); };
+      ws.onerror = () => { clearTimeout(t); report('websocket', 'error').then(done); };
+    } catch (e) {
+      report('websocket', 'FAILED ' + e.name).then(done);
+    }
+  });
+  try {
+    const pc = new RTCPeerConnection({iceServers: [{urls: 'stun:10.0.2.2:3478'}]});
+    const candidates = [];
+    pc.onicecandidate = e => { if (e.candidate && e.candidate.candidate) candidates.push(e.candidate.candidate); };
+    pc.createDataChannel('probe');
+    await pc.setLocalDescription(await pc.createOffer());
+    await new Promise(done => setTimeout(done, 5000));
+    pc.close();
+    await report('webrtc', candidates.join('\n') || 'none');
+  } catch (e) {
+    await report('webrtc', 'FAILED ' + e.name);
+  }
+  document.getElementById('out').textContent = 'done';
+  await report('done', '1');
+})();
+</script>

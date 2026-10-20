@@ -1,4 +1,4 @@
-package org.simulationrift.app
+package org.simulationrift.browser
 
 import android.annotation.SuppressLint
 import android.app.Application
@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.Bitmap
+import android.net.ConnectivityManager
 import android.net.http.SslError
 import android.os.Bundle
 import android.os.IBinder
@@ -16,6 +17,7 @@ import android.util.Log
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
+import android.webkit.HttpAuthHandler
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
@@ -65,11 +67,20 @@ import androidx.webkit.WebViewFeature
 import androidx.webkit.WebViewMediaIntegrityApiStatusConfig
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import org.simulationrift.bridge.Fact
+import org.simulationrift.bridge.IBrowser
+import org.simulationrift.bridge.ICore
+import org.simulationrift.bridge.NavigationDecision
+import org.simulationrift.bridge.NetworkMode
+import org.simulationrift.bridge.Rift
+import org.simulationrift.bridge.SessionGrant
 
 /**
- * The browser host in the `:browser` process (§8.3, §8.4, §10). It never
- * loads the Rust library and holds no keys: decisions come from the core
- * over [ICore], tagged with this window's session generation.
+ * The browser host in the browser app's `:web` process (§8.3, §8.4, §10).
+ * It runs under a UID that owns nothing of Rift's, never loads the Rust
+ * library and holds no keys: decisions come from the controller's core over
+ * [ICore], tagged with this window's session generation, and every request
+ * the engine makes goes to the controller's egress proxy (§8.8).
  */
 class BrowserActivity : ComponentActivity() {
 
@@ -84,6 +95,8 @@ class BrowserActivity : ComponentActivity() {
 
     private var generation = 0L
     private var core: ICore? = null
+    private var grant: SessionGrant.Granted? = null
+    private var lockWatch: ConnectivityManager.NetworkCallback? = null
     private var webView: WebView? = null
     private var bound = false
     private var shuttingDown = false
@@ -118,10 +131,8 @@ class BrowserActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        check(Application.getProcessName().endsWith(AndroidBrowserDisposal.BROWSER_PROCESS_SUFFIX)) {
-            "BrowserActivity must run in the :browser process"
-        }
-        generation = intent.getLongExtra(EXTRA_GENERATION, 0)
+        check(Application.getProcessName() == Rift.WEB_PROCESS) { "BrowserActivity must run in ${Rift.WEB_PROCESS}" }
+        generation = intent.getLongExtra(Rift.EXTRA_GENERATION, 0)
         val processGen = processGeneration
         if (generation <= 0 || (processGen != null && processGen != generation)) {
             // This process's WebView already uses another generation's directory.
@@ -131,41 +142,43 @@ class BrowserActivity : ComponentActivity() {
             return
         }
         setContent { MaterialTheme { BrowserScreen() } }
-        bound = bindService(Intent(this, CoreService::class.java), connection, Context.BIND_AUTO_CREATE)
+        bound = bindService(Intent().setComponent(Rift.CORE_SERVICE), connection, Context.BIND_AUTO_CREATE)
         if (!bound) screen = Screen.Ended("The protection core is unavailable.")
     }
 
     /** A link for this window: same generation only (a new one gets a new process). */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.getLongExtra(EXTRA_GENERATION, 0) != generation) {
+        if (intent.getLongExtra(Rift.EXTRA_GENERATION, 0) != generation) {
             finish()
             return
         }
-        val url = intent.getStringExtra(EXTRA_URL) ?: return
+        val url = intent.getStringExtra(Rift.EXTRA_URL) ?: return
         if (webView != null) openTyped(url) else setIntent(intent)
     }
 
     private fun onCoreConnected(service: IBinder) {
         val connected = ICore.Stub.asInterface(service)
-        val accepted = try {
+        val answer = try {
             service.linkToDeath({ exitProcess("core died") }, 0)
-            connected.register(generation, browserBinder)
+            SessionGrant.fromBundle(connected.register(generation, browserBinder))
         } catch (e: RemoteException) {
             Log.w(TAG, "core unreachable", e)
-            false
+            SessionGrant.Refused("The protection core is unavailable.")
         }
-        if (!accepted) {
-            // Not the current session: leave without touching WebView, so a
+        when (answer) {
+            // No browsing in this window. WebView is never touched, so a
             // disposed generation's data directory is never recreated.
-            finish()
-            return
+            is SessionGrant.Refused -> screen = Screen.Ended(answer.reason)
+            is SessionGrant.Granted -> {
+                core = connected
+                grant = answer
+                startEngine(connected, answer)
+            }
         }
-        core = connected
-        startEngine(connected)
     }
 
-    private fun startEngine(connected: ICore) {
+    private fun startEngine(connected: ICore, granted: SessionGrant.Granted) {
         if (processGeneration == null) {
             // Before any other WebView call in this process (§8.4).
             WebView.setDataDirectorySuffix("s$generation")
@@ -179,12 +192,36 @@ class BrowserActivity : ComponentActivity() {
             return
         }
         if (!report.verified) {
-            screen = Screen.Unsupported(report.detail)
+            screen = Screen.Unsupported("the browser engine's sandbox could not be confirmed (${report.detail})")
             return
+        }
+        // Before any WebView exists, so that no request leaves without the proxy (§8.8).
+        NetworkLock.applyProxy(granted.proxyPort, mainExecutor) { problem -> onProxyApplied(connected, granted, problem) }
+    }
+
+    private fun onProxyApplied(connected: ICore, granted: SessionGrant.Granted, problem: String?) {
+        if (isFinishing || isDestroyed) return
+        val locked = NetworkLock.defaultIsVpn(this)
+        val refusal = problem ?: "the network lock is not in effect for the browser".takeIf { granted.mode == NetworkMode.LOCKED && !locked }
+        val detail = refusal ?: if (locked) "every request goes to Rift's proxy; the default network is the lock" else "every request goes to Rift's proxy; no network lock (reduced isolation)"
+        try {
+            connected.reportNetwork(generation, problem == null, locked, detail)
+        } catch (e: RemoteException) {
+            exitProcess("core unreachable")
+            return
+        }
+        if (refusal != null) {
+            screen = Screen.Unsupported(refusal)
+            return
+        }
+        if (granted.mode == NetworkMode.LOCKED) {
+            // The controller ends the session when it loses the lock (S28);
+            // this stops the engine sooner, before any request goes direct.
+            lockWatch = NetworkLock.watch(this) { exitProcess("network lock lost") }
         }
         webView = createWebView()
         screen = Screen.Page
-        intent.getStringExtra(EXTRA_URL)?.let(::openTyped)
+        intent.getStringExtra(Rift.EXTRA_URL)?.let(::openTyped)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -292,6 +329,17 @@ class BrowserActivity : ComponentActivity() {
             canGoForward = view.canGoForward()
         }
 
+        // Only the egress proxy's own challenge is answered (§8.4), so the
+        // token never goes to a site; every site's credential request is refused.
+        override fun onReceivedHttpAuthRequest(view: WebView, handler: HttpAuthHandler, host: String, realm: String) {
+            val granted = grant
+            if (granted != null && host == Rift.PROXY_HOST && realm == granted.proxyRealm) {
+                handler.proceed(Rift.PROXY_USER, granted.proxyToken)
+            } else {
+                handler.cancel()
+            }
+        }
+
         // No click-through for certificate errors in V1 (§10.2).
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) = handler.cancel()
 
@@ -338,6 +386,8 @@ class BrowserActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        lockWatch?.let { NetworkLock.unwatch(this, it) }
+        lockWatch = null
         webView?.destroy()
         webView = null
         if (bound) unbindService(connection)
@@ -365,10 +415,7 @@ class BrowserActivity : ComponentActivity() {
                     when (val s = screen) {
                         Screen.Page -> {}
                         Screen.Connecting -> Message("Connecting to the protection core…")
-                        is Screen.Unsupported -> Message(
-                            "Unsupported device configuration",
-                            "Browsing is refused because the browser engine's sandbox could not be confirmed: ${s.detail}.",
-                        )
+                        is Screen.Unsupported -> Message("Unsupported device configuration", "Browsing is refused: ${s.detail}.")
                         is Screen.Interstitial -> Interstitial(s)
                         is Screen.Blocked -> Message("Page blocked", s.reason.text, s.displayUrl)
                         is Screen.Ended -> Message("Session ended", s.message)
@@ -403,6 +450,15 @@ class BrowserActivity : ComponentActivity() {
                         typed = ""
                     }),
                     modifier = Modifier.weight(1f).testTag("address"),
+                )
+            }
+            if (grant?.mode == NetworkMode.REDUCED) {
+                Text(
+                    "Reduced isolation: no network lock in this session. Pages can reach your local network through WebRTC, " +
+                        "and a compromised browser is not limited to Rift's proxy.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag("reduced"),
                 )
             }
             status?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("status")) }
@@ -452,8 +508,6 @@ class BrowserActivity : ComponentActivity() {
     }
 
     companion object {
-        const val EXTRA_GENERATION = "org.simulationrift.app.GENERATION"
-        const val EXTRA_URL = "org.simulationrift.app.URL"
         private const val SHUTDOWN_TIMEOUT_MS = 1_000L
 
         /** The generation whose WebView data directory this process uses; fixed once set. */

@@ -1,4 +1,4 @@
-package org.simulationrift.app
+package org.simulationrift.browser
 
 import android.content.Context
 import androidx.webkit.WebViewCompat
@@ -8,7 +8,7 @@ import androidx.webkit.WebViewFeature
 data class SandboxReport(val verified: Boolean, val detail: String)
 
 /**
- * The renderer-sandbox precondition (§8.4, INV-7), evaluated in `:browser`
+ * The renderer-sandbox precondition (§8.4, INV-7), evaluated in `:web`
  * after the data-directory suffix is set: loading the WebView provider any
  * earlier would make the suffix impossible to set.
  */

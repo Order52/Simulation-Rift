@@ -77,7 +77,8 @@ jobs:
             echo "::endgroup::"
           done
 
-  # Phase 2 device matrix: the full Android suite (android/run-tests.sh) on
+  # Device matrix: the full Android suite (android/run-tests.sh: controller,
+  # browser app and outsider test app, network lock included) on
   # x86_64 emulators, which Apple Silicon machines cannot run. KVM makes them
   # hardware accelerated on GitHub's Linux runners.
   android-emulator:
@@ -90,7 +91,7 @@ jobs:
     timeout-minutes: 60
     env:
       NDK_VERSION: 29.0.14206865
-      EVIDENCE: ${{ github.workspace }}/evidence/phase2-android-api${{ matrix.api-level }}-x86_64
+      EVIDENCE: ${{ github.workspace }}/evidence/phase3-android-api${{ matrix.api-level }}-x86_64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install pinned toolchain, Android targets and cargo-ndk
@@ -125,7 +126,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: phase2-android-api${{ matrix.api-level }}-x86_64
+          name: phase3-android-api${{ matrix.api-level }}-x86_64
           path: ${{ env.EVIDENCE }}
           if-no-files-found: error
       - name: Every test passed
