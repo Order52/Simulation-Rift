@@ -16,11 +16,11 @@ use rift_core::snapshot::{InstallCheck, SnapshotStore};
 use rift_core::text::escape_for_display;
 use rift_protocol::{Envelope, Request, Response, SCAN_ENGINE, WorkerError};
 
-use crate::{Content, ReadFailure, Sessions, decode_reply, envelope, frame};
+use crate::{Content, ReadFailure, Sessions, VaultHandle, decode_reply, envelope, frame};
 
 /// Largest file decrypted for a rule scan; larger ones get the hash check
 /// only, and say so.
-const MAX_SCAN_INPUT: u64 = 32 * 1024 * 1024;
+pub(crate) const MAX_SCAN_INPUT: u64 = 32 * 1024 * 1024;
 /// Passed to the worker for YARA-X's own timeout (§12.1 default: 15 s). The
 /// controller's backstop is unbinding.
 const SCAN_DEADLINE_MS: u32 = 15_000;
@@ -90,6 +90,11 @@ pub enum ScanFailure {
     BadReply { detail: String },
     #[error("session state is unusable after an internal error")]
     Poisoned,
+    /// A kept file is scanned only against an installed database.
+    #[error("no threat database is installed")]
+    NoDatabase,
+    #[error("the vault was locked before the scan finished")]
+    Locked,
 }
 
 impl From<ReadFailure> for ScanFailure {
@@ -300,7 +305,7 @@ impl Intel {
 }
 
 impl Intel {
-    fn pack(&self) -> Option<Arc<Pack>> {
+    pub(crate) fn pack(&self) -> Option<Arc<Pack>> {
         self.current.lock().ok()?.as_ref().ok()?.clone()
     }
 }
@@ -381,12 +386,43 @@ impl InstallCheck for Checked {
     }
 }
 
+/// Where a scan's verdict is recorded.
+#[derive(Debug)]
+pub(crate) enum ScanOwner {
+    /// A quarantined file: kept for the session only.
+    Session {
+        sessions: Arc<Sessions>,
+        generation: u64,
+        file_id: String,
+    },
+    /// A kept file: recorded in the vault's index, unless the vault was
+    /// locked after `unlock` was read.
+    Vault {
+        vault: Arc<VaultHandle>,
+        unlock: u64,
+        id: String,
+    },
+}
+
+impl ScanOwner {
+    fn record(&self, verdict: verdicts::Verdict) -> Result<Verdict, ScanFailure> {
+        match self {
+            Self::Session {
+                sessions,
+                generation,
+                file_id,
+            } => sessions.remember(*generation, file_id, verdict),
+            Self::Vault { vault, unlock, id } => {
+                vault.record_scan(*unlock, id, to_ffi(id, &verdict), now_unix())
+            }
+        }
+    }
+}
+
 /// One file's rule scan by one fresh worker: Hello, LoadRules, then Scan.
 #[derive(Debug, uniffi::Object)]
 pub struct ScanJob {
-    sessions: Arc<Sessions>,
-    generation: u64,
-    file_id: String,
+    owner: ScanOwner,
     object: [u8; 32],
     type_mismatch: Option<(String, String)>,
     pack: Arc<Pack>,
@@ -426,7 +462,7 @@ impl ScanJob {
         frame(&self.scan)
     }
 
-    /// Validates the scan reply and records the verdict for this session.
+    /// Validates the scan reply and records the verdict for the job's owner.
     pub fn finish(&self, reply: Vec<u8>) -> Result<Verdict, ScanFailure> {
         let rules = match decode_reply(&reply, &self.scan)
             .map_err(|detail| ScanFailure::BadReply { detail })?
@@ -465,8 +501,7 @@ impl ScanJob {
             engine: SCAN_ENGINE,
             now_unix: now_unix(),
         });
-        self.sessions
-            .remember(self.generation, &self.file_id, verdict)
+        self.owner.record(verdict)
     }
 }
 
@@ -584,49 +619,21 @@ impl Sessions {
                 verdict: to_ffi(&id, &verdict),
             });
         }
-        let input = match content {
-            Content::Whole(bytes) => bytes,
-            Content::Head(_) => {
-                let verdict = verdicts::assess(&Evidence {
-                    object,
-                    type_mismatch,
-                    pack: Some(&pack),
-                    rules: RuleScan::Failed(Gap::TooLarge),
-                    engine: SCAN_ENGINE,
-                    now_unix: now_unix(),
-                });
-                return Ok(ScanStart::Done {
-                    verdict: self.remember(generation, &id, verdict)?,
-                });
-            }
-        };
-        let rules_digest = pack.rules_digest;
         let job_id = self.next_job.fetch_add(3, Ordering::SeqCst);
-        let rules =
-            RulesStep::new(job_id, generation, &pack).map_err(|e| ScanFailure::Storage {
-                detail: e.to_string(),
-            })?;
-        Ok(ScanStart::Run {
-            job: Arc::new(ScanJob {
-                sessions: self,
-                generation,
-                file_id: id,
-                object,
-                type_mismatch,
-                pack,
-                rules,
-                scan: envelope(
-                    job_id.saturating_add(2),
-                    generation,
-                    Request::Scan {
-                        rules_digest,
-                        max_matches: MAX_MATCHES,
-                        deadline_ms: SCAN_DEADLINE_MS,
-                    },
-                ),
-                input,
-            }),
-        })
+        let owner = ScanOwner::Session {
+            sessions: self,
+            generation,
+            file_id: id,
+        };
+        start(
+            owner,
+            generation,
+            job_id,
+            object,
+            type_mismatch,
+            pack,
+            content,
+        )
     }
 
     /// The latest verdict recorded for file `id` in this session, if any.
@@ -668,6 +675,59 @@ impl Sessions {
         extras.verdicts.push((id.to_owned(), shown.clone()));
         Ok(shown)
     }
+}
+
+/// The rule scan of `content` (§12.1) in a fresh worker, or, for a file too
+/// large to scan whole, the hash check alone with the gap named. Shared by
+/// quarantined and kept files.
+pub(crate) fn start(
+    owner: ScanOwner,
+    generation: u64,
+    job_id: u64,
+    object: [u8; 32],
+    type_mismatch: Option<(String, String)>,
+    pack: Arc<Pack>,
+    content: Content,
+) -> Result<ScanStart, ScanFailure> {
+    let input = match content {
+        Content::Whole(bytes) => bytes,
+        Content::Head(_) => {
+            let verdict = verdicts::assess(&Evidence {
+                object,
+                type_mismatch,
+                pack: Some(&pack),
+                rules: RuleScan::Failed(Gap::TooLarge),
+                engine: SCAN_ENGINE,
+                now_unix: now_unix(),
+            });
+            return Ok(ScanStart::Done {
+                verdict: owner.record(verdict)?,
+            });
+        }
+    };
+    let rules_digest = pack.rules_digest;
+    let rules = RulesStep::new(job_id, generation, &pack).map_err(|e| ScanFailure::Storage {
+        detail: e.to_string(),
+    })?;
+    Ok(ScanStart::Run {
+        job: Arc::new(ScanJob {
+            owner,
+            object,
+            type_mismatch,
+            pack,
+            rules,
+            scan: envelope(
+                job_id.saturating_add(2),
+                generation,
+                Request::Scan {
+                    rules_digest,
+                    max_matches: MAX_MATCHES,
+                    deadline_ms: SCAN_DEADLINE_MS,
+                },
+            ),
+            input,
+        }),
+    })
 }
 
 fn to_ffi(id: &str, verdict: &verdicts::Verdict) -> Verdict {

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import org.simulationrift.core.PlatformKey
+import org.simulationrift.core.ScanFailure
 import org.simulationrift.core.Sessions
 import org.simulationrift.core.VaultEntry
 import org.simulationrift.core.VaultFailure
@@ -294,6 +295,35 @@ object Locker {
         }
     }
 
+    /** Ids of kept files being scanned again. */
+    private val _rescanning = MutableStateFlow<Set<String>>(emptySet())
+    val rescanning: StateFlow<Set<String>> = _rescanning
+
+    /**
+     * Scans kept file `id` again with the installed database; the vault
+     * records the result in place of the earlier one (rift-ffi refuses it if
+     * the vault was locked meanwhile). The worker runs off [vaulting], so a
+     * scan never delays a lock.
+     */
+    fun rescan(id: String, service: Class<out android.app.Service> = PreviewService::class.java) = vaulting.execute {
+        val vault = handle?.takeIf { it.isUnlocked() } ?: return@execute
+        if (id in _rescanning.value) return@execute
+        _rescanning.update { it + id }
+        touch()
+        Core.scanKept(vault, id, service) { outcome ->
+            vaulting.execute {
+                _rescanning.update { it - id }
+                if (handle?.isUnlocked() == true) touch()
+                // The entries first, so the message never comes before the result it reports.
+                refresh()
+                _message.value = outcome.fold(
+                    { v -> "Scanned again: ${v.label}" + (if (v.demo) " (DEMO database, not real coverage)" else "") + "." },
+                    { e -> "The file was not scanned again: ${(e as? ScanFailure)?.let(::describe) ?: e.toString()}." },
+                )
+            }
+        }
+    }
+
     fun remove(id: String) = vaulting.execute {
         act("The file was not removed") {
             unlocked().remove(id)
@@ -443,6 +473,17 @@ object Locker {
         is VaultFailure.SessionEnded -> "the session this file belonged to has ended"
         is VaultFailure.NotFound -> "the file is not in this session's quarantine"
         is VaultFailure.Poisoned -> "vault state is unusable after an internal error"
+    }
+
+    private fun describe(e: ScanFailure): String = when (e) {
+        is ScanFailure.NoDatabase -> "no threat database is installed"
+        is ScanFailure.Locked -> "the vault was locked before the scan finished, so the result was not recorded"
+        is ScanFailure.NotFound -> "the vault has no such file"
+        is ScanFailure.Storage -> "the vault's copy could not be read (${e.detail})"
+        is ScanFailure.Unconfined -> "the scan worker is not confined (${e.detail})"
+        is ScanFailure.BadReply -> "the scan worker sent an invalid reply (${e.detail})"
+        is ScanFailure.SessionEnded -> "the session ended"
+        is ScanFailure.Poisoned -> "vault state is unusable after an internal error"
     }
 
     private fun nowUnix(): ULong = (System.currentTimeMillis() / 1000).toULong()

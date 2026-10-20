@@ -496,6 +496,8 @@ class MainActivity : ComponentActivity() {
     private fun VaultItem(entry: VaultEntry) {
         var warning by remember { mutableStateOf(false) }
         val previews by Locker.previews.collectAsState()
+        val rescanning by Locker.rescanning.collectAsState()
+        val database by Core.intel.collectAsState()
         Column(Modifier.testTag("vault-entry-${entry.id}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 "${entry.displayName} · ${entry.size} bytes · sha256 ${entry.sha256.take(16)}…" +
@@ -506,9 +508,9 @@ class MainActivity : ComponentActivity() {
             val scan = entry.scan
             Text(
                 if (scan == null) {
-                    "It had not been scanned when it was kept."
+                    "Not scanned yet."
                 } else {
-                    "When kept: ${scan.label}" + (scan.findings.takeIf { it.isNotEmpty() }?.joinToString(prefix = " (", postfix = ")") ?: "") +
+                    "Last scan, ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(scan.scannedUnix.toLong() * 1000))}: ${scan.label}" + (scan.findings.takeIf { it.isNotEmpty() }?.joinToString(prefix = " (", postfix = ")") ?: "") +
                         " · ${scan.snapshot?.let { "database $it" } ?: "no threat database"} · ${scan.engine}" +
                         (if (scan.demo) " · DEMO database, not real coverage" else "") +
                         ". A past result, not a current scan."
@@ -540,6 +542,13 @@ class MainActivity : ComponentActivity() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { warning = true }, modifier = Modifier.testTag("vault-export-${entry.id}")) { Text("Export…") }
                     OutlinedButton(onClick = { Locker.remove(entry.id) }, modifier = Modifier.testTag("vault-remove-${entry.id}")) { Text("Remove") }
+                }
+                when {
+                    entry.id in rescanning -> Text("Checking in an isolated worker…", style = MaterialTheme.typography.bodySmall)
+                    database is IntelStatus.Installed -> OutlinedButton(
+                        onClick = { Locker.rescan(entry.id) },
+                        modifier = Modifier.testTag("vault-rescan-${entry.id}"),
+                    ) { Text("Scan with the current database") }
                 }
             }
             PreviewArea(entry.id, entry.displayName, previews[entry.id]) { Locker.preview(entry.id) }

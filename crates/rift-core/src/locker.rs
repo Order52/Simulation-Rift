@@ -354,6 +354,25 @@ impl Vault {
         Ok(())
     }
 
+    /// Replaces the scan result recorded for object `id`, for a scan with
+    /// a later database. Only the index changes.
+    pub fn set_scan(&mut self, id: &str, scan: KeptScan) -> Result<IndexEntry, LockerError> {
+        let dir = self.dir.clone();
+        let state = self.state_mut()?;
+        let mut next = state.index.clone();
+        next.generation = next.generation.saturating_add(1);
+        let entry = next
+            .entries
+            .iter_mut()
+            .find(|e| e.id.to_hex() == id)
+            .ok_or_else(|| LockerError::UnknownObject(id.to_owned()))?;
+        entry.scan = Some(scan);
+        let updated = entry.clone();
+        write_index(&dir, &state.key, &next)?;
+        state.index = next;
+        Ok(updated)
+    }
+
     fn state(&self) -> Result<&Unlocked, LockerError> {
         self.unlocked.as_ref().ok_or(LockerError::Locked)
     }
@@ -529,6 +548,47 @@ mod tests {
             .unlock_with_secret(&SecretString::from(unwrapped))
             .unwrap();
         assert_eq!(read(&reopened, &entry.id.to_hex()).unwrap(), MARKER);
+    }
+
+    #[test]
+    fn a_later_scan_replaces_the_recorded_one_and_only_the_index_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault");
+        let mut vault =
+            Vault::create_with_passphrase(&path, pass("correct horse battery")).unwrap();
+        let entry = vault.add(MARKER, object("kept.txt")).unwrap();
+        let id = entry.id.to_hex();
+        let object_file = path.join(OBJECTS).join(object_name(entry.id));
+        let before = fs::read(&object_file).unwrap();
+        let scan = KeptScan {
+            status: vault::KeptStatus::Suspicious,
+            snapshot: Some("demo-2".into()),
+            engine: "yara-x".into(),
+            demo: true,
+            findings: vec!["rules:demo".into()],
+            scanned_unix: 2_000,
+        };
+        assert!(matches!(
+            vault.set_scan("00", scan.clone()),
+            Err(LockerError::UnknownObject(_))
+        ));
+        assert_eq!(
+            vault.set_scan(&id, scan.clone()).unwrap().scan,
+            Some(scan.clone())
+        );
+        assert_eq!(fs::read(&object_file).unwrap(), before);
+
+        vault.lock();
+        assert!(matches!(
+            vault.set_scan(&id, scan.clone()),
+            Err(LockerError::Locked)
+        ));
+        let mut reopened = Vault::open(&path).unwrap();
+        reopened
+            .unlock_with_passphrase(pass("correct horse battery"))
+            .unwrap();
+        assert_eq!(reopened.entries().unwrap()[0].scan, Some(scan));
+        assert_eq!(read(&reopened, &id).unwrap(), MARKER);
     }
 
     #[test]

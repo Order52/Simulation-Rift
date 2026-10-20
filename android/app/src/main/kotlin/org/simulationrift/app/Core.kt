@@ -28,6 +28,7 @@ import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanFailure
 import org.simulationrift.core.ScanStart
 import org.simulationrift.core.Verdict
+import org.simulationrift.core.VaultHandle
 import org.simulationrift.core.Navigation
 import org.simulationrift.core.QuarantinedFile
 import org.simulationrift.core.Navigator
@@ -448,6 +449,33 @@ object Core {
             if (generation == currentGeneration) {
                 _verdicts.update { if (verdict == null) it - fileId else it + (fileId to verdict) }
             }
+        }
+    }
+
+    /**
+     * Scans kept file `id` with the installed database (§12.1, §14): the
+     * vault's copy goes to a fresh isolated worker, as a quarantined file
+     * does, and rift-ffi records the result in the vault in place of the
+     * earlier one. `done` gets the verdict, or the failure (no database, the
+     * vault locked meanwhile, the file gone).
+     */
+    internal fun scanKept(vault: VaultHandle, id: String, service: Class<out Service>, done: (Result<Verdict>) -> Unit) {
+        val intel = database ?: return done(Result.failure(ScanFailure.NoDatabase()))
+        scanning.execute {
+            val started = android.os.SystemClock.elapsedRealtime()
+            val outcome = try {
+                Result.success(
+                    when (val start = vault.scan(id, intel)) {
+                        is ScanStart.Done -> start.verdict
+                        is ScanStart.Run -> start.job.use { job -> Scanner.scan(app, job, service) }
+                    },
+                )
+            } catch (e: ScanFailure) {
+                Result.failure(e)
+            }
+            Log.i(TAG, "scan of kept file after ${android.os.SystemClock.elapsedRealtime() - started} ms: " +
+                outcome.fold({ v -> "${v.label}; findings ${v.findings.map { "${it.check}:${it.id}" }}; gaps ${v.gaps}" }, { "not recorded: $it" }))
+            done(outcome)
         }
     }
 

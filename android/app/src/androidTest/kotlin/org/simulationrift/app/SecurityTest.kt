@@ -927,6 +927,39 @@ class SecurityTest {
         destroyVault()
     }
 
+    @Test
+    fun v6_keptFilesAreScannedAgainWithTheCurrentDatabase() {
+        destroyVault()
+        Core.installDemoIntel()
+        assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
+        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+        awaitVault<Locker.State.Unlocked>()
+        allowFixtureHost()
+        val file = submit(activeGeneration(), fixture("/files/demo-file.txt")).file!!
+        Core.keep(file.id)
+        awaitCondition("kept") { file.id in Locker.kept.value }
+        // The session and its quarantined copy end; the vault's copy is scanned.
+        resetAndAwait(activeGeneration())
+        val id = (Locker.state.value as Locker.State.Unlocked).entries.single().id
+        val started = System.currentTimeMillis() / 1000
+
+        val message = vaultMessageOf { Locker.rescan(id) }
+        assertTrue(message, message.startsWith("Scanned again: Known malicious"))
+        val scan = (Locker.state.value as Locker.State.Unlocked).entries.single().scan
+        assertNotNull("no scan recorded", scan)
+        assertEquals(ScanStatus.KNOWN_MALICIOUS, scan!!.status)
+        assertTrue("scanned at ${scan.scannedUnix}, rescan started at $started", scan.scannedUnix.toLong() >= started)
+        assertTrue(scan.demo)
+        assertTrue("${scan.findings}", scan.findings.any { it.startsWith("file hash:") })
+        // Recorded in the vault: it is still there after a lock and unlock.
+        Locker.lock()
+        awaitVault<Locker.State.Locked>()
+        Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
+        assertEquals(scan, awaitVault<Locker.State.Unlocked>().entries.single().scan)
+        report("v6", "scanned again: ${scan.label} ${scan.findings} database ${scan.snapshot} at ${scan.scannedUnix}")
+        destroyVault()
+    }
+
     private fun destroyVault() {
         Locker.destroy()
         awaitVault<Locker.State.Absent>()

@@ -1190,6 +1190,81 @@ mod tests {
     }
 
     #[test]
+    fn a_kept_file_is_scanned_again_and_the_result_replaces_the_old_one() {
+        use rift_worker_ffi::WorkerEngine;
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        let url = format!("http://localhost:{}/", serve(rift_pack::DEMO_FILE));
+        let demo = sessions.download(generation, info(url)).unwrap();
+        let vault =
+            VaultHandle::create_with_passphrase(root(&dir) + "/vault", b"correct horse".to_vec())
+                .unwrap();
+        // Kept without a scan; the session then ends.
+        let kept = sessions
+            .save_to_vault(generation, demo.id, vault.clone(), 1_700_000_000)
+            .unwrap();
+        assert_eq!(kept.scan, None);
+        sessions.reset().unwrap();
+
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        assert!(matches!(
+            vault.clone().scan(kept.id.clone(), intel.clone()),
+            Err(ScanFailure::NoDatabase)
+        ));
+        let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
+        install(&intel, trusted_root, repo);
+        assert!(matches!(
+            vault.clone().scan("00".into(), intel.clone()),
+            Err(ScanFailure::NotFound)
+        ));
+
+        // A scan that outlives a lock (and a new unlock) records nothing.
+        let Ok(ScanStart::Run { job }) = vault.clone().scan(kept.id.clone(), intel.clone()) else {
+            panic!("expected a worker job");
+        };
+        let worker = WorkerEngine::new(true, false);
+        job.accept_hello(worker.handle(job.hello_frame(), None).frame)
+            .unwrap();
+        job.accept_load(worker.handle(job.load_frame(), Some(job.rules())).frame)
+            .unwrap();
+        vault.lock();
+        vault
+            .unlock_with_passphrase(b"correct horse".to_vec())
+            .unwrap();
+        assert!(matches!(
+            job.finish(worker.handle(job.scan_frame(), Some(job.input())).frame),
+            Err(ScanFailure::Locked)
+        ));
+        assert_eq!(vault.entries().unwrap()[0].scan, None);
+
+        // The vault's copy is scanned in a worker, and the result is recorded.
+        let Ok(ScanStart::Run { job }) = vault.clone().scan(kept.id.clone(), intel.clone()) else {
+            panic!("expected a worker job");
+        };
+        let verdict = run_scan(&job);
+        assert_eq!(verdict.status, ScanStatus::KnownMalicious);
+        let scan = vault.entries().unwrap()[0].scan.clone().expect("recorded");
+        assert_eq!(
+            (scan.status, scan.snapshot.clone(), scan.demo),
+            (ScanStatus::KnownMalicious, verdict.snapshot.clone(), true)
+        );
+        assert!(scan.scanned_unix > 1_700_000_000);
+        assert!(scan.findings.iter().any(|f| f.starts_with("file hash:")));
+        // It is in the authenticated index, so it survives a new unlock.
+        vault.lock();
+        assert!(matches!(
+            vault.clone().scan(kept.id.clone(), intel.clone()),
+            Err(ScanFailure::Locked)
+        ));
+        vault
+            .unlock_with_passphrase(b"correct horse".to_vec())
+            .unwrap();
+        assert_eq!(vault.entries().unwrap()[0].scan, Some(scan));
+    }
+
+    #[test]
     fn scans_combine_the_core_hash_check_with_a_validated_worker() {
         use rift_worker_ffi::WorkerEngine;
         let dir = tempfile::tempdir().unwrap();

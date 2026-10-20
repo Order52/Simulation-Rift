@@ -13,13 +13,14 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use rift_core::locker::{
     self, ExposeSecret, LockerError, NewObject, Protection, SecretString, Vault,
 };
-use rift_core::scan::Status;
+use rift_core::scan::{self as verdicts, Status};
 use rift_core::text::escape_for_display;
 use rift_core::vault::{IndexEntry, KeptScan, KeptStatus, VaultError};
 
+use crate::scan::{self, MAX_SCAN_INPUT, ScanOwner};
 use crate::{
-    Content, MAX_PREVIEW_INPUT, Preview, PreviewFailure, PreviewOwner, ReadFailure, ScanStatus,
-    Sessions, Verdict, prepare_preview,
+    Content, Head, Intel, MAX_PREVIEW_INPUT, Preview, PreviewFailure, PreviewOwner, ReadFailure,
+    ScanFailure, ScanStart, ScanStatus, Sessions, Verdict, prepare_preview,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -40,12 +41,13 @@ pub struct VaultEntry {
     pub sha256: String,
     pub source_url: Option<String>,
     pub created_unix: u64,
-    /// The verdict when it was kept, if it had been scanned.
+    /// The latest scan result: from when it was kept, or from a later scan
+    /// in the vault. None if it was never scanned.
     pub scan: Option<KeptVerdict>,
 }
 
-/// The scan verdict a kept file had when it was kept: history, bound to the
-/// database and engine it names, never a current verdict (§12.3).
+/// A kept file's latest recorded scan result: history, bound to the database
+/// and engine it names and to when it ran, never a current verdict (§12.3).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct KeptVerdict {
     pub status: ScanStatus,
@@ -324,7 +326,88 @@ impl VaultHandle {
     }
 }
 
+#[uniffi::export]
 impl VaultHandle {
+    /// Scans kept object `id` with the installed database, as a quarantined
+    /// file is scanned (§12.1), and records the result in the index in place
+    /// of the earlier one. Refused without a database, and recorded only if
+    /// the vault was not locked meanwhile.
+    pub fn scan(self: Arc<Self>, id: String, intel: Arc<Intel>) -> Result<ScanStart, ScanFailure> {
+        let pack = intel.pack().ok_or(ScanFailure::NoDatabase)?;
+        let unlock = self.locks.load(Ordering::SeqCst);
+        let (entry, content) = {
+            let vault = self.lock_state().map_err(|_| ScanFailure::Poisoned)?;
+            let entry = vault
+                .entries()
+                .map_err(|_| ScanFailure::Locked)?
+                .iter()
+                .find(|e| e.id.to_hex() == id)
+                .ok_or(ScanFailure::NotFound)?
+                .clone();
+            let storage = |e: LockerError| ScanFailure::Storage {
+                detail: e.to_string(),
+            };
+            // Larger files are verified whole, but only their first bytes are kept.
+            let content = if entry.sealed.size > MAX_SCAN_INPUT {
+                let mut head = Head(Vec::new());
+                vault.read(&id, &mut head).map_err(storage)?;
+                Content::Head(head.0)
+            } else {
+                let mut whole = Vec::new();
+                vault.read(&id, &mut whole).map_err(storage)?;
+                Content::Whole(whole)
+            };
+            (entry, content)
+        };
+        let head = match &content {
+            Content::Whole(bytes) | Content::Head(bytes) => bytes.as_slice(),
+        };
+        let type_mismatch = verdicts::type_mismatch(&entry.display_name, head);
+        let job_id = self.next_job.fetch_add(3, Ordering::SeqCst);
+        let owner = ScanOwner::Vault {
+            vault: self,
+            unlock,
+            id,
+        };
+        // As for previews, generation 0: the job belongs to no session.
+        scan::start(
+            owner,
+            0,
+            job_id,
+            entry.sealed.sha256,
+            type_mismatch,
+            pack,
+            content,
+        )
+    }
+}
+
+impl VaultHandle {
+    /// Records `verdict` for object `id`, unless the vault was locked after
+    /// `unlock` was read.
+    pub(crate) fn record_scan(
+        &self,
+        unlock: u64,
+        id: &str,
+        verdict: Verdict,
+        now_unix: u64,
+    ) -> Result<Verdict, ScanFailure> {
+        let mut vault = self.lock_state().map_err(|_| ScanFailure::Poisoned)?;
+        if !self.still_unlocked_with(&vault, unlock) {
+            return Err(ScanFailure::Locked);
+        }
+        vault
+            .set_scan(id, kept_scan(&verdict, now_unix))
+            .map_err(|e| match e {
+                LockerError::Locked => ScanFailure::Locked,
+                LockerError::UnknownObject(_) => ScanFailure::NotFound,
+                e => ScanFailure::Storage {
+                    detail: e.to_string(),
+                },
+            })?;
+        Ok(verdict)
+    }
+
     fn wrap(vault: Vault) -> Arc<Self> {
         Arc::new(Self {
             vault: Mutex::new(vault),
@@ -336,6 +419,12 @@ impl VaultHandle {
     /// Unlocked, and not locked since `unlock` was read.
     pub(crate) fn still_unlocked(&self, unlock: u64) -> bool {
         self.locks.load(Ordering::SeqCst) == unlock && self.is_unlocked()
+    }
+
+    /// [`Self::still_unlocked`], for a caller that holds the vault's mutex.
+    /// `lock` counts before it takes the mutex, so a lock that has begun is seen.
+    fn still_unlocked_with(&self, vault: &Vault, unlock: u64) -> bool {
+        self.locks.load(Ordering::SeqCst) == unlock && vault.is_unlocked()
     }
 
     fn lock_state(&self) -> Result<MutexGuard<'_, Vault>, VaultFailure> {
