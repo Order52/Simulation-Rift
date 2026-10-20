@@ -1,0 +1,12 @@
+./files/profileInstalled
+./files/rift/intel/store/current
+./files/rift/intel/store/snapshots/52fe881380ccdfbbb70b66ddcb3b7d824aa7de8bb91f724f27e2f8a621eb4a80/file-hashes.bin
+./files/rift/intel/store/snapshots/52fe881380ccdfbbb70b66ddcb3b7d824aa7de8bb91f724f27e2f8a621eb4a80/metadata.json
+./files/rift/intel/store/snapshots/52fe881380ccdfbbb70b66ddcb3b7d824aa7de8bb91f724f27e2f8a621eb4a80/rules.yar
+./files/rift/intel/store/snapshots/52fe881380ccdfbbb70b66ddcb3b7d824aa7de8bb91f724f27e2f8a621eb4a80/url-hashes.bin
+./files/rift/intel/tuf/latest_known_time.json
+./files/rift/intel/tuf/root.json
+./files/rift/intel/tuf/snapshot.json
+./files/rift/intel/tuf/targets.json
+./files/rift/intel/tuf/timestamp.json
+./files/rift/session.marker

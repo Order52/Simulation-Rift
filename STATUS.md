@@ -13,7 +13,7 @@ The Android debug build works end to end on emulators, and its browser is now is
 | 0: Feasibility (14 proofs of concept) | **Mostly done.** All pass in at least one environment, including A8 (the browser split and the network lock). Open: the lookup benchmark on a phone, the Linux checks inside Flatpak, and L4 (the Linux network lock). |
 | 1: Foundations (Rust core, protocol, formats) | **Done.** Unit, property and fuzz tests, strict lints, dependency policy. |
 | 2: Android vertical slice | **Done on emulators**, now on architecture 2.1 (browser app and network lock, [report](docs/reports/browser-isolation.md)). Gate still open: a physical phone. |
-| 3: Scanner and signed intelligence | **Mostly done.** Scanning and offline signed updates work on the host and on Android emulators. Open: the import screen, online updates, the production key policy and the items in "What is left". |
+| 3: Scanner and signed intelligence | **Mostly done.** Scanning (two isolated workers at a time) and offline signed updates work on the host and on Android emulators; refused updates say why in one sentence. Open: the import screen (being built), online updates, the production key policy and the items in "What is left". |
 | 4: Vault | Format done and tested; key providers, lock/unlock and UI not started. |
 | 5: Linux app | Not started (the worker lockdown and the WebKitGTK sandbox check are proven in PoCs; the network-lock design is written, PoC L4 pending). |
 | 6: AI experiment | Not started; optional and gated by design. |
@@ -42,18 +42,18 @@ The Android debug build works end to end on emulators, and its browser is now is
 | Navigation policy | Blocks automatic external-app links, asks before lookalike addresses, marks unencrypted pages, explains every decision. | N1–N4 |
 | Download capture | Downloads are re-fetched by the Rust core (destination checks on every redirect, size limit, cookies only to their origin) into encrypted quarantine. Hostile names are display-only. | S8–S10 |
 | Previews | Images and PDFs render in an isolated worker (no files, no network, seccomp on the parser thread, deadlines, unbound after each job). Text is shown as escaped plain text. | P1, P2, S3–S7, S19 |
-| Scanning | Each download is checked by file hash and type in the core, then by YARA-X rules in a fresh isolated worker. The best status is "Not flagged", never "safe". | S16a, S21a, S21b |
-| Signed threat database | Offline TUF install. Tampered, rolled-back, expired or wrongly signed updates are refused and the old database stays. Debug builds embed a signed demo database. | S16, S17, S21, S22 |
+| Scanning | Each download is checked by file hash and type in the core, then by YARA-X rules in a fresh isolated worker, two at a time, so a hung worker does not hold the queue. A scan keeps the database snapshot it started with. The best status is "Not flagged", never "safe". | S16a, S21a, S21b |
+| Signed threat database | Offline TUF install. Tampered, rolled-back, expired or wrongly signed updates are refused with a one-sentence reason (the full error goes to the log) and the old database stays. Debug builds embed a signed demo database. | S16, S17, S21, S22 |
 | Reset and recovery | Reset stops the proxy, crypto-shreds quarantine, has Android wipe the browser app and verifies the result. A kill in the middle of a reset is recovered on the next start; the browser is also wiped at every launch. | S12, S13, S14, S27 |
 
 ## Where it has been tested
 
 | Environment | Result |
 |---|---|
-| Host: macOS arm64, and CI on Ubuntu and macOS | 143 Rust tests, `clippy -D warnings`, `fmt`, `cargo deny`, 7 fuzz targets (short runs) and the Linux worker lockdown pass. |
+| Host: macOS arm64, and CI on Ubuntu and macOS | 144 Rust tests, `clippy -D warnings`, `fmt`, `cargo deny`, 7 fuzz targets (short runs) and the Linux worker lockdown pass. |
 | Android API 36, arm64 (local emulator, WebView 133) | **Full suite on architecture 2.1: 31 instrumented tests plus S13/S14 pass** ([evidence](docs/reports/evidence/phase3-android-split-api36/)). |
-| Android API 33 and 34, x86_64 (CI emulators) | Passed on architecture 2.0 (CI run 39111591453); the 2.1 suite runs in CI from this change on. |
-| Android API 35, 16 KB pages, arm64 (local emulator) | Passed on architecture 2.0; not yet rerun on 2.1. |
+| Android API 35, 16 KB pages, arm64 (local emulator, WebView 124) | **Full suite on architecture 2.1: 31 instrumented tests plus S13/S14 pass** ([evidence](docs/reports/evidence/phase3-android-split-api35-16k/)). |
+| Android API 33 and 34, x86_64 (CI emulators) | Passed on architecture 2.0 (CI run 39111591453). The first 2.1 run failed (API 34: a reset's bind timed out and every later test failed with it; API 33: S10). Fixed or instrumented ([report](docs/reports/browser-isolation.md), findings 7–8); rerun pending. |
 | Android API 30 | Browsing is refused as designed (WebView 91 is below the minimum); the browser split and the lock were measured there in PoC A8. |
 | Physical Android phone | **Not tested.** |
 | Linux desktop app, Flatpak | **Not built.** |
@@ -63,13 +63,11 @@ The Android debug build works end to end on emulators, and its browser is now is
 In order of priority:
 
 1. **Finish Phase 3**
-   1. Short refusal messages in the UI (they currently show tough's full error, including internal paths).
-   2. A bounded pool of scan workers, so one hung worker does not delay the queue by 17 s.
-   3. Pin running scans to the database snapshot they started with.
-   4. An import screen for a user-chosen update, and a production root in release builds (they have none today).
-   5. Online updates over the core's own fetcher, without adding a second TLS stack (size budget).
-   6. Show clock problems in the UI, the production key policy (offline keys, thresholds, rotation), and licensed real feeds.
-2. **Close Phases 0 and 2:** the 2.1 suite on API 33/34 (CI), API 35 with 16 KB pages, and physical phones; the lookup benchmark on a phone; the Linux checks inside Flatpak.
+   1. ~~Short refusal messages~~, ~~a bounded pool of scan workers~~ and ~~scans pinned to their starting snapshot~~: done.
+   2. An import screen for a user-chosen update, and a production root in release builds (they have none today). Being built.
+   3. Online updates over the core's own fetcher, without adding a second TLS stack (size budget).
+   4. Show clock problems in the UI, the production key policy (offline keys, thresholds, rotation), and licensed real feeds.
+2. **Close Phases 0 and 2:** the 2.1 suite on API 33/34 (CI rerun) and physical phones; the lookup benchmark on a phone; the Linux checks inside Flatpak.
 3. **Phase 4, vault:** Keystore and passphrase key providers, lock/unlock, save and export with warnings, a test that no plaintext is left on disk.
 4. **Phase 5, Linux:** PoC L4 (the browser in a Flatpak sub-sandbox with no network, reaching only Rift's proxy over a socket), then the GTK4 + WebKitGTK Flatpak app on the same Rust core.
 5. **Phase 6 (optional):** the AI experiment, only if it adds measured value.

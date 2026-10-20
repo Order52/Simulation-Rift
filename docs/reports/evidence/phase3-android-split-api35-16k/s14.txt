@@ -1,0 +1,8 @@
+main=25513 browser=25584 renderer=25620 generation=11
+10-20 06:10:36.651 25513 25513 I Rift    : network lock active
+10-20 06:10:37.438 25513 25537 I Rift    : generation 10 disposed
+10-20 06:10:37.465 25513 25537 I Rift    : session 11 active; recovered interrupted session 10
+10-20 06:10:42.837 25513 25527 W Rift    : renderer gone (crashed=true) in generation 11; ending the session
+10-20 06:10:43.191 25513 25537 I Rift    : generation 11 disposed
+10-20 06:10:43.202 25513 25537 I Rift    : session 12 active
+main_after=25513 browser_after=

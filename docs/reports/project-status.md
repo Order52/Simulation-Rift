@@ -117,6 +117,10 @@ Phase 2 findings, added to the list above: 15–26.
 34. (2.1) Publishing a UI state update per packet the lock drops overloaded the emulator until system services stopped answering; counts are now published once a second at most.
 35. (2.1) After the controller is killed, Android recreates its activity with the original `VIEW` intent; the home screen reopened the old link in the new session. Links are now taken only from fresh intents.
 36. (2.1) androidx.core adds a signature permission of the app's own (`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`) to every app that uses it.
+37. (2.1) A "System UI isn't responding" dialog left over from boot covered every window on the API 35 emulator; the six screen-reading tests and S13 failed. Test runs now close system dialogs and record every ANR and crash in `anr.txt`.
+38. (2.1) On CI's API 34 emulator the first bind to the browser after Android cleared its data did not connect within 10 s, so the reset failed and so did every test after it. The bind is retried up to three times, and tests after a failed reset retry cleanup as a user would.
+39. (Phase 3) tough reports a target's hash or length mismatch as the cause of a transport error. Rift's refusal reason therefore comes from the innermost tough error in the chain.
+40. (Phase 3) `run-tests.sh`'s worker summary still matched process names from before workers were named `worker_N`, so `workers.txt` stayed empty. It is fixed, and API 35's summary was regenerated from its process samples.
 
 ### 2.7 Architecture 2.1 code (browser app and network lock)
 
@@ -160,7 +164,7 @@ Phase 2 findings, added to the list above: 15–26.
 | Android device matrix | Physical phones, OEM WebView builds, a 16 KB page-size device. All emulator levels (30, 33–36, both ABIs, 16 KB pages) have run. |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
 | Phase 2 gate | The same suite on a physical phone; the instrumented suite against a release-like build. |
-| Phase 3 on Android | Built and passing on API 33/34 and API 35 (16 KB pages). Open: the suite on API 36 and a phone; an import screen for user-chosen updates with a production root (release builds have none); concurrent scan workers; short refusal messages. |
+| Phase 3 on Android | Built and passing on API 36 and API 35 (16 KB pages) on architecture 2.1, and on API 33/34 on 2.0. Open: the CI rerun on 2.1, a phone, and an import screen for user-chosen updates with a production root (release builds have none; being built). Done since: concurrent scan workers (two), short refusal messages, and a test that running scans keep their snapshot. |
 | Online updates | An HTTP transport for tough over the core's own fetcher (INV-13). |
 | Phases 4–7 | Everything in §5. |
 
@@ -196,7 +200,7 @@ Phase 2 findings, added to the list above: 15–26.
 | The only threat database is the demo one | Real feeds need licensing review (§13.3); no real malware is kept in the repository | Every verdict and the database card carry the demo label. Real coverage needs licensed feeds and a production root in release builds. |
 | Update expiry trusts the device clock | TUF checks expiry against the system time | A wrong clock shows as "expired", or as current when it is not. Surfacing clock problems in the UI (§13.2) is not built. |
 | Demo signing keys are one key per role on one machine | `rift-pack` is a development tool | The §13.2 policy (offline root and targets keys, thresholds, rotation) is needed before any real release. |
-| One scan worker at a time | Simplest safe first version | A hung worker delays the files queued behind it by up to 17 s; a bounded pool is the planned fix. |
+| Two scan workers at a time | Each holds its file (≤ 32 MiB) and the rules in memory | A hung worker costs only its own file (S21b: the next file finished at 1.5 s). Two hung workers at once still hold the queue for up to 17 s. |
 | WebKitGTK network process unsandboxed in native packages | Upstream design | Ship Flatpak first; native packages only with a stated reduced boundary. |
 | Quarantine does not survive a process kill | Keys are ephemeral by design (crypto-shredding) | Intended. Users save to the vault to keep files. |
 | Upstream dependencies carry advisories (Wasmtime via YARA-X) | Rift cannot patch them | Scoped `cargo deny` exceptions with an exit condition: remove when YARA-X depends on Wasmtime ≥ 48.0.6. |
@@ -211,10 +215,10 @@ Phase 2 findings, added to the list above: 15–26.
 3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.
 4. ~~Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.~~ Done.
 5. ~~Previews (images and PDF in the isolated worker, text as escaped plain text); reset and recovery.~~ Done (P1, P2, S3–S7, S12, S13, S19).
-6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done on 2.0; on 2.1 (browser app and network lock) API 36 done, the others and a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
+6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done on 2.0; on 2.1 (browser app and network lock) API 36 and API 35 (16 KB pages) done; API 33/34 (CI rerun) and a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
 
 **Phase 3: Scanner and signed intel**
-7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store; scan jobs on Android after each download.~~ Done (host: S11, S17, S22; Android API 33–35: S21, hung worker). Open: pinning running scans to their snapshot, and concurrent scan workers.
+7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store; scan jobs on Android after each download.~~ Done (host: S11, S17, S22; Android API 33–36: S21, hung worker). Running scans keep their starting snapshot (rift-ffi test), and two scan workers run at a time (S21b).
 8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done (host and Android API 33–35: S16, S21). Open: the Android import screen with a production root, online updates, the production key policy. No real malware samples are in the repository.
 
 **Phase 4: Vault**

@@ -18,7 +18,7 @@
 
 ## Results
 
-All on the API 36 arm64 emulator (Android 16, WebView 133.0.6943.137), full suite in one run: 31 instrumented tests and the host-driven S13 and S14 passed ([evidence](evidence/phase3-android-split-api36/)). Quoted values are from that run.
+All on the API 36 arm64 emulator (Android 16, WebView 133.0.6943.137), full suite in one run: 31 instrumented tests and the host-driven S13 and S14 passed ([evidence](evidence/phase3-android-split-api36/)). Quoted values are from that run. The same suite also passed in one run on the **API 35 arm64 emulator with 16 KB pages** (Android 15, WebView 124.0.6367.219; [evidence](evidence/phase3-android-split-api35-16k/)): S27 72 → 0 files in 0.5 s, S12 reset 0.5 s, S26 candidates only the lock's two addresses, S28 and S28b as on API 36.
 
 | ID | Test | Result |
 |---|---|---|
@@ -43,10 +43,12 @@ All on the API 36 arm64 emulator (Android 16, WebView 133.0.6943.137), full suit
 4. **What the lock actually drops.** In S26 the lock dropped TCP to the emulator host (10.0.2.2:8766) and to a public address (1.1.1.1:443), UDP to the STUN fixture (10.0.2.2:3478), DNS to the lock's own resolver address (UDP 10.111.0.2:53), DNS-over-TLS probes (TCP 10.111.0.2:853), and IPv6 multicast (MLD, router solicitation). None of it reached the host.
 5. **androidx.core adds a permission of its own** (`<package>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, signature-level, for unexported receivers). S2 accepts exactly that one besides the declared three.
 6. **Tests that open fixture pages must allow `localhost` first.** The proxy refuses local names in a fresh session, as INV-13 requires, so several v2.0 tests had to say so explicitly. The refusal is now part of S9: the proxy refuses the page, and the core separately refuses the transfer.
+7. **A system dialog from boot can hide every window.** On the API 35 emulator, SystemUI "failed to complete startup" before the tests began. Its "isn't responding" dialog covered the browser and the home screen, so the six tests that read the screen and S13 failed while the other 25 passed. Test runs now close system dialogs (before the run, before each test and before S13) and keep every ANR and crash of the run in `anr.txt`.
+8. **The first bind after Android's wipe can stall.** In the first CI run on 2.1 (API 34, x86_64), the reset's check of a fresh browser instance did not connect within 10 s. The reset failed, as designed, and every later test failed with it. The bind is now retried up to three times, each failure logged. The tests also retry cleanup after a failed reset, as a user would with "Retry cleanup". In the same run on API 33 the browser did not act on a new link for two minutes in S10 (cause not found; the browser now logs new links and download hand-offs, without their addresses). The CI rerun with these changes is pending.
 
 ## Verified
 
-- On the API 36 arm64 emulator: everything marked Pass above.
+- On the API 36 arm64 emulator and the API 35 arm64 emulator with 16 KB pages: everything marked Pass above.
 - The browser app cannot read the controller's files or bind its private services (S23), and other apps cannot use either app or the proxy (S24).
 - With the lock on, pages reached only public destinations and allowed host names (S25), and neither WebRTC nor direct sockets from the browser's process reached a host or public address (S26).
 - Android's own wipe left the browser app with no file at all after every reset and recovery in these runs (S12, S13, S27).
@@ -55,6 +57,7 @@ All on the API 36 arm64 emulator (Android 16, WebView 133.0.6943.137), full suit
 ## Unverified
 
 - **Physical phones.** Emulators only, as for Phases 2 and 3.
+- **API 33 and 34 (x86_64, CI) on 2.1.** The first run failed as described in findings 7 and 8; the rerun is pending.
 - **API 30 with the new apps.** The browser refuses to browse on API 30's WebView 91 (below the minimum), so the network path cannot run there; the lock and the wipe were measured there in PoC A8 only.
 - **Every WebView version answers the proxy challenge the same way.** Measured on WebView 91 (A8) and 133.
 - **Android's always-on VPN setting and per-profile (work profile) users.** Not tested: with another always-on VPN the lock should be unavailable and the UI should say so.

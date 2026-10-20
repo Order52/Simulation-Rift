@@ -70,8 +70,8 @@ if [ "${RIFT_HOST_ONLY:-0}" != 1 ]; then
   # parent was the app zygote.
   tr -d '\r' < "$out/processes.log" | awk '
     $5 ~ /_zygote$/ { zygote[$3] = 1 }
-    $5 ~ /:(preview|probe)_[0-9]+$/ {
-      n = $5; sub(/.*:/, "", n)
+    $5 ~ /:((preview|probe)_[0-9]+|[A-Za-z.]+:worker_[0-9]+)$/ {
+      n = $5; sub(/^org\.simulationrift\.app:(org\.simulationrift\.app\.)?/, "", n)
       if (!(n in first)) { first[n] = $1; user[n] = $2; parent[n] = $4; order[++count] = n }
       last[n] = $1
     }
