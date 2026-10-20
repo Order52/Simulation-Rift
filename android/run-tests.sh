@@ -43,6 +43,16 @@ cat "$out/device.txt"
 "$adb" shell pm clear $browser >/dev/null
 for p in $pkg $outsider; do "$adb" shell appops set $p ACTIVATE_VPN allow; done
 
+# A slow emulator can show "System UI isn't responding" at boot, which covers
+# every window the tests look at. Close such dialogs (SecurityTest does too,
+# before each test) and keep a record of every ANR and crash in the run.
+close_dialogs() {
+  "$adb" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+}
+"$adb" logcat -b events -d | tr -d '\r' | grep -E " am_(anr|crash) " > "$out/anr.txt" || true
+"$adb" logcat -b events -c
+close_dialogs
+
 # RIFT_HOST_ONLY=1 skips the instrumented tests (to rerun S13/S14 alone).
 if [ "${RIFT_HOST_ONLY:-0}" != 1 ]; then
   echo "== instrumented tests"
@@ -77,7 +87,8 @@ if [ "${RIFT_HOST_ONLY:-0}" != 1 ]; then
     | awk '{ code=$NF; if (code == "1") next; print $1, (code == "0" ? "PASS" : "FAIL") }' > "$out/instrumented-results.txt"
   cat "$out/instrumented-results.txt"
   grep -E "^OK|^Tests run|FAILURES" "$out/instrumentation.txt" || true
-  "$adb" logcat -d -s Rift:I RiftBrowser:I | tr -d '\r' > "$out/logcat-instrumented.txt"
+  "$adb" logcat -d -s Rift:I RiftBrowser:I ActivityManager:I | tr -d '\r' \
+    | grep -E " (Rift|RiftBrowser) *:|simulationrift" > "$out/logcat-instrumented.txt" || true
 fi
 
 # ---- Host-driven tests (root) -------------------------------------------------
@@ -159,6 +170,7 @@ echo "== S13: kill during reset"
 open_link "http://localhost:$port/seed.html"
 wait_log "session [0-9]+ active" 15 || true
 sleep 5
+close_dialogs
 generation="$("$adb" logcat -d -s Rift:I | tr -d '\r' | sed -n 's/.*session \([0-9]*\) active.*/\1/p' | tail -1)"
 # The dump fails while the screen is not idle (a page still loading): retry, bounded.
 tries=0
@@ -205,6 +217,7 @@ else
 fi
 
 echo "== inventory"
+"$adb" logcat -b events -d | tr -d '\r' | grep -E " am_(anr|crash) " >> "$out/anr.txt" || true
 "$adb" shell "cd /data/data/$pkg && find . -type f | sort" | tr -d '\r' > "$out/inventory.txt"
 "$adb" shell "cd /data/data/$browser && find . -type f | sort" | tr -d '\r' > "$out/inventory-browser.txt"
 "$adb" unroot >/dev/null 2>&1 || true

@@ -62,8 +62,12 @@ class SecurityTest {
 
     @Before
     fun startCore() {
+        // A system "isn't responding" dialog would cover the windows under
+        // test; run-tests.sh records every ANR in anr.txt.
+        device.executeShellCommand("am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS")
         Core.ensureStarted(context)
         awaitLock()
+        recoverFromEarlierFailure()
     }
 
     // ---- S1 / S2: what a page can reach ------------------------------------------
@@ -831,6 +835,22 @@ class SecurityTest {
 
     private fun Bundle.text(key: String): String = getString(key) ?: throw AssertionError("no $key in $this")
 
+    /**
+     * A failed reset leaves the core Failed until the user retries (INV-8).
+     * The test that caused it has already failed; this retries as the user
+     * would, so the next test starts from a session and reports on its own.
+     */
+    private fun recoverFromEarlierFailure() {
+        val failed = Core.state.value as? Core.State.Failed ?: return
+        report("recovery", "retrying after: ${failed.message}")
+        Core.retry()
+        val deadline = SystemClock.elapsedRealtime() + RECOVERY_TIMEOUT_MS
+        while (Core.state.value !is Core.State.Active) {
+            if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("retry did not recover: ${Core.state.value}")
+            SystemClock.sleep(50)
+        }
+    }
+
     private fun awaitLock() {
         NetworkLock.start(context, userAction = true)
         val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
@@ -887,6 +907,9 @@ class SecurityTest {
         const val UI_TIMEOUT_MS = 10_000L
         const val PAGE_TIMEOUT_MS = 20_000L
         const val CORE_TIMEOUT_MS = 15_000L
+
+        /** A retried cleanup: the system wipe, with its bounded bind retries. */
+        const val RECOVERY_TIMEOUT_MS = 60_000L
         const val ENGINE_START_TIMEOUT_MS = 30_000L
         const val DOWNLOAD_TIMEOUT_MS = 120_000L
         const val PREVIEW_TIMEOUT_MS = 30_000L

@@ -154,6 +154,8 @@ class BrowserActivity : ComponentActivity() {
             return
         }
         val url = intent.getStringExtra(Rift.EXTRA_URL) ?: return
+        // No address in the log: it is browsing data.
+        Log.i(TAG, "new link in generation $generation (engine ${if (webView != null) "running" else "starting"})")
         if (webView != null) openTyped(url) else setIntent(intent)
     }
 
@@ -259,6 +261,7 @@ class BrowserActivity : ComponentActivity() {
         val cookie = CookieManager.getInstance().getCookie(url)
         try {
             core?.submitDownload(generation, url, cookie, userAgent, webView?.url, contentDisposition)
+            Log.i(TAG, "download handed to the core in generation $generation")
             status = "Download sent to Rift's quarantine; see the home screen."
         } catch (e: RemoteException) {
             exitProcess("core unreachable")

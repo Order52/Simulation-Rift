@@ -113,7 +113,7 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
 
     /** §15 step 4: a new process, and not one file anywhere in the browser app. */
     private fun checkFresh(oldPid: Int) {
-        val fresh = Bound.connect(context)
+        val fresh = connectFresh()
         try {
             val pid = fresh.session.pid()
             if (pid == oldPid) throw DisposalException.Failed("the browser process survived the wipe (pid $pid)")
@@ -127,6 +127,24 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
         } finally {
             fresh.close()
         }
+    }
+
+    /**
+     * The first bind after the clear can stall on a slow device (CI, API 34:
+     * no connection within 10 s), so it is retried a bounded number of times.
+     * Each failure is logged; the last one fails the reset.
+     */
+    private fun connectFresh(): Bound {
+        var failure: DisposalException.Failed? = null
+        for (attempt in 1..FRESH_ATTEMPTS) {
+            try {
+                return Bound.connect(context)
+            } catch (e: DisposalException.Failed) {
+                Log.w(TAG, "fresh browser instance, attempt $attempt of $FRESH_ATTEMPTS: ${e.message}")
+                failure = e
+            }
+        }
+        throw checkNotNull(failure)
     }
 
     private fun <T> await(future: CompletableFuture<T>, failure: String): T = try {
@@ -198,6 +216,7 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
     companion object {
         private const val WIPE_TIMEOUT_MS = 10_000L
         private const val BIND_TIMEOUT_MS = 10_000L
+        private const val FRESH_ATTEMPTS = 3
 
         /**
          * Files that may remain after a reset. Each entry is Rift's own state or
