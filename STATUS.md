@@ -44,7 +44,7 @@ The Android debug build works end to end on emulators, and its browser is now is
 | Previews | Images and PDFs render in an isolated worker (no files, no network, seccomp on the parser thread, deadlines, unbound after each job). Text is shown as escaped plain text. | P1, P2, S3–S7, S19 |
 | Scanning | Each download is checked by file hash and type in the core, then by YARA-X rules in a fresh isolated worker, two at a time, so a hung worker does not hold the queue. A scan keeps the database snapshot it started with. The best status is "Not flagged", never "safe". | S16a, S21a, S21b |
 | Signed threat database | TUF updates from a folder you choose (system picker) or online through the core's checked fetcher. Tampered, rolled-back, expired or wrongly signed updates are refused with a one-sentence reason (the full error goes to the log) and the old database stays. Debug builds embed a signed demo database. | S16, S17, S21, S22 |
-| Vault | "Keep in the vault" copies a quarantined file, sealed with age to an identity wrapped by an Android Keystore key (per-use authentication through the system prompt, device must be unlocked) or a passphrase. Nothing readable is written to disk. Locks on request, when Rift goes to the background, and after 5 minutes. Export only after a warning, to a place you choose. A kept file can be scanned again with the current database, in a fresh isolated worker. | S18, v1–v6 |
+| Vault | "Keep in the vault" copies a quarantined file, sealed with age to an identity wrapped by an Android Keystore key (per-use authentication through the system prompt, device must be unlocked) or a passphrase. Nothing readable is written to disk. Locks on request, when Rift goes to the background, and after 5 minutes. Export only after a warning, to a place you choose. A kept file can be scanned again with the current database, in a fresh isolated worker. The background lock can be turned off and the idle limit set (1–30 minutes, never off). | S18, v1–v7 |
 | Reset and recovery | Reset stops the proxy, crypto-shreds quarantine, has Android wipe the browser app and verifies the result. A kill in the middle of a reset is recovered on the next start; the browser is also wiped at every launch. | S12, S13, S14, S27 |
 
 ## Where it has been tested
@@ -66,7 +66,7 @@ In order of priority:
 Android first; Linux is the last step.
 
 1. **Phase 3 leftovers:** ~~import screen~~, ~~online updates~~ and ~~clock warning~~ are done; open are the production key policy (offline keys, thresholds, rotation) and licensed real feeds.
-2. **Phase 4 leftovers:** ~~key providers, lock/unlock, keep and warned export, plaintext inventory~~ are done; ~~previews of kept files~~, ~~a recovery passphrase~~ ~~the verdict a file had when kept~~ and ~~rescanning kept files~~ are done; open are settings for the lock policy.
+2. ~~**Phase 4 leftovers:** key providers, lock/unlock, keep and warned export, plaintext inventory, previews of kept files, a recovery passphrase, the verdict a file had when kept, rescanning kept files, lock settings~~: all done on Android (v1–v7). A physical phone is still untested.
 3. **Phase 7, hardening (Android):** long fuzz campaigns, fault injection, privacy network captures, a dependency review, release gates, and an external security review before any release claim.
 4. **Phones:** physical devices (every emulator level has passed on 2.1), which also settle the keystore's hardware backing and the lookup benchmark.
 5. **Phase 6 (optional):** the AI experiment, only if it adds measured value.

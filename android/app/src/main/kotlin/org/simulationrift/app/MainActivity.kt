@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +26,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
@@ -431,14 +435,18 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     is Locker.State.Unlocked -> {
+                        val policy by Locker.policy.collectAsState()
                         Text(
-                            "Unlocked" + (s.keyLevel?.let { " · key in $it" } ?: "") + ". Locks when Rift goes to the background, or after 5 minutes without use.",
+                            "Unlocked" + (s.keyLevel?.let { " · key in $it" } ?: "") + ". Locks " +
+                                (if (policy.onBackground) "when Rift goes to the background, or " else "") +
+                                "after ${policy.idleMinutes} min without use.",
                             modifier = Modifier.testTag("vault-unlocked"),
                         )
                         if (s.protection == VaultProtection.PLATFORM) RecoveryArea(s, { PassphraseField(it) }, { takePassphrase() })
                         if (s.entries.isEmpty()) Text("Nothing kept yet.")
                         s.entries.forEach { VaultItem(it) }
                         OutlinedButton(onClick = { Locker.lock() }, modifier = Modifier.testTag("vault-lock")) { Text("Lock now") }
+                        LockPolicyArea()
                     }
                 }
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("vault-message")) }
@@ -552,6 +560,46 @@ class MainActivity : ComponentActivity() {
                 }
             }
             PreviewArea(entry.id, entry.displayName, previews[entry.id]) { Locker.preview(entry.id) }
+        }
+    }
+
+    /** §14.2: when the vault locks besides on request. Shown only while it is unlocked. */
+    @Composable
+    private fun LockPolicyArea() {
+        val policy by Locker.policy.collectAsState()
+        var open by remember { mutableStateOf(false) }
+        if (!open) {
+            TextButton(onClick = { open = true }, modifier = Modifier.testTag("vault-policy")) { Text("Lock settings…") }
+            return
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Switch(
+                    checked = policy.onBackground,
+                    onCheckedChange = { Locker.setPolicy(policy.copy(onBackground = it)) },
+                    modifier = Modifier.testTag("vault-policy-background"),
+                )
+                Text("Lock when Rift goes to the background", style = MaterialTheme.typography.bodySmall)
+            }
+            if (!policy.onBackground) {
+                Text(
+                    "While Rift is in the background the vault stays unlocked until the time below, and anyone " +
+                        "who opens Rift on this unlocked device in that time can read it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Text("Lock after this many minutes without a vault action:", style = MaterialTheme.typography.bodySmall)
+            // Compact, so that four choices fit a small screen.
+            val padding = PaddingValues(horizontal = 12.dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Locker.LockPolicy.IDLE_CHOICES.forEach { minutes ->
+                    val choose = { Locker.setPolicy(policy.copy(idleMinutes = minutes)) }
+                    val tag = Modifier.testTag("vault-policy-idle-$minutes")
+                    if (minutes == policy.idleMinutes) Button(onClick = choose, modifier = tag, contentPadding = padding) { Text("$minutes") }
+                    else OutlinedButton(onClick = choose, modifier = tag, contentPadding = padding) { Text("$minutes") }
+                }
+            }
         }
     }
 

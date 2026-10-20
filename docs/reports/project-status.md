@@ -240,7 +240,7 @@ Phase 2 findings, added to the list above: 15–26.
 8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done (host and Android API 33–35: S16, S21). Open: the Android import screen with a production root, online updates, the production key policy. No real malware samples are in the repository.
 
 **Phase 4: Vault**
-9. ~~Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.~~ Done on the API 35 emulator (v1–v6), with previews of kept files, a recovery passphrase, the verdict each file had when kept, and scanning kept files again. Open: a phone, lock-policy settings.
+9. ~~Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.~~ Done on the API 35 emulator (v1–v7), with previews of kept files, a recovery passphrase, the verdict each file had when kept, scanning kept files again, and lock settings. Open: a phone.
 
 **Phase 6 and 7 (Android)**
 10. Optional AI experiment, shipped only if it adds measured value.

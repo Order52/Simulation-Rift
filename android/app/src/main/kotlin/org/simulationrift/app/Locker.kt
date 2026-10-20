@@ -29,8 +29,9 @@ import org.simulationrift.core.vaultProtection
  * session, in `files/rift/vault`, sealed to an identity that is wrapped by
  * the Keystore key (§8.7) or, without a secure lock screen or by choice, by
  * a passphrase. The identity is in memory only while the vault is unlocked;
- * the vault locks on request, when Rift goes to the background, and after
- * [inactivityMs] without a vault action.
+ * the vault locks on request, when Rift goes to the background (unless the
+ * user turned that off), and after [inactivityMs] without a vault action
+ * ([LockPolicy]).
  *
  * The browser app has no way to reach any of this: CoreService has no vault
  * operation, and this directory is not visible to its UID (§8.3).
@@ -59,6 +60,25 @@ object Locker {
         data class Failed(val message: String) : State
     }
 
+    /**
+     * When the vault locks besides on request (§14.2, "configurable"). The
+     * inactivity lock cannot be turned off, only set to one of [IDLE_CHOICES].
+     * Not secret: kept in `files/rift/vault-lock`.
+     */
+    data class LockPolicy(val onBackground: Boolean = true, val idleMinutes: Int = DEFAULT_IDLE_MINUTES) {
+        init {
+            require(idleMinutes in IDLE_CHOICES) { "inactivity limit $idleMinutes min is not offered" }
+        }
+
+        companion object {
+            const val DEFAULT_IDLE_MINUTES = 5
+            val IDLE_CHOICES = listOf(1, 5, 15, 30)
+        }
+    }
+
+    private val _policy = MutableStateFlow(LockPolicy())
+    val policy: StateFlow<LockPolicy> = _policy
+
     private val _state = MutableStateFlow<State>(State.Opening)
     val state: StateFlow<State> = _state
 
@@ -80,8 +100,8 @@ object Locker {
     // Counts locks; a preview finishing after a lock is not shown.
     private val locks = java.util.concurrent.atomic.AtomicLong()
 
-    /** How long the vault stays unlocked without a vault action (§14.2: 5 minutes). */
-    @Volatile internal var inactivityMs: Long = 5 * 60 * 1000L
+    /** How long the vault stays unlocked without a vault action: [LockPolicy.idleMinutes]; tests shorten it. */
+    @Volatile internal var inactivityMs: Long = LockPolicy.DEFAULT_IDLE_MINUTES * 60_000L
 
     /**
      * Set while a system screen Rift opened for the vault is in front (the
@@ -103,8 +123,55 @@ object Locker {
     fun open(context: Context) {
         app = context.applicationContext
         dir = File(app.filesDir, "rift/vault")
-        vaulting.execute(::refresh)
+        vaulting.execute {
+            applyPolicy(readPolicy())
+            refresh()
+        }
     }
+
+    /** Changes the lock policy; only while the vault is unlocked, and it applies at once. */
+    fun setPolicy(policy: LockPolicy) = vaulting.execute {
+        if (handle?.isUnlocked() != true) return@execute
+        act("The lock settings were not saved") {
+            val file = policyFile()
+            val temp = File(file.path + ".tmp")
+            temp.writeText("background=${policy.onBackground}\nidle-minutes=${policy.idleMinutes}\n")
+            if (!temp.renameTo(file)) throw java.io.IOException("could not replace ${file.name}")
+            applyPolicy(policy)
+            Log.i(TAG, "vault lock policy: $policy")
+            "The vault locks after ${policy.idleMinutes} min without a vault action" +
+                (if (policy.onBackground) " and when Rift goes to the background." else ". It stays unlocked when Rift goes to the background.")
+        }
+    }
+
+    private fun applyPolicy(policy: LockPolicy) {
+        _policy.value = policy
+        inactivityMs = policy.idleMinutes * 60_000L
+    }
+
+    /** The stored policy; the default if there is none or it does not parse (logged). */
+    private fun readPolicy(): LockPolicy {
+        val file = policyFile()
+        if (!file.exists()) return LockPolicy()
+        return try {
+            val values = file.readLines().filter { it.isNotBlank() }.associate { line ->
+                val (key, value) = line.split("=", limit = 2).takeIf { it.size == 2 } ?: throw IllegalArgumentException("line \"$line\"")
+                key to value
+            }
+            LockPolicy(
+                onBackground = values["background"]?.toBooleanStrict() ?: throw IllegalArgumentException("no background"),
+                idleMinutes = values["idle-minutes"]?.toInt() ?: throw IllegalArgumentException("no idle-minutes"),
+            )
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "vault lock policy unreadable, using the default: ${e.message}")
+            LockPolicy()
+        } catch (e: java.io.IOException) {
+            Log.w(TAG, "vault lock policy unreadable, using the default", e)
+            LockPolicy()
+        }
+    }
+
+    private fun policyFile() = File(app.filesDir, "rift/vault-lock")
 
     fun createWithPassphrase(passphrase: ByteArray) = vaulting.execute {
         act("The vault was not created") {
@@ -249,7 +316,7 @@ object Locker {
 
     /** Rift's window went to the background (not to a screen Rift opened for the vault). */
     fun backgrounded() {
-        if (!holding) lock("Rift went to the background")
+        if (!holding && _policy.value.onBackground) lock("Rift went to the background")
     }
 
     /** Copies quarantined file `fileId` of `generation` into the vault; the session's copy stays until reset. */

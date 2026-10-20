@@ -31,6 +31,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.FixMethodOrder
@@ -958,6 +959,45 @@ class SecurityTest {
         assertEquals(scan, awaitVault<Locker.State.Unlocked>().entries.single().scan)
         report("v6", "scanned again: ${scan.label} ${scan.findings} database ${scan.snapshot} at ${scan.scannedUnix}")
         destroyVault()
+    }
+
+    @Test
+    fun v7_theLockPolicyIsTheUsersAndStaysBounded() {
+        destroyVault()
+        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+        awaitVault<Locker.State.Unlocked>()
+        val stored = File(context.filesDir, "rift/vault-lock")
+        try {
+            val message = vaultMessageOf { Locker.setPolicy(Locker.LockPolicy(onBackground = false, idleMinutes = 1)) }
+            assertTrue(message, message.contains("stays unlocked when Rift goes to the background"))
+            assertEquals(Locker.LockPolicy(onBackground = false, idleMinutes = 1), Locker.policy.value)
+            assertEquals(60_000L, Locker.inactivityMs)
+            assertEquals("background=false\nidle-minutes=1\n", stored.readText())
+            // Home no longer locks it; the inactivity limit still applies.
+            val home = openHome()
+            device.pressHome()
+            SystemClock.sleep(2_000)
+            assertTrue("${Locker.state.value}", Locker.state.value is Locker.State.Unlocked)
+            home.finish()
+            // Only the offered limits exist: there is no "never".
+            assertThrows(IllegalArgumentException::class.java) { Locker.LockPolicy(idleMinutes = 0) }
+            assertThrows(IllegalArgumentException::class.java) { Locker.LockPolicy(idleMinutes = 24 * 60) }
+            // Changing it needs the vault unlocked.
+            Locker.lock()
+            awaitVault<Locker.State.Locked>()
+            Locker.setPolicy(Locker.LockPolicy())
+            SystemClock.sleep(500)
+            assertEquals(Locker.LockPolicy(onBackground = false, idleMinutes = 1), Locker.policy.value)
+            report("v7", "background lock off: still unlocked after Home; idle 1 min; stored ${stored.readText().replace("\n", " ")}")
+        } finally {
+            if (Locker.state.value !is Locker.State.Unlocked) {
+                Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
+                awaitVault<Locker.State.Unlocked>()
+            }
+            vaultMessageOf { Locker.setPolicy(Locker.LockPolicy()) }
+            assertEquals(Locker.LockPolicy(), Locker.policy.value)
+            destroyVault()
+        }
     }
 
     private fun destroyVault() {
