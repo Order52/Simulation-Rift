@@ -111,6 +111,9 @@ internal class PageWatcher(private val lockEpoch: Long) {
                     "Part of a page tried to load from ${denial.destination}, which the threat database lists as malicious. Rift's proxy refused it.")
                 "local-address" -> record(Level.WARNING, "local-network", denial.destination,
                     "A page tried to reach ${denial.destination}, on your local network or this device. Rift's proxy refused it.")
+                // An address padded past what can be checked is how a listed path would be hidden.
+                "not-checked" -> record(Level.WARNING, "unchecked-request", denial.destination,
+                    "Part of a page asked ${denial.destination} for an address too long to check against the threat database. Rift's proxy refused it.")
                 // Names that do not resolve and unreachable hosts are ordinary web failures.
                 else -> {}
             }

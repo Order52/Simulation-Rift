@@ -1540,6 +1540,17 @@ mod tests {
             get_through(&endpoint, "http://rift-demo.invalid/fine").unwrap(),
             "HTTP/1.1 403 Forbidden"
         );
+        // The listed path behind a query too long to check: refused as not
+        // checked, not screened by its host alone.
+        let padded = format!(
+            "{}?{}",
+            rift_pack::DEMO_URL,
+            "a".repeat(rift_core::urlcanon::MAX_URL_BYTES)
+        );
+        assert_eq!(
+            get_through(&endpoint, &padded).unwrap(),
+            "HTTP/1.1 403 Forbidden"
+        );
         let stats = sessions.egress_stats(generation).unwrap();
         let codes: Vec<(u64, &str)> = stats
             .recent
@@ -1551,7 +1562,8 @@ mod tests {
             vec![
                 (1, "known-malicious"),
                 (2, "known-malicious"),
-                (3, "does-not-resolve")
+                (3, "does-not-resolve"),
+                (4, "not-checked")
             ]
         );
         assert_eq!(stats.recent[0].destination, "rift-demo.invalid:80");

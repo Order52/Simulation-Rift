@@ -172,13 +172,20 @@ pub fn canonicalize(input: &[u8]) -> Result<CanonicalUrl, CanonError> {
         }
         None => (path_and_query, None),
     };
-    Ok(CanonicalUrl {
+    let url = CanonicalUrl {
         scheme,
         host,
         host_is_ip,
         path: canonical_path(path),
         query,
-    })
+    };
+    // Escaping can triple the length. A canonical form over the limit could
+    // not be canonicalized again, so it would not be a fixed point (found by
+    // the long fuzz campaign).
+    if url.to_string().len() > MAX_URL_BYTES {
+        return Err(CanonError::TooLong);
+    }
+    Ok(url)
 }
 
 fn push_unique(list: &mut Vec<String>, item: String) {
@@ -617,6 +624,15 @@ mod tests {
             canonicalize(&vec![b'a'; MAX_URL_BYTES + 1]),
             Err(CanonError::TooLong)
         );
+        // Short enough to read, too long once escaped: refused, so that every
+        // canonical form can be canonicalized again.
+        let mut escaped = b"http://a.example/".to_vec();
+        escaped.resize(MAX_URL_BYTES / 2, 0);
+        assert_eq!(canonicalize(&escaped), Err(CanonError::TooLong));
+        let mut fits = b"http://a.example/".to_vec();
+        fits.resize(MAX_URL_BYTES / 3 - 16, 0);
+        let first = canonicalize(&fits).unwrap().to_string();
+        assert_eq!(canonicalize(first.as_bytes()).unwrap().to_string(), first);
         assert_eq!(canonicalize(b"http://.../path"), Err(CanonError::NoHost));
         assert_eq!(canonicalize(b""), Err(CanonError::NoHost));
     }

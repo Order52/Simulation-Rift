@@ -39,7 +39,7 @@ use std::time::Duration;
 use sha2::{Digest, Sha256};
 
 use crate::transfer::{DestinationError, check_destination};
-use crate::urlcanon::{self, CanonicalUrl};
+use crate::urlcanon::{self, CanonError, CanonicalUrl};
 
 /// The longest request head the proxy reads (request line and headers).
 pub const MAX_HEAD_BYTES: usize = 16 * 1024;
@@ -89,6 +89,10 @@ pub enum Refusal {
     /// The destination matched an indicator (the listed expression).
     #[error("listed as malicious in the threat database ({0})")]
     KnownMalicious(String),
+    /// The address could not be checked against the threat database (it is
+    /// longer than canonicalization takes), so it is not let through.
+    #[error("the address could not be checked against the threat database: {0}")]
+    NotChecked(CanonError),
     #[error("the name does not resolve")]
     DoesNotResolve,
     #[error("no connection could be made")]
@@ -105,6 +109,7 @@ impl Refusal {
         match self {
             Self::Destination(_) => "local-address",
             Self::KnownMalicious(_) => "known-malicious",
+            Self::NotChecked(_) => "not-checked",
             Self::DoesNotResolve => "does-not-resolve",
             Self::Unreachable => "unreachable",
             Self::Malformed(_) => "malformed",
@@ -362,8 +367,7 @@ fn serve(shared: &Shared, mut client: TcpStream) {
         return;
     }
     // Before resolving, so a listed name is not even looked up.
-    if let Some(matched) = shared.screen.as_deref().and_then(|s| listed(s, &request)) {
-        let refusal = Refusal::KnownMalicious(matched);
+    if let Some(Err(refusal)) = shared.screen.as_deref().map(|s| screen(s, &request)) {
         record_denial(shared, &request.target, refusal.clone());
         let _sent = respond(&mut client, 403, "Forbidden", &refusal.to_string());
         return;
@@ -408,9 +412,12 @@ fn authorized(shared: &Shared, request: &Request) -> bool {
     }
 }
 
-/// The listed expression `request` matches: its whole URL for plain HTTP,
-/// and its host (and parent domains) for either form.
-fn listed(screen: &dyn Screen, request: &Request) -> Option<String> {
+/// Checks `request` against the threat database: its whole URL for plain
+/// HTTP, and its host (and parent domains) for either form. A plain-HTTP URL
+/// that cannot be canonicalized (longer than [`urlcanon::MAX_URL_BYTES`]) is
+/// refused as not checked: screening its host alone let a listed path
+/// through behind a padded query.
+fn screen(screen: &dyn Screen, request: &Request) -> Result<(), Refusal> {
     let host = &request.target.host;
     let host = if host.contains(':') {
         format!("[{host}]")
@@ -422,9 +429,13 @@ fn listed(screen: &dyn Screen, request: &Request) -> Option<String> {
         urls.push(format!("http://{host}{origin_form}"));
     }
     urls.push(format!("http://{host}/"));
-    urls.iter()
-        .filter_map(|url| urlcanon::canonicalize(url.as_bytes()).ok())
-        .find_map(|url| screen.listed(&url))
+    for url in urls {
+        let url = urlcanon::canonicalize(url.as_bytes()).map_err(Refusal::NotChecked)?;
+        if let Some(matched) = screen.listed(&url) {
+            return Err(Refusal::KnownMalicious(matched));
+        }
+    }
+    Ok(())
 }
 
 fn record_denial(shared: &Shared, target: &Target, refusal: Refusal) {
@@ -1103,40 +1114,51 @@ mod tests {
         // tunnels too; a path indicator, the plain-HTTP URL only. The
         // .invalid names never resolve, so a refusal for them can only come
         // from the screen.
-        for (request, expression) in [
+        let listed = |e: &str| Refusal::KnownMalicious(e.into());
+        for (request, refusal) in [
             (
                 "CONNECT bad.invalid:443 HTTP/1.1".to_owned(),
-                "bad.invalid/",
+                listed("bad.invalid/"),
             ),
             (
                 "CONNECT cdn.bad.invalid:443 HTTP/1.1".to_owned(),
-                "bad.invalid/",
+                listed("bad.invalid/"),
             ),
             (
                 "GET http://ads.bad.invalid/x.js HTTP/1.1".to_owned(),
-                "bad.invalid/",
+                listed("bad.invalid/"),
             ),
             (
                 format!("GET http://localhost:{port}/known-bad HTTP/1.1"),
-                "localhost/known-bad",
+                listed("localhost/known-bad"),
+            ),
+            // Padded past what canonicalization takes (8 KiB) but inside the
+            // proxy's head limit (16 KiB): it cannot be checked, so it is
+            // refused, not screened by its host alone.
+            (
+                format!(
+                    "GET http://localhost:{port}/known-bad?{} HTTP/1.1",
+                    "a".repeat(urlcanon::MAX_URL_BYTES)
+                ),
+                Refusal::NotChecked(urlcanon::CanonError::TooLong),
             ),
         ] {
             let (line, _) = ask(&p, &format!("{request}\r\n{}\r\n", auth(&p)));
             assert_eq!(line, "HTTP/1.1 403 Forbidden", "{request}");
             let denial = p.denials().pop().unwrap();
-            assert_eq!(
-                denial.refusal,
-                Refusal::KnownMalicious(expression.into()),
-                "{request}"
-            );
-            assert_eq!(denial.refusal.code(), "known-malicious");
+            assert_eq!(denial.refusal, refusal, "{request}");
         }
+        assert_eq!(listed("x").code(), "known-malicious");
+        assert_eq!(
+            Refusal::NotChecked(urlcanon::CanonError::TooLong).code(),
+            "not-checked"
+        );
         assert!(
             rx.recv_timeout(Duration::from_millis(300)).is_err(),
             "nothing reached the server"
         );
         let seqs: Vec<u64> = p.denials().iter().map(|d| d.seq).collect();
-        assert_eq!(seqs, vec![1, 2, 3, 4]);
+        assert_eq!(seqs, vec![1, 2, 3, 4, 5]);
         // A path indicator says nothing about the rest of the host.
         let (line, _) = ask(
             &p,

@@ -25,8 +25,8 @@ pub struct EgressEndpoint {
 pub struct EgressDenial {
     /// Counts this session's refusals from 1, so a reader can tell which are new.
     pub seq: u64,
-    /// Stable: `local-address`, `known-malicious`, `does-not-resolve`,
-    /// `unreachable`, `malformed` or `busy`.
+    /// Stable: `local-address`, `known-malicious`, `not-checked`,
+    /// `does-not-resolve`, `unreachable`, `malformed` or `busy`.
     pub code: String,
     pub destination: String,
     pub reason: String,
