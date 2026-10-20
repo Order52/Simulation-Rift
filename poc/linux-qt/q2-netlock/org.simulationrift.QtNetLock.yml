@@ -1,0 +1,31 @@
+# PoC Q2 (Phase 5): Qt WebEngine in a no-network Flatpak sub-sandbox, behind
+# a forwarder to the controller's proxy (L4 for Qt). The app itself keeps
+# the network, as Rift's controller does; the browser host does not.
+app-id: org.simulationrift.QtNetLock
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: controller.py
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+modules:
+  - name: qt-probe
+    buildsystem: cmake-ninja
+    sources:
+      - type: dir
+        path: ../probe
+  - name: netlock-scripts
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 controller.py /app/bin/controller.py
+      - install -Dm755 browser-host.py /app/bin/browser-host.py
+    sources:
+      - type: file
+        path: controller.py
+      - type: file
+        path: browser-host.py

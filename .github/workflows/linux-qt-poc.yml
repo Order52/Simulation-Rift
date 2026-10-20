@@ -38,12 +38,45 @@ jobs:
         run: |
           mkdir -p out
           { uname -a; flatpak --version; flatpak list --user; } > out/environment.txt
-          dbus-run-session -- xvfb-run -a sh poc/linux-qt/run-ci.sh out
+          s=0
+          dbus-run-session -- xvfb-run -a sh poc/linux-qt/run-ci.sh out || s=$?
           cat out/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          exit $s
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: linux-qt-q1
+          path: out/
+          if-no-files-found: ignore
+
+  q2-network-lock:
+    name: Q2 Qt WebEngine in a no-network sub-sandbox (L4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q flatpak flatpak-builder xvfb dbus
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Build the network-lock Flatpak
+        run: |
+          flatpak-builder --user --install-deps-from=flathub --install --force-clean \
+            --disable-rofiles-fuse build-q2 poc/linux-qt/q2-netlock/org.simulationrift.QtNetLock.yml 2>&1 | tail -20
+          flatpak info --user org.simulationrift.QtNetLock
+      - name: Run both cases
+        run: |
+          mkdir -p out
+          { uname -a; flatpak --version; flatpak list --user; } > out/environment.txt
+          s=0
+          dbus-run-session -- xvfb-run -a sh poc/linux-qt/q2-netlock/run-ci.sh out || s=$?
+          cat out/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          exit $s
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: linux-qt-q2
           path: out/
           if-no-files-found: ignore
 

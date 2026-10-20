@@ -2,7 +2,8 @@
 // this process can see of the engine's processes, so the run script can
 // compare it with what the host sees (the ground truth).
 //
-// Usage: qt-probe <url> [seconds to stay open after the load]
+// Usage: qt-probe <url> [seconds to stay open after the load] [proxy host:port]
+// With a proxy, every request goes through it as an HTTP proxy (PoC Q2).
 // Prints one line per fact, prefixed "probe:", and exits 0 when the page
 // loaded, 3 when it did not, 4 on a timeout.
 
@@ -10,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QNetworkProxy>
 #include <QTimer>
 #include <QUrl>
 #include <QWebEnginePage>
@@ -90,7 +92,7 @@ int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
     if (argc < 2) {
-        say(QStringLiteral("usage: qt-probe <url> [seconds]"));
+        say(QStringLiteral("usage: qt-probe <url> [seconds] [proxy host:port]"));
         return 2;
     }
     const QUrl url(QString::fromLocal8Bit(argv[1]));
@@ -100,6 +102,16 @@ int main(int argc, char **argv)
             .arg(QLatin1String(qVersion()))
             .arg(getpid())
             .arg(qEnvironmentVariable("QTWEBENGINE_DISABLE_SANDBOX", QStringLiteral("unset"))));
+
+    if (argc > 3) {
+        // Qt WebEngine takes Qt Network's application proxy. Set it before
+        // the profile exists.
+        const QString proxy = QString::fromLocal8Bit(argv[3]);
+        const qsizetype colon = proxy.lastIndexOf(QLatin1Char(':'));
+        QNetworkProxy::setApplicationProxy(
+            QNetworkProxy(QNetworkProxy::HttpProxy, proxy.left(colon), proxy.mid(colon + 1).toUShort()));
+        say(QStringLiteral("proxy %1").arg(proxy));
+    }
 
     // Off the record: nothing is written to disk, as in a Rift session.
     QWebEngineProfile profile;
