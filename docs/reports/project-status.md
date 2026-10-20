@@ -10,7 +10,7 @@
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
 | 2: Android vertical slice | **Built; tested on emulators** ([report](phase-2.md)), and since 20 Oct on architecture 2.1: the browser is a separate app with its own UID behind a network lock, wiped by Android at every reset ([report](browser-isolation.md); S23–S28 and the whole earlier suite pass on API 36). Shell, browser sessions, captured downloads, isolated preview, reset and recovery. S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on API 36 and on API 35 with 16 KB pages (arm64), and on API 33 and 34 (x86_64, in CI). API 30 refuses browsing as designed. The R8 release build passes a smoke test. **Gate open:** a physical phone. |
 | 3: Scanner and signed intel | **Built and tested on the host and on Android emulators** ([report](phase-3.md)). Pack validation, verdicts with a versioned cache, an atomic snapshot store, TUF updates (offline import of a user-chosen folder through the system picker, and online updates through the core's own checked fetcher), a clock warning, and `rift-pack` with a harmless demo pack. On Android every download is scanned (core hash and type checks, then the rules in a fresh isolated worker, two at a time) and the verdict is shown. Release builds verify against a production root given at build time (`RIFT_INTEL_ROOT`). **Open:** the production key policy (offline keys, thresholds, rotation) and licensed real feeds. |
-| 4: Vault | **Built and tested on the host and the API 35 emulator** ([report](phase-4.md)): a Keystore key behind BiometricPrompt (or a passphrase), keep from quarantine, warned export, lock on request, in the background and when idle, and a no-plaintext-on-disk inventory. Kept files preview in an isolated worker until the vault locks. **Open:** a physical phone (the emulator's Keystore is software only), the recovery passphrase. |
+| 4: Vault | **Built and tested on the host and the API 35 emulator** ([report](phase-4.md)): a Keystore key behind BiometricPrompt (or a passphrase), keep from quarantine, warned export, lock on request, in the background and when idle, and a no-plaintext-on-disk inventory. Kept files preview in an isolated worker until the vault locks; a recovery passphrase opens a vault whose key was lost. **Open:** a physical phone (the emulator's Keystore is software only). |
 | 5: Linux app | Not started. **Moved to the last step** and **to Qt instead of GTK4** (decided 20 Oct 2026); the design will be revised before any code. |
 | 6: AI experiment | Not started; deferred and gated by design. |
 | 7: Hardening | Not started. |
@@ -126,6 +126,8 @@ Phase 2 findings, added to the list above: 15–26.
 42. (Phase 4) A new Keystore key under the same alias replaces the old one, so creating a vault while one exists would destroy it. Creation refuses first, and the core asks the platform for nothing when a vault exists.
 43. (Phase 4) Locking on `onStop` also locked the vault behind the export picker and the authentication prompt. While a system screen that Rift opened for the vault is in front, the background lock waits; the inactivity lock still applies.
 44. (Phase 4) The emulator's Keystore reports "software only". The vault card shows the security level, and hardware backing stays unverified until a phone is tested.
+45. (Phase 4) S16d's local failures: the address field had focus, and the keyboard covered the lower half where the script's swipes started, so the page never scrolled. The script now hides the keyboard first, only while Android reports it shown. Why the field had focus after a restart is not known.
+46. (Phase 4) On a cold CI emulator (API 34), Android took over 10 s to confirm the browser app's first data clear (9.2 s on the retry, about 0.4 s afterwards), which failed the first session. The clear confirmation now has its own 30 s bound and logs its duration; running out still fails the reset.
 
 ### 2.8 Phase 4 code (vault)
 
@@ -216,7 +218,7 @@ Phase 2 findings, added to the list above: 15–26.
 | Two scan workers at a time | Each holds its file (≤ 32 MiB) and the rules in memory | A hung worker costs only its own file (S21b: the next file finished at 1.5 s). Two hung workers at once still hold the queue for up to 17 s. |
 | WebKitGTK network process unsandboxed in native packages | Upstream design | Ship Flatpak first. The Linux app is moving to Qt (§22), so this is reviewed again for Qt's web engine. |
 | The vault key may be software-backed | Devices without a TEE (emulators) have only a software Keystore | The vault card shows the key's security level. On a device with only a software Keystore, the passphrase gives the same protection with no hardware claim. |
-| A lost key or passphrase is a lost vault | No recovery passphrase yet | Stated when the vault is created; the card offers to delete a vault that can no longer be opened. |
+| Removing the screen lock deletes the vault's key | Android's rule for auth-bound keys | The optional recovery passphrase opens the vault and a new key protects it again (v3). Without one the vault is lost; the card says so and offers deletion. |
 | Quarantine does not survive a process kill | Keys are ephemeral by design (crypto-shredding) | Intended. Users save to the vault to keep files. |
 | Upstream dependencies carry advisories (Wasmtime via YARA-X) | Rift cannot patch them | Scoped `cargo deny` exceptions with an exit condition: remove when YARA-X depends on Wasmtime ≥ 48.0.6. |
 
@@ -237,7 +239,7 @@ Phase 2 findings, added to the list above: 15–26.
 8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done (host and Android API 33–35: S16, S21). Open: the Android import screen with a production root, online updates, the production key policy. No real malware samples are in the repository.
 
 **Phase 4: Vault**
-9. ~~Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.~~ Done on the API 35 emulator (v1–v4), with previews of kept files. Open: a phone, the recovery passphrase, scan summaries in the index.
+9. ~~Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.~~ Done on the API 35 emulator (v1–v5), with previews of kept files, a recovery passphrase and the verdict each file had when kept. Open: a phone, rescanning kept files.
 
 **Phase 6 and 7 (Android)**
 10. Optional AI experiment, shipped only if it adds measured value.

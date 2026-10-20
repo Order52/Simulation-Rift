@@ -385,7 +385,7 @@ PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and coo
   - By default `setUserAuthenticationParameters(0, BIOMETRIC_STRONG | DEVICE_CREDENTIAL)`, so every unwrap needs authentication through BiometricPrompt with a CryptoObject.
 - Without a secure lock screen, auth-bound keys are impossible. The user must then choose a vault passphrase (age scrypt). Rift never silently stores an unprotected key.
 - Key invalidation (for example, new biometrics enrolled) makes the vault unrecoverable without the optional recovery passphrase. This is stated when the vault is created.
-- **As built (Phase 4).** `VaultKeystore` creates the key only for a new vault (never while one exists, since a new key replaces the old one), StrongBox first and the TEE otherwise, and authorizes each wrap and unwrap through the platform `android.hardware.biometrics.BiometricPrompt` with a `CryptoObject` (no AndroidX dependency; minSdk 30). The wrapped identity is `[format 1][12-byte IV][ciphertext and GCM tag]`. On the API 35 emulator, removing the PIN **deleted the key entry outright** rather than leaving an invalidated key, so both cases are reported with the same sentence and the user is offered deletion of the vault. The emulator's Keystore reports `software only` (it has no TEE); hardware backing is unverified until a physical phone is tested. The recovery passphrase is not built.
+- **As built (Phase 4).** `VaultKeystore` creates the key only for a new vault (never while one exists, since a new key replaces the old one), StrongBox first and the TEE otherwise, and authorizes each wrap and unwrap through the platform `android.hardware.biometrics.BiometricPrompt` with a `CryptoObject` (no AndroidX dependency; minSdk 30). The wrapped identity is `[format 1][12-byte IV][ciphertext and GCM tag]`. On the API 35 emulator, removing the PIN **deleted the key entry outright** rather than leaving an invalidated key, so both cases are reported with the same sentence and the user is offered deletion of the vault. The emulator's Keystore reports `software only` (it has no TEE); hardware backing is unverified until a physical phone is tested. The **recovery passphrase** is optional and set after creation: `identity.recovery` holds a second, age scrypt-encrypted copy of the identity. When the key is gone, the vault opens with it, and "protect again" makes a new key (only once the old one is gone, since a new key replaces it) and replaces `identity.platform`. A stale recovery copy is deleted when a new vault is created.
 
 ### 8.8 Network lock **[PoC A8]**
 
@@ -583,6 +583,7 @@ No shared upstream API secret ships in the app. Scraped data is never substitute
 - **Writes:** write `index.age.tmp`, fsync it, rename it over the old index, and fsync the directory. `index.age.prev` is kept for crash recovery.
 - After decrypting an object, the plaintext hash is checked against the index. This detects ciphertext swapped between objects.
 - **The index is authenticated, not just encrypted** (Phase 0 finding, X1). age recipient encryption is not sender-authenticated: anyone who knows the public recipient can produce a well-formed age file. The index plaintext therefore ends with an HMAC-SHA256 keyed from the vault identity. The MAC is verified *before* the index is parsed. Objects are trusted only through the hash and size recorded in this authenticated index.
+- **Format 2 (Phase 4).** Each entry may carry the scan verdict the file had when it was kept (status, database snapshot, engine, demo flag, finding ids, time). It is shown as a past result, never as a current verdict. Format 1 indexes are still read (without verdicts), and are written back as format 2.
 - If the current index is absent (a crash between the two renames), the previous index is used. If it is present but invalid, reading fails rather than silently falling back, which would amount to a rollback.
 - **Why age:** a reviewed specification, chunked STREAM construction with truncation detection, and a maintained Rust implementation. It replaces a custom libsodium format (ADR-07). The crate is pre-1.0, so it is pinned and covered by format regression fixtures.
 
@@ -599,7 +600,7 @@ No shared upstream API secret ships in the app. Scraped data is never substitute
 - **Leaked:** object count, ciphertext sizes, file modification times, and the index size.
 - **Not covered:** WebView and WebKit cookies and cache. These are session-scoped and destroyed on reset, but are not vault-encrypted.
 - **Scale limit:** the single-file index is rewritten on each change. That is fine up to roughly 10,000 objects. Migrate (for example to SQLCipher) only if that limit is reached.
-- Uninstalling the app or invalidating the key loses the vault unless a recovery passphrase was set. This is stated plainly to the user.
+- Uninstalling the app deletes the vault with the app's data. Losing or invalidating the key loses the vault unless a recovery passphrase was set. Both are stated plainly to the user.
 
 ## 15. Sessions
 

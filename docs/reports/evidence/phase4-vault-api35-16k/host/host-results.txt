@@ -1,4 +1,4 @@
-S16d PASS (intel import: copied 8 files, skipped 1;intel install: Installed demo-20261020T041358Z.;)
+S16d PASS (intel import: copied 8 files, skipped 1;intel install: Installed demo-20261020T063214Z.;)
 S16f PASS (the clock warning was shown)
-S14 PASS (renderer killed; app alive (pid 21507); session 3 torn down; 4 active)
+S14 PASS (renderer killed; app alive (pid 14503); session 3 torn down; 4 active)
 S13 PASS (killed while RESETTING 5; recovery wiped the browser app (no files) before session 6 started)
