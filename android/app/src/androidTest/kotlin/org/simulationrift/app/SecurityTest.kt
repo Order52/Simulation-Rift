@@ -1216,20 +1216,8 @@ class SecurityTest {
             // Once on API 33 in CI the home screen had no scrollable view after
             // 10 s (cause unknown); the message now says what was in front.
             assertNotNull("home screen shown; in front: ${device.currentPackageName}", device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
-            // The button is at the end of the home screen. Swiped in bounded steps
-            // along the right-hand margin, which scrolls the column but holds no
-            // text field to focus (a focused field's keyboard covers the screen).
-            assertNotNull("scrollable; in front: ${device.currentPackageName}", device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS))
-            val x = device.displayWidth - 12
-            var open = device.findObject(By.res("notices-open"))
-            repeat(20) {
-                if (open == null) {
-                    device.swipe(x, device.displayHeight * 3 / 4, x, device.displayHeight / 4, 30)
-                    open = device.wait(Until.findObject(By.res("notices-open")), 500)
-                }
-            }
-            assertNotNull("the licences button", open)
-            open!!.click()
+            // The button is at the end of the home screen.
+            scrollHomeTo(By.res("notices-open"), "the licences button").click()
             assertNotNull(device.wait(Until.findObject(By.res("notices")), UI_TIMEOUT_MS))
             assertNotNull(device.wait(Until.findObject(By.textStartsWith("Android libraries in this app")), UI_TIMEOUT_MS))
             device.pressBack()
@@ -1288,7 +1276,8 @@ class SecurityTest {
         // And on Rift's home screen.
         val home = openHome()
         try {
-            assertNotNull(device.wait(Until.findObject(By.res("watch-level").text("Danger in this session")), UI_TIMEOUT_MS))
+            assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
+            scrollHomeTo(By.res("watch-level").text("Danger in this session"), "the home screen's watch card")
             screenshot("w1-home")
         } finally {
             home.finish()
@@ -1570,6 +1559,44 @@ class SecurityTest {
         } finally {
             instrumentation.removeMonitor(monitor)
         }
+    }
+
+    /**
+     * Scrolls the home screen until `selector` is in its upper three quarters
+     * and returns it. On CI's small screen (320x640) the end of the column
+     * is far below, and an object at the bottom edge was found but a tap on
+     * it landed on the navigation bar. Swiped in bounded steps along the
+     * right-hand margin, which scrolls the column but holds no text field to
+     * focus (a focused field's keyboard covers the screen).
+     */
+    private fun scrollHomeTo(selector: androidx.test.uiautomator.BySelector, what: String): UiObject2 {
+        assertNotNull("scrollable; in front: ${device.currentPackageName}", device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS))
+        val x = device.displayWidth - 12
+        val limit = device.displayHeight * 3 / 4
+        var last: android.graphics.Rect? = null
+        repeat(30) {
+            // Read after the column stops: a tap while it still flings only stops it.
+            val found = settled(selector)
+            if (found != null) {
+                // Higher, or as high as the column goes.
+                if (found.visibleBounds.bottom <= limit || found.visibleBounds == last) return found
+                last = found.visibleBounds
+            }
+            device.swipe(x, device.displayHeight * 3 / 4, x, device.displayHeight / 2, 30)
+        }
+        throw AssertionError("$what not reached; in front: ${device.currentPackageName}")
+    }
+
+    /** `selector`'s object once it is in the same place in two reads 300 ms apart (bounded), or null. */
+    private fun settled(selector: androidx.test.uiautomator.BySelector): UiObject2? {
+        var before = device.findObject(selector)?.visibleBounds
+        repeat(10) {
+            SystemClock.sleep(300)
+            val found = device.findObject(selector)
+            if (found == null || found.visibleBounds == before) return found
+            before = found.visibleBounds
+        }
+        return null
     }
 
     /** Types the PIN into the system's credential screen once BiometricPrompt shows it. */
