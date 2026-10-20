@@ -1,8 +1,8 @@
-f0_prepareTheVault FAIL
-f1_keepUntilKilled FAIL
-f2_theVaultIsWholeAfterTheKill FAIL
-f3_installUntilKilled FAIL
-f4_theDatabaseIsWholeAfterTheKill FAIL
+f0_prepareTheVault SKIPPED
+f1_keepUntilKilled SKIPPED
+f2_theVaultIsWholeAfterTheKill SKIPPED
+f3_installUntilKilled SKIPPED
+f4_theDatabaseIsWholeAfterTheKill SKIPPED
 l1_thirdPartyNoticesShipAndAreShown PASS
 n1_externalAppLinksAreBlocked PASS
 n2_lookalikeAddressNeedsConfirmation PASS

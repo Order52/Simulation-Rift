@@ -713,12 +713,14 @@ object Core {
 
     /**
      * Opens the browser app's window for `generation` (it refuses to load
-     * pages without the lock's terms). Twice on CI, Android removed the
-     * browser's task a few milliseconds after a window was started right
-     * after a wipe, so the browser never registered and no window appeared
-     * (cause not confirmed). If the browser has not registered for
-     * `generation` within [WINDOW_ATTACH_MS], the window is opened again, at
-     * most [WINDOW_REOPENS] times; each reopen is logged.
+     * pages without the lock's terms). Three times on CI (API 34), Android
+     * removed the browser's task ("remove task") within 50 ms of a window
+     * started right after a wipe, so the browser never registered and no
+     * window appeared. Not by the clear itself, which removes the app's
+     * recent tasks before it starts (AOSP 14); the cause is not confirmed.
+     * If the browser has not registered for `generation` within
+     * [WINDOW_ATTACH_MS], the window is opened again, at most
+     * [WINDOW_REOPENS] times; each reopen is logged.
      */
     fun openWindow(context: Context, generation: Long, url: String?, reopens: Int = WINDOW_REOPENS) {
         context.startActivity(
@@ -737,8 +739,11 @@ object Core {
         }, WINDOW_ATTACH_MS)
     }
 
-    /** How long a new window may take to register its session (a cold engine start included). */
-    private const val WINDOW_ATTACH_MS = 15_000L
+    /**
+     * How long a new window may take to register its session. Registration
+     * comes before the engine starts, 0.2–1.3 s after the process on CI.
+     */
+    private const val WINDOW_ATTACH_MS = 6_000L
     private const val WINDOW_REOPENS = 2
 
     fun rendererGone(generation: Long, crashed: Boolean) {

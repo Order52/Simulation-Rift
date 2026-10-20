@@ -165,15 +165,14 @@ class SecurityTest {
         // one; on an unsupported engine it must say browsing is refused.
         // A fresh session, so no earlier test's page is still on screen.
         val generation = resetAndAwait(activeGeneration())
-        context.startActivity(
-            Intent().setComponent(Rift.BROWSER_ACTIVITY)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(Rift.EXTRA_GENERATION, generation),
-        )
-        // The engine's verdict comes from the browser app; the controller
-        // has no WebView to ask.
-        val deadline = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
-        while (Core.sandbox.value == null && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
+        val earlier = Core.sandbox.value
+        // Right after a wipe the window can be removed before it attaches
+        // (finding 47); Core.openWindow then opens it again.
+        Core.openWindow(context, generation, null)
+        // The engine's verdict comes from the browser app (the controller has
+        // no WebView to ask), as a new report for this window.
+        val deadline = SystemClock.elapsedRealtime() + ENGINE_START_TIMEOUT_MS
+        while (Core.sandbox.value === earlier && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
         val supported = Core.sandbox.value?.verified ?: throw AssertionError("no sandbox report from :browser")
         val expected = if (supported) "No page checked yet" else "Browsing refused on this device"
         assertNotNull(expected, device.wait(Until.findObject(By.res("protection").text(expected)), UI_TIMEOUT_MS))
@@ -1144,10 +1143,13 @@ class SecurityTest {
 
         val home = openHome()
         try {
+            // Once on API 33 in CI the home screen had no scrollable view after
+            // 10 s (cause unknown); the message now says what was in front.
+            assertNotNull("home screen shown; in front: ${device.currentPackageName}", device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
             // The button is at the end of the home screen. Swiped in bounded steps
             // along the right-hand margin, which scrolls the column but holds no
             // text field to focus (a focused field's keyboard covers the screen).
-            assertNotNull(device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS))
+            assertNotNull("scrollable; in front: ${device.currentPackageName}", device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS))
             val x = device.displayWidth - 12
             var open = device.findObject(By.res("notices-open"))
             repeat(20) {

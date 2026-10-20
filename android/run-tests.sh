@@ -86,9 +86,11 @@ if [ "${RIFT_HOST_ONLY:-0}" != 1 ]; then
       }
     }' > "$out/workers.txt"
   cat "$out/workers.txt"
+  # Status codes: 1 started, 0 passed, -4 skipped (an assumption: the fault
+  # steps run only when run-tests.sh asks for them), anything else failed.
   grep -E "^INSTRUMENTATION_STATUS: test=|^INSTRUMENTATION_STATUS_CODE" "$out/instrumentation.txt" \
     | paste - - | awk '{ sub("INSTRUMENTATION_STATUS: test=", ""); print }' \
-    | awk '{ code=$NF; if (code == "1") next; print $1, (code == "0" ? "PASS" : "FAIL") }' > "$out/instrumented-results.txt"
+    | awk '{ code=$NF; if (code == "1") next; print $1, (code == "0" ? "PASS" : code == "-4" ? "SKIPPED" : "FAIL") }' > "$out/instrumented-results.txt"
   cat "$out/instrumented-results.txt"
   grep -E "^OK|^Tests run|FAILURES" "$out/instrumentation.txt" || true
   "$adb" logcat -d -s Rift:I RiftBrowser:I ActivityManager:I | tr -d '\r' \
