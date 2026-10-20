@@ -494,7 +494,7 @@ While a page is open, the trusted UI shows, as it happens, what the page has tri
 
 Besides the browser's separate UID, the network lock and the wipe (§8.3, §8.8, §15), the browser window keeps page content out of shared system state where Android allows it:
 
-- **Recents:** the browser window disables its recents screenshot (`setRecentsScreenshotEnabled(false)`, API 33+), so page images are not stored by the system for the task switcher.
+- **Recents:** the browser window disables its recents screenshot (`setRecentsScreenshotEnabled(false)`, API 33+), so page images are not stored by the system for the task switcher. Tested by H1, which decodes the snapshot Android stores.
 - **Keyboard:** every text field asks the keyboard not to learn (`IME_FLAG_NO_PERSONALIZED_LEARNING`): fields in pages (set by the browser's WebView) and Rift's own fields in both apps (set through Compose's `InterceptPlatformTextInput`), so addresses and words typed into a hostile page should not enter the keyboard's dictionary. Keyboards may ignore the flag. Tested by h2.
 - **Not closed:** a page can still write to the system clipboard after a user gesture; there is no WebView control for it (§24).
 

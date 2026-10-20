@@ -1,0 +1,1 @@
+H1 FAIL (task 524: no snapshot stored for the browser's task 524; rows of one shade: 15.5% of the screenshot with the page shown, 15.6% of the stored snapshot; see h1.txt)

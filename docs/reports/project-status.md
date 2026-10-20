@@ -139,6 +139,9 @@ Phase 2 findings, added to the list above: 15–26.
 55. (Phase 7) Finding 47 came back on CI (API 34, and failed n4 there). Windows are now opened by `Core.openWindow`, which opens the window again, at most twice, if the browser has not registered within 6 s, and logs each reopen. The cause is still not confirmed; the data clear's own removal of recent tasks is ruled out (it runs before the clear in AOSP 14).
 56. (Phase 7) The navigation check never used the installed threat database: it always ran with no indicators and "no database", although §10.3 said main-frame navigations were checked. Found while building the live page watch. It now uses the installed database, and the egress proxy checks every request's destination against it before resolving the name (HTTPS by host only).
 57. (Phase 7) The live page watch first reported the system's own DNS and private-DNS checks to the lock's resolver address as direct connections. Those, ICMP, IPv6 hop-by-hop and multicast are now background traffic: dropped, not reported.
+58. (Phase 7) The browser laid pages out at zero height: with no layout parameters its WebView was `WRAP_CONTENT`, and every viewport unit (`100vh`) was 0 px, so pages sized by them collapsed. Found by automating H1; the WebView is now `MATCH_PARENT`, and r1 tests it.
+59. (Phase 7) A kill while the vault wrote its index left `index.age.tmp` (ciphertext, never read; found by F2 in CI on API 33). Unlock now removes it, as it already removed unlisted objects.
+60. (Phase 7) On CI's 320x640 screens w1 and l1 failed: they did not scroll to the home screen's watch card, and a tap came while the column still moved. Test fault only; both scroll until the object has stopped moving.
 
 ### 2.8 Phase 4 code (vault)
 
