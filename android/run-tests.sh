@@ -181,6 +181,29 @@ else
 fi
 "$adb" shell rm -rf $update
 
+echo "== S16f: a clock behind the database is shown"
+# Needs root (S13's step above): the device clock is set two years back,
+# then restored from the host's clock. The database from S16d is installed.
+auto_time="$("$adb" shell settings get global auto_time | tr -d '\r')"
+[ "$auto_time" = 0 ] || auto_time=1
+"$adb" shell settings put global auto_time 0
+"$adb" shell am force-stop $pkg
+"$adb" shell date @$(($(date +%s) - 2 * 365 * 24 * 3600)) >/dev/null
+"$adb" shell am start -n $pkg/.MainActivity >/dev/null
+sleep 4
+close_dialogs
+seen=no
+for i in 1 2 3 4 5 6; do
+  "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1 \
+    && "$adb" shell cat /data/local/tmp/rift-ui.xml | grep -q 'resource-id="intel-clock"' && { seen=yes; break; }
+  "$adb" shell input swipe 500 1600 500 600 300
+  sleep 1
+done
+"$adb" shell date @$(date +%s) >/dev/null
+"$adb" shell settings put global auto_time "${auto_time:-1}"
+"$adb" shell am force-stop $pkg
+if [ $seen = yes ]; then result S16f PASS "the clock warning was shown"; else result S16f FAIL "no clock warning with the clock two years back"; fi
+
 echo "== S14: renderer crash"
 "$adb" shell am force-stop $pkg
 "$adb" logcat -c

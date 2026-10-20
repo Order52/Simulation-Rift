@@ -220,7 +220,17 @@ impl Pack {
     pub fn is_stale(&self, now_unix: u64) -> bool {
         now_unix >= self.metadata.refresh_after_unix
     }
+
+    /// Whether the device clock reads more than [`CLOCK_TOLERANCE_SECS`]
+    /// before the pack was created: then expiry and staleness checks mean
+    /// little, and the user is told to check the clock (§13.2).
+    pub fn clock_behind(&self, now_unix: u64) -> bool {
+        now_unix.saturating_add(CLOCK_TOLERANCE_SECS) < self.metadata.created_unix
+    }
 }
+
+/// How far behind a pack's creation time the clock may read before it counts as wrong.
+pub const CLOCK_TOLERANCE_SECS: u64 = 3600;
 
 fn check_metadata(m: &PackMetadata) -> Result<BTreeMap<String, usize>, PackError> {
     if m.format != FORMAT {
@@ -355,6 +365,15 @@ pub(crate) mod tests {
         );
         assert!(pack.rule("other").is_none());
         assert!(!pack.is_stale(199) && pack.is_stale(200));
+        // Created at 100: no clock reads far enough before that.
+        assert!(!pack.clock_behind(0));
+        let later = metadata(demo_rule())
+            .replace("\"created_unix\":100", "\"created_unix\":10000")
+            .replace("\"refresh_after_unix\":200", "\"refresh_after_unix\":20000");
+        let later = validate(&pack_files(&later, &[])).unwrap();
+        let tolerated = 10_000 - CLOCK_TOLERANCE_SECS;
+        assert!(!later.clock_behind(10_000) && !later.clock_behind(tolerated));
+        assert!(later.clock_behind(tolerated - 1) && later.clock_behind(0));
         assert_eq!(
             pack.rules_digest,
             <[u8; 32]>::from(Sha256::digest(RULES_SRC))

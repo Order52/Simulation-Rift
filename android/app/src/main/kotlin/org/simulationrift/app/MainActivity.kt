@@ -363,6 +363,14 @@ class MainActivity : ComponentActivity() {
                     },
                     modifier = Modifier.testTag("intel-status"),
                 )
+                if ((status as? IntelStatus.Installed)?.clockBehind == true) {
+                    Text(
+                        "This device's clock reads earlier than the database was made, so its expiry dates cannot be checked. Check the date and time in Settings.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("intel-clock"),
+                    )
+                }
                 (status as? IntelStatus.Installed)?.notices?.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("intel-message")) }
                 if (canImport) {

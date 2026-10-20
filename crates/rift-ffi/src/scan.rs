@@ -112,6 +112,8 @@ pub enum IntelStatus {
         digest: String,
         demo: bool,
         stale: bool,
+        /// The device clock reads well before the database was created.
+        clock_behind: bool,
         created_unix: u64,
         refresh_after_unix: u64,
         notices: Vec<String>,
@@ -218,6 +220,7 @@ impl Intel {
                 digest: pack.digest.hex(),
                 demo: pack.metadata.demo,
                 stale: pack.is_stale(now_unix),
+                clock_behind: pack.clock_behind(now_unix),
                 created_unix: pack.metadata.created_unix,
                 refresh_after_unix: pack.metadata.refresh_after_unix,
                 notices: pack
