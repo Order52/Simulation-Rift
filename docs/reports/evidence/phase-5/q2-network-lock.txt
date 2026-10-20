@@ -1,0 +1,136 @@
+# PoC Q2: Qt WebEngine in a no-network Flatpak sub-sandbox behind a forwarder (L4 for Qt)
+# linux-qt-poc run 39511905939 (commit 593a447), ubuntu-24.04, Xvfb started before the session bus
+
+Linux runnervmxehtw 7.0.0-1017-azure #17~24.04.1-Ubuntu SMP PREEMPT Thu Sep 24 18:46:57 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Flatpak 1.14.6
+qtwebengine application base	io.qt.qtwebengine.BaseApp		6.10	flathub
+Mesa	org.freedesktop.Platform.GL.default	26.2.4	25.08	flathub
+Mesa (Extra)	org.freedesktop.Platform.GL.default	26.2.4	25.08-extra	flathub
+Codecs Extra Extension	org.freedesktop.Platform.codecs-extra		25.08-extra	flathub
+Adwaita theme	org.kde.KStyle.Adwaita		6.10	flathub
+KDE Application Platform	org.kde.Platform		6.10	flathub
+KDE Software Development Kit	org.kde.Sdk		6.10	flathub
+QtNetLock	org.simulationrift.QtNetLock		master	qtnetlock-origin
+
+## proxy: app exit 0, host probe exit 0
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=DISPLAY=:99 --env=XAUTHORITY=/run/flatpak/Xauthority /app/bin/browser-host.py proxy http://rift-probe.test:8765/ 15
+host: interfaces: lo
+host: DISPLAY=:99
+host: XAUTHORITY=/run/flatpak/Xauthority (exists: True)
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=None
+host: /tmp/.X11-unix: X99
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+host: portal spawn: blocked (exit 0: blocked ('1.1.1.1', 443) [Errno 101] Network is unreachable | blocked ('127.0.0.1', 8765) [Errno 111] Connection refused)
+host: portal spawn --sandbox: blocked (exit 0: blocked ('1.1.1.1', 443) [Errno 101] Network is unreachable | blocked ('127.0.0.1', 8765) [Errno 111] Connection refused)
+host: host spawn: blocked (exit 1: Portal call failed: org.freedesktop.DBus.Error.ServiceUnknown | Hint: --host only works when the Flatpak is allowed to talk to org.freedesktop.Flatpak)
+probe: qt 6.10.3, pid 16, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: proxy 127.0.0.1:8899
+controller: allowed GET http://rift-probe.test:8765/
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=52
+probe: inside sees pid 29 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,net,ipc
+probe: inside sees pid 33 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 52 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees 3 engine processes
+probe: ready
+controller: allowed GET http://rift-probe.test:8765/favicon.ico
+controller: browser host exit 0
+host sees pid 4569 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,pid new_vs_app=- unreadable_ns=mnt,net,ipc
+host sees pid 4583 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+host sees pid 4603 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+app main pid 4538: Seccomp=2 filters=1 new_vs_host=user,mnt,pid,net
+verdict: 1 of 1 renderers sandboxed by the engine; 0 of 1 with user and network namespaces of their own
+
+## proxy-offscreen: app exit 0, host probe exit 0
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=QT_QPA_PLATFORM=offscreen /app/bin/browser-host.py proxy-offscreen http://rift-probe.test:8765/ 15
+host: interfaces: lo
+host: DISPLAY=:99
+host: XAUTHORITY=/run/flatpak/Xauthority (exists: True)
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=offscreen
+host: /tmp/.X11-unix: X99
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+host: portal spawn: blocked (exit 0: blocked ('1.1.1.1', 443) [Errno 101] Network is unreachable | blocked ('127.0.0.1', 8765) [Errno 111] Connection refused)
+host: portal spawn --sandbox: blocked (exit 0: blocked ('1.1.1.1', 443) [Errno 101] Network is unreachable | blocked ('127.0.0.1', 8765) [Errno 111] Connection refused)
+host: host spawn: blocked (exit 1: Portal call failed: org.freedesktop.DBus.Error.ServiceUnknown | Hint: --host only works when the Flatpak is allowed to talk to org.freedesktop.Flatpak)
+probe: qt 6.10.3, pid 16, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: proxy 127.0.0.1:8899
+controller: allowed GET http://rift-probe.test:8765/
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=52
+probe: inside sees pid 28 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,net,ipc
+probe: inside sees pid 32 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 52 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees 3 engine processes
+probe: ready
+controller: allowed GET http://rift-probe.test:8765/favicon.ico
+controller: browser host exit 0
+host sees pid 4838 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,pid new_vs_app=- unreadable_ns=mnt,net,ipc
+host sees pid 4852 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+host sees pid 4880 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+app main pid 4826: Seccomp=2 filters=1 new_vs_host=user,mnt,pid,net
+verdict: 1 of 1 renderers sandboxed by the engine; 0 of 1 with user and network namespaces of their own
+
+## direct: app exit 3, host probe exit 0
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=QT_QPA_PLATFORM=offscreen /app/bin/browser-host.py direct http://127.0.0.1:8765/ 15
+host: interfaces: lo
+host: DISPLAY=:99
+host: XAUTHORITY=/run/flatpak/Xauthority (exists: True)
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=offscreen
+host: /tmp/.X11-unix: X99
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+host: portal spawn: blocked (exit 0: blocked ('1.1.1.1', 443) [Errno 101] Network is unreachable | blocked ('127.0.0.1', 8765) [Errno 111] Connection refused)
+host: portal spawn --sandbox: blocked (exit 0: blocked ('1.1.1.1', 443) [Errno 101] Network is unreachable | blocked ('127.0.0.1', 8765) [Errno 111] Connection refused)
+host: host spawn: blocked (exit 1: Portal call failed: org.freedesktop.DBus.Error.ServiceUnknown | Hint: --host only works when the Flatpak is allowed to talk to org.freedesktop.Flatpak)
+probe: qt 6.10.3, pid 16, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: loaded=no title=127.0.0.1 renderer pid (as the engine reports it)=53
+probe: inside sees pid 28 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,net,ipc
+probe: inside sees pid 32 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 53 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees 3 engine processes
+probe: ready
+controller: browser host exit 3
+host sees pid 5107 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,pid new_vs_app=- unreadable_ns=mnt,net,ipc
+host sees pid 5121 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+host sees pid 5150 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+app main pid 5095: Seccomp=2 filters=1 new_vs_host=user,mnt,pid,net
+verdict: 1 of 1 renderers sandboxed by the engine; 0 of 1 with user and network namespaces of their own
+
+## proxy (X11): the app's full output
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=DISPLAY=:99 --env=XAUTHORITY=/run/flatpak/Xauthority /app/bin/browser-host.py proxy http://rift-probe.test:8765/ 15
+host: interfaces: lo
+host: DISPLAY=:99
+host: XAUTHORITY=/run/flatpak/Xauthority (exists: True)
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=None
+host: /tmp/.X11-unix: X99
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+host: portal spawn: blocked (exit 0: blocked ('1.1.1.1', 443) [Errno 101] Network is unreachable | blocked ('127.0.0.1', 8765) [Errno 111] Connection refused)
+host: portal spawn --sandbox: blocked (exit 0: blocked ('1.1.1.1', 443) [Errno 101] Network is unreachable | blocked ('127.0.0.1', 8765) [Errno 111] Connection refused)
+host: host spawn: blocked (exit 1: Portal call failed: org.freedesktop.DBus.Error.ServiceUnknown | Hint: --host only works when the Flatpak is allowed to talk to org.freedesktop.Flatpak)
+Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+probe: qt 6.10.3, pid 16, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: proxy 127.0.0.1:8899
+[16:37:1020/230059.806412:ERROR:bus.cc(408)] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+qt.dbus.integration: QDBusConnection: name 'org.freedesktop.portal.Desktop' had owner '' but we thought it was ':1.15'
+controller: allowed GET http://rift-probe.test:8765/
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=52
+probe: inside sees pid 29 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,net,ipc
+probe: inside sees pid 33 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 52 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees 3 engine processes
+probe: ready
+controller: allowed GET http://rift-probe.test:8765/favicon.ico
+controller: browser host exit 0

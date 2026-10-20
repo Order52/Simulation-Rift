@@ -1,6 +1,6 @@
 # Phase 5: the Linux app on Qt (design revision and PoCs)
 
-**Status (21 Oct 2026): proposed, not reviewed; PoCs started.** On 20 Oct the Linux app moved from GTK4 + WebKitGTK to Qt, and was made the last step after Android (architecture §22). §9 of the [architecture](../architecture.md) still describes the reviewed GTK4 design. This document proposes its replacement and lists the questions that have to be answered by measurement before any app code is written. Nothing here is verified unless a PoC row below says so.
+**Status (21 Oct 2026): proposed, not externally reviewed; PoCs Q1–Q4 pass.** On 20 Oct the Linux app moved from GTK4 + WebKitGTK to Qt, and was made the last step after Android (architecture §22). §9 of the [architecture](../architecture.md) still describes the reviewed GTK4 design. This document proposes its replacement and lists the questions that have to be answered by measurement before any app code is written. Nothing here is verified unless a PoC row below says so.
 
 ## What carries over unchanged
 
@@ -43,8 +43,8 @@ These do not depend on the toolkit:
 | ID | Question | Pass criterion | State |
 |---|---|---|---|
 | Q1 | Is Qt WebEngine's renderer sandbox active in the Flathub BaseApp, and what can the app itself see of it? | From the host: every renderer has a seccomp filter of the engine's own on top of Flatpak's, `NoNewPrivs: 1`, and mount and pid namespaces of its own. With `QTWEBENGINE_DISABLE_SANDBOX=1` the same probe reports them not sandboxed (negative control). Recorded: what the app can see from inside its own sandbox. (Revised after the first run; see below.) | **Passes, with a weaker sandbox than planned** (CI, 20 Oct): see below |
-| Q2 | Does Qt WebEngine run in a `--no-network` sub-sandbox, with its renderers still sandboxed, and load pages through a forwarder to the controller's proxy? (L4 for Qt) | Pages load through the proxy. Direct connections and DNS from the sub-sandbox fail. The renderers stay confined as in Q1. | Not started; depends on Q1 |
-| Q3 | Does a cxx-qt QML app linking `rift-core` build in the KDE SDK with the Rust extension? | It builds and calls into the core. Size and build time recorded. | Not started |
+| Q2 | Does Qt WebEngine run in a `--no-network` sub-sandbox, with its renderers still sandboxed, and load pages through a forwarder to the controller's proxy? (L4 for Qt) | Pages load through the proxy. Direct connections and DNS from the sub-sandbox fail. The renderers stay confined as in Q1. Added: a process the browser host spawns through the portal has no network either. | **Passes** (CI, 20 Oct): see below |
+| Q3 | Does a cxx-qt QML app linking `rift-core` build in the KDE SDK with the Rust extension? | It builds and calls into the core. Size and build time recorded. | **Passes** (CI, 20 Oct): see below |
 | Q4 | Does the worker lockdown hold inside Flatpak? (L2) | open, socket, execve, ptrace and kill denied inside a Flatpak; allowed work succeeds. | **Passes** (CI, 20 Oct): see below |
 
 **Why Q1 decides the sandbox check.** With the BaseApp's Flatpak sandbox support, renderers are spawned through the Flatpak portal into sandbox instances of their own, each with its own pid namespace. From inside the app's sandbox, Rift's controller may not see them at all, so the WebKit approach (inspect each web process in `/proc`) may not carry over. If it does not, the options are, in order of preference:
@@ -52,6 +52,39 @@ These do not depend on the toolkit:
 1. a check that the browser host can make of its own children, if the portal reports them;
 2. a fail-closed start condition: refuse when the sandbox switches (`QTWEBENGINE_DISABLE_SANDBOX`, `--no-sandbox`, `QTWEBENGINE_CHROMIUM_FLAGS`) are present, and when the portal's sandbox spawn is unavailable;
 3. stating plainly that the check is weaker on Linux than on Android.
+
+## App design (proposed after Q1–Q4)
+
+The PoCs settle the questions this design depended on: all four pass (results below).
+
+**Processes.**
+
+| Process | Runs | Sandbox | Holds |
+|---|---|---|---|
+| controller `rift` | Rust `main`, QML UI through cxx-qt, the platform facade (`rift-ffi`'s Rust API, the same code the Android app calls through UniFFI) | the Flatpak app sandbox, with the network | the vault, intelligence, settings, the egress proxy, the worker supervisor |
+| browser host `rift-browser`, one per session | Rust `main`, Qt WebEngine Widgets in C++ through cxx | `flatpak-spawn --sandbox --no-network`: its own network namespace with only loopback, no app data, display and GPU shared, a session bus for the portal | one off-the-record profile; nothing that outlives the session |
+| renderers | Chromium | the engine's sandbox, spawned through the portal: seccomp-bpf on Flatpak's, mount, pid, IPC and network namespaces of their own (Q1, Q2) | one site's page |
+| workers `rift-worker` | Rust | Landlock and seccomp, rlimits, no network (Q4) | one file |
+
+**The session channel.** The controller makes a `SOCK_SEQPACKET` socketpair and gives one end to `flatpak-spawn` as stdin, which the portal hands to the browser host as its stdin. Taking it with a safe `dup` of fd 0 means neither side adopts a raw fd. Messages are postcard, one per datagram, in a new `rift_protocol::session` module:
+
+- browser to controller: `Hello`; `Decide { id, url, main_frame, user_gesture, redirect }` (sent synchronously from `acceptNavigationRequest`); `Renderer { pid, report }`; `Download { url }`; `Connection` with one TCP socket attached (`SCM_RIGHTS`); `Closing`;
+- controller to browser: `Answer { id, navigation }` (`Proceed`, `Confirm` with reasons, or `Block`, already escaped as on Android); `Load { url }`; `Close`.
+
+**Network lock (L4).** The browser host's forwarder listens on 127.0.0.1 in its own network namespace. Qt's application proxy points there. Each accepted connection is sent to the controller as a `Connection` message, and the controller serves it with `rift_core::egress::ForwardedEgress`: the same checks as on Android, with no listener and no token, because the socketpair authenticates the browser host. Nothing else can reach the proxy: it has no address.
+
+**Sandbox check (INV-7).** At start, the browser host refuses to run if `QTWEBENGINE_DISABLE_SANDBOX`, `QTWEBENGINE_CHROMIUM_FLAGS` or a `--no-sandbox`/`--single-process` argument is present. For each renderer pid it reads `/proc/<pid>/status` and `/proc/<pid>/ns/*` before the page is shown. The page stays hidden unless the renderer has more seccomp filters than the browser host, `NoNewPrivs: 1`, and mount and pid namespaces of its own (Q1). It reports each result to the controller, which ends the session on a failure. The rule lives in shared Rust (`rift_core::sandbox`), so the probe that tests it and the app run the same code.
+
+**Engine settings.** Off the record. All permissions are denied (`QWebEnginePage::permissionRequested`). Downloads are cancelled, and their URL goes to the controller's checked transfer. Navigations are decided by the controller. The browser host's window draws Rift's own toolbar and interstitials from the controller's facts, as `:browser` does on Android: Rift's code, co-resident with the engine's browser process, and confined with it.
+
+**Workers.** `rift-worker` as a Linux binary: the lockdown from the L2 PoC (Landlock, seccomp, rlimits), its socket on stdin, pixels in a sealed memfd (L3). The controller spawns it directly. It needs no portal, and the Flatpak sandbox is its outer layer (Q4).
+
+**Build.** One Cargo workspace under `linux/`, separate from the product workspace because it needs Qt at build time. The Flatpak manifest builds it with the SDK's Rust extension (Q3), from vendored crates for a release.
+
+**Order of work.**
+1. Session: browser host, channel, forwarded proxy, navigation decisions, renderer check; a controller with a URL field, status and reset. Tested end to end in CI as Q2 was.
+2. Intelligence: the built-in pack, import and online updates (`rift-update`), and page-watch denials shown in the controller.
+3. Workers, file scanning and preview; the vault (passphrase first; a platform key from the Secret portal is a later option).
 
 ## Results
 
@@ -77,6 +110,36 @@ These do not depend on the toolkit:
 **First run.** Run 39505969652 passed while measuring nothing (0 renderers in both cases). Chromium rewrites its argv as one space-joined title, so the host probe never found `--type=renderer`, and the in-app probe read `/proc` with `QFile::atEnd()`, which is true at once on `/proc` files. Both were fixed, the first criterion (user and network namespaces of its own) was replaced by the filter-count one after seeing that every Flatpak process already has `Seccomp: 2`, and the run now fails unless both cases give the expected verdict. Evidence: [`evidence/phase-5/q1-first-run.txt`](evidence/phase-5/q1-first-run.txt).
 
 **Not shown.** Only one renderer and one page were measured, on GitHub's VM under Xvfb, without a GPU process. A real desktop session, Wayland, a GPU and other distributions are still to do.
+
+### Q2: the network lock for Qt (passes)
+
+`linux-qt-poc` run 39511905939 (commit 593a447). `poc/linux-qt/q2-netlock`: the app's main process (`controller.py`, standing in for Rift's controller) keeps the network. It starts the browser host with `flatpak-spawn --sandbox --no-network --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus` and one end of a socketpair. The browser host's forwarder listens on its own loopback and hands each accepted connection to the controller (`SCM_RIGHTS`). The controller answers it as an HTTP proxy that knows one name, `rift-probe.test`, mapped to a page server on the host's loopback. qt-probe uses the forwarder as Qt's application proxy. Evidence: [`evidence/phase-5/q2-network-lock.txt`](evidence/phase-5/q2-network-lock.txt).
+
+| Inside the browser host's sub-sandbox | Result |
+|---|---|
+| Network interfaces (`/proc/net/dev`) | `lo` only |
+| DNS (`dl.flathub.org`) | fails: no resolver reachable |
+| TCP to a public address (1.1.1.1:443) | fails: network unreachable |
+| TCP to the page server on the host's loopback | fails: refused (its own loopback) |
+| A process it spawns through the portal, plain or `--sandbox`, connecting to either | fails the same way: the portal gives a no-network caller's children no network |
+| `flatpak-spawn --host` | refused: the app may not talk to `org.freedesktop.Flatpak` |
+| The page, through the forwarder and the controller | **loads** (X11 and offscreen), and the controller logged both requests |
+| The same page without the proxy | does not load (negative control) |
+| Renderers | 2 seccomp filters against the browser host's 1, `NoNewPrivs: 1`, and mount, pid, IPC and **network** namespaces of their own |
+
+**What this means.** In the sub-sandbox, a compromised browser process (where Qt WebEngine's network service runs) or an escaped renderer can reach only what the controller's proxy lets through. It cannot reach the host's loopback services or the local network, and it cannot get a network back through the portal. On Android, loopback is still shared with other apps. Here the renderers also lose Q1's one gap, the shared network namespace.
+
+**Runs before this one.** In run 1 nothing loaded: the probe had no display, and `/sys/class/net` showed the host's interfaces, not the sandbox's (it now reads `/proc/net/dev`). In run 2 the offscreen cases passed and X11 failed: the session bus had started before Xvfb, so the D-Bus-activated portal had no `DISPLAY` and gave the sub-sandbox no X socket. On a desktop the bus knows the display. Evidence: [`evidence/phase-5/q2-run2.txt`](evidence/phase-5/q2-run2.txt).
+
+**Not shown.** The proxy here is a stand-in, not rift-core's (the app will use `ForwardedEgress`, which has unit tests of its own). Wayland, a GPU and a desktop distribution are not covered. `allow-dbus` gives the browser host the app's filtered session bus, so it can call the same portals as the app. Which portals the app may use is therefore part of the browser host's attack surface, and must be kept to what Rift needs.
+
+### Q3: a cxx-qt QML app over rift-core (passes)
+
+`linux-qt-poc` run 39510673541 (commit 8e0bb7f). `poc/linux-qt/q3-cxx-qt` is a Cargo-only cxx-qt 0.10 app: a `RiftCore` QObject implemented in Rust, whose `canonicalize` QML calls in process. It was built as a Flatpak on `org.kde.Sdk` 6.10 with `org.freedesktop.Sdk.Extension.rust-stable` (25.08) and run offscreen. Its three answers match rift-core's on the host. Evidence: [`evidence/phase-5/q3-cxx-qt.txt`](evidence/phase-5/q3-cxx-qt.txt).
+
+- **Compiler.** The SDK extension has rustc 1.98.1. The workspace declared 1.99, the pinned development toolchain, so the first run stopped before compiling. rift-core and its dependencies build with 1.98.1. The workspace now declares `rust-version = "1.98"`, and the `msrv` CI job checks it, so the Linux release can build with the SDK's compiler.
+- **Cost.** `cargo build --release` took 6 min 4 s on GitHub's runner (the whole Flatpak build, with SDK downloads, 444 s). The stripped binary is 1.5 MB. It links `libQt6Qml`, `Gui`, `Core`, `Network` and `DBus` from the runtime.
+- **Not shown.** A real window, and anything beyond a QString round trip through the bridge. The build fetched crates from the network; a Flathub build must vendor them.
 
 ### Q4: worker lockdown inside a Flatpak sandbox (passes)
 
