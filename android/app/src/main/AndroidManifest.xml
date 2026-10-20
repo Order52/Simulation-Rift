@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- The only permission (§8.2), for rift-core's own transfers and the
-         egress proxy. Camera, microphone, location, storage and the rest are
-         absent from both apps, so the OS denies them whatever a page asks. -->
+    <!-- For rift-core's own transfers and the egress proxy (§8.2). Camera,
+         microphone, location, storage and the rest are absent from both
+         apps, so the OS denies them whatever a page asks. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The vault unlock prompt (§8.7). A normal permission: it lets Rift ask
+         the system to authenticate the user, and reveals nothing itself. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- The browser app must be visible to bind and start it (API 30). -->
     <queries>

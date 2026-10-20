@@ -46,7 +46,11 @@ for p in $pkg $outsider; do "$adb" shell appops set $p ACTIVATE_VPN allow; done
 # A slow emulator can show "System UI isn't responding" at boot, which covers
 # every window the tests look at. Close such dialogs (SecurityTest does too,
 # before each test) and keep a record of every ANR and crash in the run.
+# The vault test (v3) sets and clears a screen-lock PIN, which can leave the
+# keyguard up; the screen-reading steps below need the screen awake and open.
 close_dialogs() {
+  "$adb" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+  "$adb" shell wm dismiss-keyguard >/dev/null 2>&1 || true
   "$adb" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
 }
 "$adb" logcat -b events -d | tr -d '\r' | grep -E " am_(anr|crash) " > "$out/anr.txt" || true
@@ -94,8 +98,10 @@ fi
 # ---- Host-driven tests (root) -------------------------------------------------
 
 if [ "$("$adb" shell id -u | tr -d '\r')" != 0 ]; then
-  "$adb" root >/dev/null
-  # adbd restarts as root; a busy emulator can take a while to come back.
+  # adbd restarts as root; a busy emulator can take a while to come back,
+  # and the request itself was once refused ("closed") right after the
+  # instrumented run, so it is retried.
+  for _ in 1 2 3; do "$adb" root >/dev/null 2>&1 && break; sleep 5; done
   i=0
   until [ "$("$adb" shell id -u 2>/dev/null | tr -d '\r')" = 0 ]; do
     i=$((i + 1))

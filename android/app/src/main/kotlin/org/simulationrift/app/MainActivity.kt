@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -35,6 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -46,6 +49,8 @@ import org.simulationrift.bridge.Rift
 import org.simulationrift.core.EgressStats
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
+import org.simulationrift.core.VaultEntry
+import org.simulationrift.core.VaultProtection
 import org.simulationrift.core.Verdict
 
 /** The trusted home screen (main process). */
@@ -64,6 +69,15 @@ class MainActivity : ComponentActivity() {
         if (tree != null) Core.importIntel(IntelImport.DocumentTree(applicationContext, tree))
     }
 
+    /** The vault object being exported, while the user chooses where (§11.4). */
+    private var exporting: String? = null
+
+    private val exportTo = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { target ->
+        val id = exporting
+        exporting = null
+        if (id != null && target != null) Locker.export(id, target) else Locker.holding = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Core.ensureStarted(this)
@@ -74,6 +88,12 @@ class MainActivity : ComponentActivity() {
         // a link handed over before then is not opened again without the user.
         if (savedInstanceState == null) pendingLink = linkFrom(intent)
         setContent { MaterialTheme { Home() } }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // §14.2: the vault locks when Rift goes to the background.
+        if (!isChangingConfigurations) Locker.backgrounded()
     }
 
     private fun turnOnLock() {
@@ -129,6 +149,7 @@ class MainActivity : ComponentActivity() {
                     if (mayBrowse) BrowseCard(active.generation)
                     DownloadsCard()
                 }
+                VaultCard()
                 IntelCard()
                 DiagnosticsCard(sandbox)
             }
@@ -295,6 +316,7 @@ class MainActivity : ComponentActivity() {
                     if (file != null) {
                         VerdictArea(file.id, verdicts.containsKey(file.id), verdicts[file.id])
                         PreviewArea(file.id, file.displayName, previews[file.id])
+                        KeepArea(file.id)
                     }
                 }
                 Text("Local network hosts allowed for downloads in this session: " + localHosts.ifEmpty { listOf("none") }.joinToString())
@@ -310,6 +332,159 @@ class MainActivity : ComponentActivity() {
                         Core.allowLocalHost(host)
                         host = ""
                     }) { Text("Allow") }
+                }
+            }
+        }
+    }
+
+    /** Keeping a quarantined file after the session: only into an unlocked vault, and never automatically. */
+    @Composable
+    private fun KeepArea(fileId: String) {
+        val vault by Locker.state.collectAsState()
+        val kept by Locker.kept.collectAsState()
+        when {
+            fileId in kept -> Text("Kept in the vault.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("kept-$fileId"))
+            vault is Locker.State.Unlocked -> OutlinedButton(onClick = { Core.keep(fileId) }, modifier = Modifier.testTag("keep-$fileId")) {
+                Text("Keep in the vault")
+            }
+            else -> Text("To keep this file after the session, unlock the vault.", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+
+    /**
+     * The Rift Vault (§14): create, unlock and lock it, and export or remove
+     * what was kept. Export is warned and goes only where the user chooses.
+     */
+    @Composable
+    private fun VaultCard() {
+        val state by Locker.state.collectAsState()
+        val message by Locker.message.collectAsState()
+        var passphrase by remember { mutableStateOf("") }
+        var deleting by remember { mutableStateOf(false) }
+        // Compose keeps text as an immutable String, so this copy cannot be
+        // overwritten; the field is cleared as soon as the passphrase is used.
+        fun takePassphrase(): ByteArray = passphrase.encodeToByteArray().also { passphrase = "" }
+
+        @Composable
+        fun PassphraseField(label: String) = OutlinedTextField(
+            value = passphrase,
+            onValueChange = { passphrase = it },
+            label = { Text(label) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+            modifier = Modifier.fillMaxWidth().testTag("vault-passphrase"),
+        )
+
+        Card(Modifier.fillMaxWidth().testTag("vault")) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Vault", style = MaterialTheme.typography.titleMedium)
+                when (val s = state) {
+                    Locker.State.Opening -> Text("Opening…")
+                    is Locker.State.Failed -> Text("The vault cannot be used: ${s.message}", color = MaterialTheme.colorScheme.error)
+                    is Locker.State.Absent -> {
+                        Text(
+                            "Files you keep from a session are stored here, encrypted, after the session ends. " +
+                                "They stay the original, untrusted files.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        if (s.deviceSecure) {
+                            Button(onClick = { Locker.createWithDeviceLock(this@MainActivity) }, modifier = Modifier.testTag("vault-create-device")) {
+                                Text("Create, protected by the screen lock")
+                            }
+                            Text(
+                                "The key stays in this device's keystore. If the screen lock is removed or new fingerprints " +
+                                    "or faces are enrolled, Android deletes the key and the vault cannot be opened again.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text("Or protect it with a passphrase:", style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Text(
+                                "This device has no secure screen lock, so the key cannot be kept in its keystore. " +
+                                    "Choose a passphrase of at least 10 characters; without it the vault cannot be opened.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        PassphraseField("New passphrase")
+                        OutlinedButton(onClick = { Locker.createWithPassphrase(takePassphrase()) }, modifier = Modifier.testTag("vault-create-passphrase")) {
+                            Text("Create with this passphrase")
+                        }
+                    }
+                    is Locker.State.Locked -> {
+                        Text("Locked.", modifier = Modifier.testTag("vault-locked"))
+                        if (s.protection == VaultProtection.PLATFORM) {
+                            Button(onClick = { Locker.unlockWithDeviceLock(this@MainActivity) }, modifier = Modifier.testTag("vault-unlock-device")) {
+                                Text("Unlock")
+                            }
+                        } else {
+                            PassphraseField("Passphrase")
+                            Button(onClick = { Locker.unlockWithPassphrase(takePassphrase()) }, modifier = Modifier.testTag("vault-unlock-passphrase")) {
+                                Text("Unlock")
+                            }
+                        }
+                    }
+                    is Locker.State.Unlocked -> {
+                        Text(
+                            "Unlocked" + (s.keyLevel?.let { " · key in $it" } ?: "") + ". Locks when Rift goes to the background, or after 5 minutes without use.",
+                            modifier = Modifier.testTag("vault-unlocked"),
+                        )
+                        if (s.entries.isEmpty()) Text("Nothing kept yet.")
+                        s.entries.forEach { VaultItem(it) }
+                        OutlinedButton(onClick = { Locker.lock() }, modifier = Modifier.testTag("vault-lock")) { Text("Lock now") }
+                    }
+                }
+                message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("vault-message")) }
+                if (state is Locker.State.Locked || state is Locker.State.Unlocked) {
+                    if (!deleting) {
+                        OutlinedButton(onClick = { deleting = true }, modifier = Modifier.testTag("vault-delete")) { Text("Delete the vault…") }
+                    } else {
+                        Text(
+                            "Delete the vault and every file in it? This cannot be undone.",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = {
+                                deleting = false
+                                Locker.destroy()
+                            }, modifier = Modifier.testTag("vault-delete-confirm")) { Text("Delete") }
+                            OutlinedButton(onClick = { deleting = false }) { Text("Cancel") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun VaultItem(entry: VaultEntry) {
+        var warning by remember { mutableStateOf(false) }
+        Column(Modifier.testTag("vault-entry-${entry.id}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "${entry.displayName} · ${entry.size} bytes · sha256 ${entry.sha256.take(16)}…" +
+                    (entry.sourceUrl?.let { "\nfrom $it" } ?: "") +
+                    "\nkept ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(entry.createdUnix.toLong() * 1000))}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (warning) {
+                Text(
+                    "The exported copy leaves Rift's protection. It is the original file, not made safe: " +
+                        "opening it in another app is not isolated.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        warning = false
+                        exporting = entry.id
+                        Locker.holding = true
+                        exportTo.launch(entry.displayName)
+                    }, modifier = Modifier.testTag("vault-export-confirm-${entry.id}")) { Text("Export anyway") }
+                    OutlinedButton(onClick = { warning = false }) { Text("Cancel") }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { warning = true }, modifier = Modifier.testTag("vault-export-${entry.id}")) { Text("Export…") }
+                    OutlinedButton(onClick = { Locker.remove(entry.id) }, modifier = Modifier.testTag("vault-remove-${entry.id}")) { Text("Remove") }
                 }
             }
         }

@@ -183,6 +183,7 @@ object Core {
         if (started.compareAndSet(false, true)) {
             app = context.applicationContext
             disposal = AndroidBrowserDisposal(app)
+            Locker.open(app)
             worker.execute(::openAndStart)
         }
     }
@@ -203,6 +204,7 @@ object Core {
         _localHosts.value = emptyList()
         _previews.value = emptyMap()
         _verdicts.value = emptyMap()
+        Locker.sessionEnded()
         try {
             opened.reset()
         } catch (e: SessionFailure) {
@@ -598,6 +600,13 @@ object Core {
         if (opened.allowLocalHost(generation.toULong(), host)) {
             _localHosts.value = opened.localHosts(generation.toULong())
         }
+    }
+
+    /** Keeps quarantined file `fileId` in the unlocked vault (§14); it is still untrusted. */
+    fun keep(fileId: String) {
+        val generation = currentGeneration ?: return
+        val opened = sessions ?: return
+        Locker.keep(opened, generation, fileId)
     }
 
     /**

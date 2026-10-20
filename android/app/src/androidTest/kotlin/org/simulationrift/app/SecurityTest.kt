@@ -114,6 +114,7 @@ class SecurityTest {
         }
         assertEquals(emptyList<String>(), dangerous)
         assertTrue("android.permission.INTERNET" in requested)
+        assertTrue("android.permission.USE_BIOMETRIC" in requested) // the vault prompt (§8.7)
 
         // Nor does the browser app, the one pages run in. androidx.core adds a
         // signature permission of the app's own, for its unexported receivers.
@@ -717,6 +718,181 @@ class SecurityTest {
     }
 
     /** Waits for the scan that follows each download. */
+    // ---- Phase 4: the Rift Vault (§14, S18 on the device) ---------------------------
+
+    @Test
+    fun v1_keptFileOutlivesTheSessionAndNoPlaintextIsOnDisk() {
+        destroyVault()
+        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+        awaitVault<Locker.State.Unlocked>()
+        allowFixtureHost()
+        val file = submit(activeGeneration(), fixture("/files/notes.txt")).file!!
+        Core.keep(file.id)
+        awaitCondition("kept") { file.id in Locker.kept.value }
+        val entry = (Locker.state.value as Locker.State.Unlocked).entries.single()
+        assertEquals(file.sha256, entry.sha256)
+        assertEquals("notes.txt", entry.displayName)
+
+        // On disk: the scrypt-wrapped identity, the index (and the one before,
+        // for crash recovery) and one sealed object, nothing readable.
+        val vault = File(context.filesDir, "rift/vault")
+        val stored = vault.walkTopDown().filter { it.isFile }.map { it.relativeTo(vault).path }.sorted().toList()
+        assertEquals(listOf("identity.pass", "index.age", "index.age.prev", "objects/${entry.id}.age"), stored)
+        assertEquals(emptyList<String>(), filesContaining(MARKER) + filesContaining("AGE-SECRET-KEY-".toByteArray()))
+
+        // The session ends; the kept copy does not, and the reset's leftover check accepts it.
+        val next = resetAndAwait(activeGeneration())
+        assertTrue(Locker.kept.value.isEmpty())
+        Locker.lock()
+        awaitVault<Locker.State.Locked>()
+        val wrong = vaultMessageOf { Locker.unlockWithPassphrase("not the passphrase".toByteArray()) }
+        assertEquals("The vault was not unlocked: the passphrase or key does not open this vault", wrong)
+        assertTrue(Locker.state.value is Locker.State.Locked)
+        Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
+        val reopened = awaitVault<Locker.State.Unlocked>()
+        assertEquals(listOf(entry), reopened.entries)
+
+        // Export writes the original bytes where the user chose; then the file is removed.
+        val exported = File(context.cacheDir, "v1-export").apply { delete() }
+        assertEquals(
+            "Exported. The copy is outside Rift's protection now, and was not made safe.",
+            vaultMessageOf { Locker.export(entry.id, android.net.Uri.fromFile(exported)) },
+        )
+        assertTrue(contains(exported.readBytes(), MARKER))
+        exported.delete()
+        assertEquals("Removed from the vault.", vaultMessageOf { Locker.remove(entry.id) })
+        assertTrue((Locker.state.value as Locker.State.Unlocked).entries.isEmpty())
+        assertFalse(File(vault, "objects/${entry.id}.age").exists())
+        report("v1", "stored=$stored; after reset to $next: wrong passphrase -> \"$wrong\"; reopened ${reopened.entries.size} entry")
+        destroyVault()
+    }
+
+    @Test
+    fun v2_vaultLocksInTheBackgroundAndWhenIdle() {
+        destroyVault()
+        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+        awaitVault<Locker.State.Unlocked>()
+        val home = openHome()
+        assertTrue(Locker.state.value is Locker.State.Unlocked)
+        device.pressHome()
+        awaitVault<Locker.State.Locked>()
+        home.finish()
+
+        val idle = Locker.inactivityMs
+        try {
+            Locker.inactivityMs = 1_500
+            Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
+            awaitVault<Locker.State.Unlocked>()
+            val started = SystemClock.elapsedRealtime()
+            awaitVault<Locker.State.Locked>()
+            report("v2", "locked on Home; idle lock after ${SystemClock.elapsedRealtime() - started} ms (limit 1500)")
+        } finally {
+            Locker.inactivityMs = idle
+        }
+        destroyVault()
+    }
+
+    /**
+     * The Keystore key (§8.7) through the real BiometricPrompt: a PIN set by
+     * the shell, typed into the system's credential screen. Removing the PIN
+     * invalidates the key, and the vault says so instead of opening.
+     */
+    @Test
+    fun v3_keystoreVaultNeedsTheScreenLockAndDiesWithIt() {
+        destroyVault()
+        device.executeShellCommand("locksettings set-pin $PIN")
+        try {
+            awaitCondition("secure lock screen") { VaultKeystore.deviceSecure(context) }
+            Locker.open(context) // refreshes the state, which now offers the keystore
+            awaitCondition("keystore offered") { (Locker.state.value as? Locker.State.Absent)?.deviceSecure == true }
+            val home = openHome()
+            Locker.createWithDeviceLock(home)
+            enterPin()
+            val created = awaitVault<Locker.State.Unlocked>()
+            assertNotNull(created.keyLevel)
+            val wrapped = File(context.filesDir, "rift/vault/identity.platform").readBytes()
+            assertFalse(contains(wrapped, "AGE-SECRET-KEY-".toByteArray()))
+
+            Locker.lock()
+            awaitVault<Locker.State.Locked>()
+            Locker.unlockWithDeviceLock(home)
+            enterPin()
+            awaitVault<Locker.State.Unlocked>()
+            Locker.lock()
+            awaitVault<Locker.State.Locked>()
+            home.finish()
+
+            device.executeShellCommand("locksettings clear --old $PIN")
+            awaitCondition("lock screen removed") { !VaultKeystore.deviceSecure(context) }
+            val again = openHome()
+            val invalidated = vaultMessageOf { Locker.unlockWithDeviceLock(again) }
+            assertEquals(VaultKeystore.INVALIDATED, invalidated)
+            again.finish()
+            report("v3", "key in ${created.keyLevel}; ${wrapped.size}-byte wrapped identity; after the PIN was removed: $invalidated")
+        } finally {
+            device.executeShellCommand("locksettings clear --old $PIN")
+            destroyVault()
+        }
+    }
+
+    private fun destroyVault() {
+        Locker.destroy()
+        awaitVault<Locker.State.Absent>()
+        Locker.holding = false
+    }
+
+    private inline fun <reified T : Locker.State> awaitVault(): T {
+        val deadline = SystemClock.elapsedRealtime() + VAULT_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            (Locker.state.value as? T)?.let { return it }
+            SystemClock.sleep(50)
+        }
+        throw AssertionError("vault not ${T::class.simpleName}: ${Locker.state.value}; ${Locker.message.value}")
+    }
+
+    /** The message of vault action `start` (each test's consecutive messages differ). */
+    private fun vaultMessageOf(start: () -> Unit): String {
+        val before = Locker.message.value
+        start()
+        val deadline = SystemClock.elapsedRealtime() + VAULT_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            Locker.message.value?.takeIf { it != before }?.let { return it }
+            SystemClock.sleep(50)
+        }
+        throw AssertionError("no vault message after: $before")
+    }
+
+    private fun awaitCondition(what: String, condition: () -> Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + VAULT_TIMEOUT_MS
+        while (!condition()) {
+            if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("timed out waiting for: $what")
+            SystemClock.sleep(50)
+        }
+    }
+
+    /** Opens the home screen in front, as the user would see it. */
+    private fun openHome(): android.app.Activity {
+        val monitor = instrumentation.addMonitor(MainActivity::class.java.name, null, false)
+        try {
+            context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return monitor.waitForActivityWithTimeout(UI_TIMEOUT_MS) ?: throw AssertionError("home screen did not open")
+        } finally {
+            instrumentation.removeMonitor(monitor)
+        }
+    }
+
+    /** Types the PIN into the system's credential screen once BiometricPrompt shows it. */
+    private fun enterPin() {
+        assertTrue("no credential screen", device.wait(Until.hasObject(By.pkg("com.android.systemui").clazz("android.widget.EditText")), UI_TIMEOUT_MS))
+        SystemClock.sleep(500)
+        device.executeShellCommand("input text $PIN")
+        device.executeShellCommand("input keyevent 66")
+    }
+
+    private fun filesContaining(needle: ByteArray): List<String> =
+        context.dataDir.walkTopDown().filter { it.isFile && contains(it.readBytes(), needle) }
+            .map { it.relativeTo(context.dataDir).path }.toList()
+
     private fun verdictOf(id: String): Verdict {
         val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
@@ -1009,6 +1185,10 @@ class SecurityTest {
         const val SCAN_TIMEOUT_MS = 40_000L
         // DNS through the lock fails only after the resolver's own timeouts.
         const val ESCAPE_TIMEOUT_MS = 90_000L
+        const val VAULT_TIMEOUT_MS = 20_000L
+        const val PASSPHRASE = "correct horse battery"
+        const val PIN = "1111"
+        val MARKER = "RIFT-PREVIEW-PLAINTEXT-MARKER".toByteArray()
         val STORES = listOf("cookie", "server_cookie", "localStorage", "indexedDB", "cacheStorage", "serviceWorker")
     }
 }
