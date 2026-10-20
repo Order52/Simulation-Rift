@@ -1,15 +1,40 @@
 //! Text from untrusted sources (web addresses, filenames) that is shown in
 //! the trusted UI.
 
-/// Characters that reorder or hide text. In a trusted message they could make
-/// web-supplied text appear to be part of Rift's own wording.
-const BIDI_AND_INVISIBLE: &[char] = &[
-    '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{202a}', '\u{202b}', '\u{202c}',
-    '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}', '\u{feff}',
+/// Unicode's format characters (general category Cf, Unicode 16.0
+/// DerivedGeneralCategory.txt): bidirectional controls, zero-width and
+/// joining characters, invisible operators, tag characters and the like.
+/// None is drawn as itself; in a trusted message they could reorder, hide or
+/// smuggle web-supplied text so that it appears to be Rift's own wording.
+/// The whole category, so that a control left off a hand-made list (the
+/// Arabic letter mark, the word joiner, tag characters were) cannot slip by.
+const FORMAT: &[(char, char)] = &[
+    ('\u{00ad}', '\u{00ad}'),
+    ('\u{0600}', '\u{0605}'),
+    ('\u{061c}', '\u{061c}'),
+    ('\u{06dd}', '\u{06dd}'),
+    ('\u{070f}', '\u{070f}'),
+    ('\u{0890}', '\u{0891}'),
+    ('\u{08e2}', '\u{08e2}'),
+    ('\u{180e}', '\u{180e}'),
+    ('\u{200b}', '\u{200f}'),
+    ('\u{202a}', '\u{202e}'),
+    ('\u{2060}', '\u{2064}'),
+    ('\u{2066}', '\u{206f}'),
+    ('\u{feff}', '\u{feff}'),
+    ('\u{fff9}', '\u{fffb}'),
+    ('\u{110bd}', '\u{110bd}'),
+    ('\u{110cd}', '\u{110cd}'),
+    ('\u{13430}', '\u{1343f}'),
+    ('\u{1bca0}', '\u{1bca3}'),
+    ('\u{1d173}', '\u{1d17a}'),
+    ('\u{e0001}', '\u{e0001}'),
+    ('\u{e0020}', '\u{e007f}'),
 ];
 
+/// A control character (Cc) or a format character (Cf).
 pub(crate) fn is_hidden_or_control(c: char) -> bool {
-    c.is_control() || BIDI_AND_INVISIBLE.contains(&c)
+    c.is_control() || FORMAT.iter().any(|&(first, last)| (first..=last).contains(&c))
 }
 
 /// Makes web-derived text safe to embed in a trusted sentence: control,
@@ -113,5 +138,19 @@ mod tests {
         );
         assert_eq!(escape_for_display("bücher.example"), "bücher.example");
         assert_eq!(escape_for_display("a\u{200b}b"), "a\\u{200b}b");
+    }
+
+    #[test]
+    fn every_format_character_is_made_visible() {
+        // Arabic letter mark (a bidi control), word joiner, soft hyphen,
+        // a tag character (invisible, used to smuggle text) and the
+        // deprecated shaping controls: all category Cf, none in the first list.
+        for c in ['\u{61c}', '\u{2060}', '\u{ad}', '\u{e0041}', '\u{206a}', '\u{fff9}'] {
+            let text = format!("a{c}b");
+            assert_eq!(escape_for_display(&text), format!("a\\u{{{:x}}}b", u32::from(c)));
+            assert_eq!(plain_text(text.as_bytes(), 64).unwrap().text, format!("a\\u{{{:x}}}b", u32::from(c)));
+        }
+        // Letters around the ranges stay as they are.
+        assert_eq!(escape_for_display("\u{5ff}\u{606}\u{2065}\u{e0080}"), "\u{5ff}\u{606}\u{2065}\u{e0080}");
     }
 }
