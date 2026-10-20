@@ -13,7 +13,7 @@
 | 4: Vault | **Built and tested on the host and the API 35 emulator** ([report](phase-4.md)): a Keystore key behind BiometricPrompt (or a passphrase), keep from quarantine, warned export, lock on request, in the background and when idle, and a no-plaintext-on-disk inventory. Kept files preview in an isolated worker until the vault locks; a recovery passphrase opens a vault whose key was lost. **Open:** a physical phone (the emulator's Keystore is software only). |
 | 5: Linux app | Not started. **Moved to the last step** and **to Qt instead of GTK4** (decided 20 Oct 2026); the design will be revised before any code. |
 | 6: AI experiment | Not started; deferred and gated by design. |
-| 7: Hardening | **Started on Android** ([report](phase-7.md)): privacy measurements x1 (local work and updates move no byte on real networks; nothing scheduled) and x2 (browsing leaves only through the controller's proxy) pass on API 35; the dependency and licence inventory is written ([inventory](dependencies.md)). Both APKs carry generated third-party notices, shown in the app (l1). **Open:** fault injection, long fuzz campaigns, an Android advisory check, an external review, and release gates that need a phone. |
+| 7: Hardening | **Started on Android** ([report](phase-7.md)): privacy measurements x1 (local work and updates move no byte on real networks; nothing scheduled) and x2 (browsing leaves only through the controller's proxy) pass on API 35; the dependency and licence inventory is written ([inventory](dependencies.md)). Both APKs carry generated third-party notices, shown in the app (l1). Android libraries are locked (`gradle.lockfile`) and their runtime classpaths scanned with OSV-Scanner on every push. **Open:** fault injection, long fuzz campaigns, an external review, and release gates that need a phone. |
 
 ## 2. What was done
 
@@ -249,7 +249,7 @@ Phase 2 findings, added to the list above: 15–26.
 
 **Phase 6 and 7 (Android)**
 10. Optional AI experiment, shipped only if it adds measured value.
-11. Hardening: ~~privacy network checks~~ (x1, x2 on API 35; [phase-7.md](phase-7.md)) , ~~the dependency and licence inventory~~ ([dependencies.md](dependencies.md)) and ~~the in-app licence notices~~ (l1); open: fuzz campaigns, fault injection, an Android advisory check, release gates (§24), and an external security review before any release claim.
+11. Hardening: ~~privacy network checks~~ (x1, x2 on API 35; [phase-7.md](phase-7.md)) , ~~the dependency and licence inventory~~ ([dependencies.md](dependencies.md)) , ~~the in-app licence notices~~ (l1) and ~~an Android advisory check~~; open: fuzz campaigns, fault injection, release gates (§24), and an external security review before any release claim.
 
 **Phase 5: Linux (last, decided 20 Oct 2026)**
 12. A Qt desktop app on the shared core (not GTK4), with the worker lockdown and a fail-closed engine-sandbox check. The §9 design is revised for Qt and its PoCs redone first.

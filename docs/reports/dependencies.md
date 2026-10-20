@@ -11,7 +11,8 @@
 | Sources | `cargo deny check sources`: crates.io only, no git dependencies | Same | OK |
 | Duplicates and wildcards | `cargo deny check bans` | Same | Duplicates are warnings (below); no wildcards |
 | Exact versions | `Cargo.lock` is committed; builds use `--locked` | Every build | — |
-| Android (Gradle) dependencies | Versions pinned in `build.gradle.kts` | — | **No automated advisory check.** See "Gaps" |
+| Exact Android versions | Gradle dependency locking: every module's `gradle.lockfile` pins all resolved versions, transitive ones included | Every build | — |
+| Known advisories (Android) | `android/scan-dependencies.sh` with OSV-Scanner v2.6.0 (pinned, SHA-256 checked): the libraries on every module's runtime classpaths | Every push (CI job `dependencies`) and locally | None. A planted `commons-lang3` 3.16.0 on a runtime classpath was reported and failed the script, so a zero is meaningful |
 
 ## What ships
 
@@ -75,7 +76,8 @@ Owner: the project maintainer (Order52) is the only maintainer, so every row has
 
 ## Gaps
 
-- **Android dependencies have no automated advisory check.** The AndroidX and JNA versions are pinned and current as of this date, but nothing in CI flags a new advisory for them.
+- **Build tools are not gated.** The lockfiles also pin build-time classpaths. Scanned in full on 20 Oct 2026, they had 24 advisories, all in Android Lint's own classpath (`androidLintTool`, from the Android Gradle plugin 9.4.1): `commons-lang3` 3.16.0, `httpclient` 4.5.6 and Bouncy Castle 1.80.2. None of these ships, and `build.sh` does not run Lint. They go away with a plugin update that moves Lint's dependencies; until then they are known and not gated.
+- **OSV covers what is reported.** Like RustSec, it lists known advisories only.
 - **Notices are as good as their sources.** Where neither a crate nor its repository publishes a licence file, the notice names the authors from the crate's metadata; that is not the same as a copyright statement from the holders. No legal review has been done.
 - **No source audit.** Advisory databases list known problems only. The worker's parsers (`yara-x`, the image decoders) run on hostile input; containing them is the isolated worker's job (§8.6), not trust in the parsers.
 - **One maintainer** for every dependency.

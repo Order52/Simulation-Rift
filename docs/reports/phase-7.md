@@ -31,7 +31,7 @@ Architecture 2.1 replaced the study's question with a design: the browser app's 
 
 ## Dependency review
 
-Recorded in [`dependencies.md`](dependencies.md): how dependencies are checked, what ships in each library, licences, and the security-sensitive dependencies with their versions, use and upstream. No RustSec advisory applies outside eight triaged exceptions, all reached through `yara-x`'s pinned Wasmtime (each one's reason is in `deny.toml`, and they come out when `yara-x` moves to Wasmtime ≥ 48.0.6). Every licence is allowed, and all crates come from crates.io.
+Recorded in [`dependencies.md`](dependencies.md): how dependencies are checked, what ships in each library, licences, and the security-sensitive dependencies with their versions, use and upstream. No RustSec advisory applies outside eight triaged exceptions, all reached through `yara-x`'s pinned Wasmtime (each one's reason is in `deny.toml`, and they come out when `yara-x` moves to Wasmtime ≥ 48.0.6). Every licence is allowed, and all crates come from crates.io. The Android libraries are now locked like the crates (Gradle dependency locking: a `gradle.lockfile` per module, transitive versions included), and `android/scan-dependencies.sh` checks those on the runtime classpaths against OSV on every push. No advisories were found. A planted `commons-lang3` 3.16.0 on a runtime classpath was reported, and failed the check.
 
 ## Licence notices (§25)
 
@@ -52,7 +52,7 @@ Recorded in [`dependencies.md`](dependencies.md): how dependencies are checked, 
 | Gate | State |
 |---|---|
 | Every invariant has a passing test on the declared device matrix | **Not met.** All invariant tests pass on emulators (API 33–36, both ABIs, 16 KB pages). The matrix itself has not been declared as a fixed list of devices (§18's reference devices are still unnamed). Whatever it becomes, it must include physical phones, none of which has been tested, and the Linux app, which does not exist yet. |
-| Dependency advisories have been reviewed | **Met for Rust** (`cargo deny`, every push; eight triaged exceptions with an exit condition). **Not met for Android** dependencies: no automated advisory check. |
+| Dependency advisories have been reviewed | **Met.** Rust: `cargo deny`, every push, with eight triaged exceptions and an exit condition. Android: the locked runtime classpaths are scanned with OSV-Scanner on every push (none found; a planted vulnerable library was caught). Build tools are reviewed by hand: 24 advisories, all in Android Lint's classpath, which never ships ([`dependencies.md`](dependencies.md)). |
 | The licenses inventory is complete | **Met, without legal review.** The inventory is in [`dependencies.md`](dependencies.md). Both APKs carry generated notices for every linked Rust crate and every Android library, and the controller shows them (l1). The build fails when a crate or library has no known licence text. PDFium needs no notice from Rift: Android's `PdfRenderer` uses the system's copy, and Rift bundles none. |
 | The evidence reports are published | **Met for what exists**: the phase reports and `evidence/` are in the repository. |
 | Every security-sensitive dependency has a named maintenance owner | **Named** (the project maintainer, for all of them). One maintainer is a single point of failure. |
@@ -61,6 +61,5 @@ Recorded in [`dependencies.md`](dependencies.md): how dependencies are checked, 
 
 - **Fault injection on the device** beyond S13 (kill during reset) and S14 (renderer crash): for example, a kill while keeping a file or while installing an update, and a full disk.
 - **Long fuzz campaigns** with coverage measurement. The seven targets run for 60 s each on every push, which is not a release-grade campaign.
-- **An Android advisory check.**
 - **An external review.**
 - **A physical phone**, for everything above and for the hardware Keystore.
