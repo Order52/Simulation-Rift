@@ -29,6 +29,7 @@ import kotlin.concurrent.thread
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -41,6 +42,7 @@ import org.junit.runners.MethodSorters
 import org.json.JSONArray
 import org.simulationrift.bridge.ISession
 import org.simulationrift.bridge.NavigationDecision
+import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.Rift
 import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.IntelStatus
@@ -1169,6 +1171,86 @@ class SecurityTest {
             home.finish()
         }
         report("l1", "notices: Android ${android.lines().size} lines, Rust ${rust.lines().size} lines; screen opened and closed")
+    }
+
+    // ---- Live page watch (§10.5) ------------------------------------------------------
+
+    /**
+     * A page that asks for the location, camera and microphone, loads from a
+     * listed address, probes the LAN, uses WebRTC and opens a file chooser;
+     * then a listed address and a listed download. The session's live watch,
+     * fed only by Rift's enforcement points, must show each, the browser's
+     * bar must say "Danger", and the page must have got nothing.
+     */
+    @Test
+    fun w1_liveWatchShowsWhatThePageTried() {
+        Core.installDemoIntel()
+        assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
+        val generation = resetAndAwait(activeGeneration())
+        val page = visit("w1", "/watch.html")
+        for (key in listOf("geolocation", "camera", "microphone")) {
+            assertTrue("$key: ${page.optString(key)}", page.optString(key).startsWith("DENIED"))
+        }
+        // "lan" settles either way (an opaque no-cors response is the proxy's
+        // 403 too); the proxy's own record of the refusal is checked below.
+        // The file chooser needs a tap on the page (a user gesture).
+        val upload = device.wait(Until.findObject(By.text("Upload a file")), UI_TIMEOUT_MS)
+        assertNotNull("the page's upload button", upload)
+        upload!!.click()
+        val expected = setOf("location", "camera", "microphone", "known-malicious-request", "local-network", "direct-connection", "files")
+        val seen = awaitWatch(generation) { codes -> codes.containsAll(expected) }
+        assertTrue("seen: $seen; page: ${http("/results?test=w1")}; proxy refused: ${Core.egressStats()?.recent}", seen.containsAll(expected))
+        assertEquals(PageWatch.Level.DANGER, Core.pageWatch(generation)?.level)
+        assertNotNull(device.wait(Until.findObject(By.res("watch-status").textStartsWith("Danger:")), UI_TIMEOUT_MS))
+        screenshot("w1-bar")
+        assertNotEquals("LOADED", http("/results?test=w1").let { JSONObject(it).optString("known_bad") })
+
+        // A listed address is blocked before it loads; a listed download is found in quarantine.
+        openBrowser(generation, "http://rift-demo.invalid/known-bad")
+        assertNotNull(device.wait(Until.findObject(By.text("Page blocked")), UI_TIMEOUT_MS))
+        val demo = verdictOf(download("/files/demo-file.txt").file!!.id)
+        assertEquals(ScanStatus.KNOWN_MALICIOUS, demo.status)
+        val after = awaitWatch(generation) { it.containsAll(setOf("known-malicious-address", "file-known-malicious")) }
+        assertTrue("seen: $after", after.containsAll(setOf("known-malicious-address", "file-known-malicious")))
+
+        // The list opens from the bar, in the browser's own trusted UI.
+        device.findObject(By.res("watch-status"))?.click()
+        assertNotNull(device.wait(Until.findObject(By.res("watch-list")), UI_TIMEOUT_MS))
+        screenshot("w1-list")
+        // And on Rift's home screen.
+        val home = openHome()
+        try {
+            assertNotNull(device.wait(Until.findObject(By.res("watch-level").text("Danger in this session")), UI_TIMEOUT_MS))
+            screenshot("w1-home")
+        } finally {
+            home.finish()
+        }
+        val watch = Core.pageWatch(generation)!!
+        report("w1", "page: $page; watch: " + watch.events.joinToString(" | ") { "${it.level} ${it.code} x${it.count}" })
+
+        // A new session starts with an empty watch.
+        val next = resetAndAwait(generation)
+        assertEquals(emptyList<PageWatch.Event>(), Core.pageWatch(next)?.events)
+        assertNull("the old session's watch is gone", Core.pageWatch(generation))
+    }
+
+    /** Saves the screen as evidence; run-tests.sh collects these into screens/. */
+    private fun screenshot(name: String) {
+        val dir = context.getExternalFilesDir("evidence") ?: return
+        device.waitForIdle()
+        assertTrue("screenshot $name", device.takeScreenshot(java.io.File(dir, "$name.png")))
+    }
+
+    /** The codes in `generation`'s watch, once `done` holds for them or the page timeout passes. */
+    private fun awaitWatch(generation: Long, done: (Set<String>) -> Boolean): Set<String> {
+        val deadline = SystemClock.elapsedRealtime() + PAGE_TIMEOUT_MS
+        var codes = emptySet<String>()
+        while (SystemClock.elapsedRealtime() < deadline) {
+            codes = Core.pageWatch(generation)?.events?.map { it.code }?.toSet().orEmpty()
+            if (done(codes)) return codes
+            SystemClock.sleep(200)
+        }
+        return codes
     }
 
     // ---- Privacy (§17, §18): what Rift sends by itself ------------------------------

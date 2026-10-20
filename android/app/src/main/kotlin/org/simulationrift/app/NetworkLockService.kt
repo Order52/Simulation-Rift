@@ -12,6 +12,7 @@ import android.system.OsConstants
 import android.system.StructPollfd
 import android.util.Log
 import java.net.InetAddress
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,8 +45,19 @@ object NetworkLock {
         data class Unavailable(val reason: String) : State
     }
 
-    /** What the lock has dropped since it started: packets, and the first distinct destinations. */
-    data class Dropped(val packets: Long = 0, val destinations: List<String> = emptyList())
+    /**
+     * What the lock has dropped in session count `epoch` ([newSession]):
+     * packets, and the first distinct destinations.
+     */
+    data class Dropped(val epoch: Long = 0, val packets: Long = 0, val destinations: List<String> = emptyList())
+
+    private val epochs = AtomicLong()
+
+    /** The resolver address the lock gives its network; nothing answers there. */
+    const val LOCK_DNS = "10.111.0.2"
+
+    /** The session count that drops are attributed to now. */
+    val epoch: Long get() = epochs.get()
 
     private val _state = MutableStateFlow<State>(State.Off)
     val state: StateFlow<State> = _state
@@ -73,8 +85,19 @@ object NetworkLock {
         context.startService(Intent(context, NetworkLockService::class.java))
     }
 
+    /**
+     * A session starts: the counts start again, so that each session's page
+     * watch (§10.5) shows its own drops. The drain thread picks up the new
+     * count before it reads its next packets. Returns the new count.
+     */
+    fun newSession(): Long {
+        val next = epochs.incrementAndGet()
+        _dropped.value = Dropped(next)
+        return next
+    }
+
     internal fun established() {
-        _dropped.value = Dropped()
+        _dropped.value = Dropped(epoch)
         _state.value = State.Active
         Log.i(TAG, "network lock active")
     }
@@ -89,6 +112,27 @@ object NetworkLock {
         _state.value = State.Lost(reason)
         Log.w(TAG, "network lock lost: $reason")
         Core.networkLockLost()
+    }
+
+    /**
+     * Whether a dropped destination ("UDP 10.0.2.2:3478", as the lock
+     * describes it) is the system's own background traffic on the lock's
+     * network rather than a connection attempt: ICMP and ICMPv6 (router and
+     * neighbour discovery), IPv6 hop-by-hop ("protocol 0": multicast
+     * listener reports), anything sent to a multicast or broadcast address,
+     * and DNS (53) and DNS over TLS (853) to the lock's own resolver address,
+     * which Android's resolver uses, and checks for private DNS, on the
+     * lock's network. Every one of them is dropped all the same.
+     */
+    fun isBackground(destination: String): Boolean {
+        val protocol = destination.substringBefore(' ')
+        if (protocol == "ICMP" || protocol == "ICMPv6" || destination.startsWith("protocol 0 ")) return true
+        val rest = destination.substringAfter(' ', "")
+        if (rest == "$LOCK_DNS:53" || rest == "$LOCK_DNS:853") return true
+        val address = if (rest.startsWith("[")) rest.substringAfter('[').substringBefore(']') else rest.substringBefore(':')
+        if (address.contains(':')) return address.lowercase().startsWith("ff")
+        val first = address.substringBefore('.').toIntOrNull() ?: return false
+        return first in 224..239 || address == "255.255.255.255"
     }
 
     /** From the drain thread, at most once per [NetworkLockService.PUBLISH_MS]: the UI redraws on each value. */
@@ -121,7 +165,7 @@ class NetworkLockService : VpnService() {
                 .addRoute("::", 0)
                 // Inside the tun's own range, so name lookups are dropped too
                 // instead of going to the network's resolver.
-                .addDnsServer(DNS_V4)
+                .addDnsServer(NetworkLock.LOCK_DNS)
                 .addAllowedApplication(Rift.BROWSER_PACKAGE)
                 .setBlocking(false)
                 .establish()
@@ -156,12 +200,19 @@ class NetworkLockService : VpnService() {
             events = OsConstants.POLLIN.toShort()
         }
         val failed = OsConstants.POLLERR or OsConstants.POLLHUP or OsConstants.POLLNVAL
+        var counted = NetworkLock.epoch
         var packets = 0L
         val destinations = LinkedHashSet<String>()
         var published = 0L
         var lastPublish = 0L
         try {
             while (tun === fd) {
+                if (NetworkLock.epoch != counted) {
+                    counted = NetworkLock.epoch
+                    packets = 0
+                    published = 0
+                    destinations.clear()
+                }
                 // Bounded, so a closed tun ends the loop even if poll never wakes.
                 val ready = Os.poll(arrayOf(poll), POLL_MS)
                 if (ready > 0 && (poll.revents.toInt() and failed) != 0) {
@@ -182,7 +233,7 @@ class NetworkLockService : VpnService() {
                 }
                 val now = SystemClock.elapsedRealtime()
                 if (packets != published && now - lastPublish >= PUBLISH_MS) {
-                    NetworkLock.publishDrops(NetworkLock.Dropped(packets, destinations.toList()))
+                    NetworkLock.publishDrops(NetworkLock.Dropped(counted, packets, destinations.toList()))
                     published = packets
                     lastPublish = now
                 }
@@ -217,7 +268,6 @@ class NetworkLockService : VpnService() {
     private companion object {
         const val TUN_V4 = "10.111.0.1"
         const val TUN_V6 = "fd00:7269:6674::1"
-        const val DNS_V4 = "10.111.0.2"
         const val MAX_PACKET = 32_767
         const val POLL_MS = 500
         const val PUBLISH_MS = 1_000L

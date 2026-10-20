@@ -9,12 +9,18 @@ import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.http.SslError
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.os.RemoteException
 import android.util.Log
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.HttpAuthHandler
@@ -31,15 +37,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -66,12 +76,14 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import androidx.webkit.WebViewMediaIntegrityApiStatusConfig
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.simulationrift.bridge.Fact
 import org.simulationrift.bridge.IBrowser
 import org.simulationrift.bridge.ICore
 import org.simulationrift.bridge.NavigationDecision
 import org.simulationrift.bridge.NetworkMode
+import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.SessionGrant
 
@@ -108,6 +120,21 @@ class BrowserActivity : ComponentActivity() {
     private var canGoBack by mutableStateOf(false)
     private var canGoForward by mutableStateOf(false)
     private var status by mutableStateOf<String?>(null)
+    /** The core's live watch of this session (§10.5); null until it answers, or if it cannot. */
+    private var watch by mutableStateOf<PageWatch?>(null)
+    private var watchAnswered by mutableStateOf(false)
+    private var watchOpen by mutableStateOf(false)
+    private val polling = Handler(Looper.getMainLooper())
+    // Off the UI thread: a reset holds the session while it shuts this window down.
+    private val watchReader = Executors.newSingleThreadExecutor { Thread(it, "rift-watch") }
+    private val poll = object : Runnable {
+        override fun run() {
+            core?.let { connected -> watchReader.execute { refreshWatch(connected) } }
+            polling.postDelayed(this, WATCH_POLL_MS)
+        }
+    }
+    /** When each kind of attempt from each origin was last reported, so a page cannot flood the core. */
+    private val reported = HashMap<String, Long>()
 
     private val browserBinder = object : IBrowser.Stub() {
         /** Returns once finish() has run, so the activity is not restored after the kill. */
@@ -132,6 +159,9 @@ class BrowserActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         check(Application.getProcessName() == Rift.WEB_PROCESS) { "BrowserActivity must run in ${Rift.WEB_PROCESS}" }
+        // The recents thumbnail is a screenshot the system keeps on disk,
+        // outside the browser app's data and so outside its wipe.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
         generation = intent.getLongExtra(Rift.EXTRA_GENERATION, 0)
         val processGen = processGeneration
         if (generation <= 0 || (processGen != null && processGen != generation)) {
@@ -223,11 +253,52 @@ class BrowserActivity : ComponentActivity() {
         }
         webView = createWebView()
         screen = Screen.Page
+        polling.removeCallbacks(poll)
+        polling.post(poll)
         intent.getStringExtra(Rift.EXTRA_URL)?.let(::openTyped)
     }
 
+    // ---- Live page watch (§10.5) --------------------------------------------------
+
+    /** On [watchReader]; the answer is shown on the UI thread. */
+    private fun refreshWatch(connected: ICore) {
+        val answer = try {
+            connected.pageWatch(generation)
+        } catch (e: RemoteException) {
+            exitProcess("core unreachable")
+            return
+        }
+        val decoded = PageWatch.fromBundle(answer)
+        runOnUiThread {
+            watch = decoded
+            watchAnswered = true
+        }
+    }
+
+    /** Reports a refused attempt (one of [PageWatch.Attempt]); at most once per [ATTEMPT_REPORT_MS] per kind and origin. */
+    private fun reportAttempt(kind: String, origin: String?) {
+        val key = "$kind ${origin.orEmpty()}"
+        val now = SystemClock.elapsedRealtime()
+        if (reported[key]?.let { now - it < ATTEMPT_REPORT_MS } == true) return
+        if (reported.size >= MAX_REPORTED) reported.clear()
+        reported[key] = now
+        try {
+            core?.reportAttempt(generation, kind, origin.orEmpty())
+        } catch (e: RemoteException) {
+            exitProcess("core unreachable")
+        }
+    }
+
+    /** Asks keyboards not to learn from what is typed into pages (`IME_FLAG_NO_PERSONALIZED_LEARNING`). */
+    private class PrivateWebView(context: Context) : WebView(context) {
+        override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? =
+            super.onCreateInputConnection(outAttrs).also {
+                outAttrs.imeOptions = outAttrs.imeOptions or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
-    private fun createWebView(): WebView = WebView(this).apply {
+    private fun createWebView(): WebView = PrivateWebView(this).apply {
         settings.apply {
             javaScriptEnabled = true // sites need it; no bridge is ever added (INV-6)
             domStorageEnabled = true
@@ -236,7 +307,10 @@ class BrowserActivity : ComponentActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             setSupportMultipleWindows(false)
             javaScriptCanOpenWindowsAutomatically = false
-            setGeolocationEnabled(false)
+            // Only so that the engine asks Chrome below, which always says no
+            // and reports the attempt (§10.5). The browser app holds no
+            // location permission, so the OS refuses a location in any case.
+            setGeolocationEnabled(true)
         }
         // WebView gives every page window.android.webview, a Media Integrity
         // API that asks Google Play for a device attestation (found by S1).
@@ -360,22 +434,43 @@ class BrowserActivity : ComponentActivity() {
         }
     }
 
-    private class Chrome : WebChromeClient() {
+    // Every refusal is reported to the core's page watch (§10.5).
+    private inner class Chrome : WebChromeClient() {
         // Camera, microphone, MIDI, protected media: always denied (B4).
-        override fun onPermissionRequest(request: PermissionRequest) = request.deny()
+        override fun onPermissionRequest(request: PermissionRequest) {
+            request.deny()
+            for (resource in request.resources) {
+                val kind = when (resource) {
+                    PermissionRequest.RESOURCE_VIDEO_CAPTURE -> PageWatch.Attempt.CAMERA
+                    PermissionRequest.RESOURCE_AUDIO_CAPTURE -> PageWatch.Attempt.MICROPHONE
+                    PermissionRequest.RESOURCE_MIDI_SYSEX -> PageWatch.Attempt.MIDI
+                    PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID -> PageWatch.Attempt.PROTECTED_MEDIA
+                    else -> null
+                }
+                kind?.let { reportAttempt(it, request.origin.toString()) }
+            }
+        }
 
-        override fun onGeolocationPermissionsShowPrompt(origin: String, callback: GeolocationPermissions.Callback) =
+        override fun onGeolocationPermissionsShowPrompt(origin: String, callback: GeolocationPermissions.Callback) {
             callback.invoke(origin, false, false)
+            reportAttempt(PageWatch.Attempt.LOCATION, origin)
+        }
 
         // The per-session file-chooser toggle is not built yet, so uploads are denied.
         override fun onShowFileChooser(
             webView: WebView,
             filePathCallback: ValueCallback<Array<android.net.Uri>>,
             fileChooserParams: FileChooserParams,
-        ): Boolean = false
+        ): Boolean {
+            reportAttempt(PageWatch.Attempt.FILES, webView.url)
+            return false
+        }
 
         // Fullscreen would cover the trusted indicator (INV-6), so it is refused.
-        override fun onShowCustomView(view: View, callback: CustomViewCallback) = callback.onCustomViewHidden()
+        override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+            callback.onCustomViewHidden()
+            reportAttempt(PageWatch.Attempt.FULLSCREEN, webView?.url)
+        }
     }
 
     // ---- Lifecycle -------------------------------------------------------------
@@ -389,6 +484,8 @@ class BrowserActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        polling.removeCallbacks(poll)
+        watchReader.shutdownNow()
         lockWatch?.let { NetworkLock.unwatch(this, it) }
         lockWatch = null
         webView?.destroy()
@@ -465,7 +562,60 @@ class BrowserActivity : ComponentActivity() {
                 )
             }
             status?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("status")) }
+            if (webView != null) WatchPanel()
         }
+    }
+
+    /**
+     * The session's live status, from the core (§10.5). Never "safe": the
+     * best it says is that nothing suspicious has been seen, with what is
+     * watched. Tapping it lists what was seen.
+     */
+    @Composable
+    private fun WatchPanel() {
+        val current = watch
+        val level = current?.level
+        val (summary, color) = when {
+            current == null -> (if (watchAnswered) "Live check unavailable" else "Live check starting…") to MaterialTheme.colorScheme.errorContainer
+            level == PageWatch.Level.DANGER -> "Danger: ${current.events.first().text}" to MaterialTheme.colorScheme.error
+            level == PageWatch.Level.WARNING -> "Warning: ${current.events.first().text}" to MaterialTheme.colorScheme.errorContainer
+            else -> "Nothing suspicious seen so far" + (if (current.events.isEmpty()) "" else " (${current.events.size} notes)") to
+                MaterialTheme.colorScheme.secondaryContainer
+        }
+        val onColor = if (level == PageWatch.Level.DANGER) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurface
+        Column(Modifier.fillMaxWidth().padding(top = 4.dp).background(color).clickable { watchOpen = !watchOpen }.padding(6.dp)) {
+            Text(
+                summary,
+                color = onColor,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = if (watchOpen) Int.MAX_VALUE else 2,
+                modifier = Modifier.testTag("watch-status"),
+            )
+            if (watchOpen && current != null) {
+                Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState()).testTag("watch-list")) {
+                    val now = SystemClock.elapsedRealtime()
+                    current.events.forEach { event ->
+                        val times = if (event.count > 1) " ×${event.count}" else ""
+                        val ago = ((now - event.lastSeen) / 1000).coerceAtLeast(0)
+                        Text(
+                            "${event.level.label()}$times, ${ago}s ago: ${event.text}",
+                            color = onColor,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp).testTag("watch-event"),
+                        )
+                    }
+                    current.coverage.forEach {
+                        Text(it, color = onColor, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun PageWatch.Level.label() = when (this) {
+        PageWatch.Level.DANGER -> "Danger"
+        PageWatch.Level.WARNING -> "Warning"
+        PageWatch.Level.NOTE -> "Note"
     }
 
     private fun protectionSummary(): String {
@@ -512,6 +662,9 @@ class BrowserActivity : ComponentActivity() {
 
     companion object {
         private const val SHUTDOWN_TIMEOUT_MS = 1_000L
+        private const val WATCH_POLL_MS = 1_000L
+        private const val ATTEMPT_REPORT_MS = 1_000L
+        private const val MAX_REPORTED = 256
 
         /** The generation whose WebView data directory this process uses; fixed once set. */
         @Volatile private var processGeneration: Long? = null

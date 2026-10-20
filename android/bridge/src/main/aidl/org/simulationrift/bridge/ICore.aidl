@@ -46,4 +46,15 @@ interface ICore {
 
     /** The renderer died: the session is torn down (INV-7). */
     oneway void rendererGone(long generation, boolean crashed);
+
+    /**
+     * The engine reported something a page tried that only it can see, and
+     * that was refused (§10.5): `kind` is one of PageWatch.Attempt, `origin`
+     * the page's origin as the engine gave it. The core validates both and
+     * counts repeats; a report can add to this session's watch only.
+     */
+    oneway void reportAttempt(long generation, String kind, String origin);
+
+    /** This session's page watch, encoded by PageWatch; empty for any other generation. */
+    Bundle pageWatch(long generation);
 }

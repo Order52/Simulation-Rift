@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.simulationrift.bridge.PageWatch
 import org.simulationrift.core.EgressStats
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
@@ -155,6 +156,7 @@ class MainActivity : ComponentActivity() {
                 NetworkCard(lock, active?.generation, reduced)
                 if (active != null) {
                     if (mayBrowse) BrowseCard(active.generation)
+                    WatchCard(active.generation)
                     DownloadsCard()
                 }
                 VaultCard()
@@ -190,6 +192,45 @@ class MainActivity : ComponentActivity() {
                         Button(onClick = Core::retry) { Text("Retry cleanup") }
                     }
                 }
+            }
+        }
+    }
+
+    /** The session's live page watch (§10.5), as the browser's bar shows it. */
+    @Composable
+    private fun WatchCard(generation: Long) {
+        val watch by produceState<PageWatch?>(null, generation) {
+            while (true) {
+                value = withContext(Dispatchers.Default) { Core.pageWatch(generation) }
+                delay(STATS_REFRESH_MS)
+            }
+        }
+        val current = watch ?: return
+        val level = current.level
+        val colors = when (level) {
+            PageWatch.Level.DANGER -> CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError)
+            PageWatch.Level.WARNING -> CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            else -> CardDefaults.cardColors()
+        }
+        Card(Modifier.fillMaxWidth().testTag("watch"), colors = colors) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    when (level) {
+                        PageWatch.Level.DANGER -> "Danger in this session"
+                        PageWatch.Level.WARNING -> "Warnings in this session"
+                        else -> "Nothing suspicious seen so far in this session"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.testTag("watch-level"),
+                )
+                current.events.take(WATCH_SHOWN).forEach { event ->
+                    Text((if (event.count > 1) "×${event.count} " else "") + event.text, style = MaterialTheme.typography.bodySmall)
+                }
+                if (current.events.size > WATCH_SHOWN) {
+                    Text("${current.events.size - WATCH_SHOWN} more in the browser's live check.", style = MaterialTheme.typography.bodySmall)
+                }
+                if (level == PageWatch.Level.DANGER) Text("Reset the session to dispose of everything it holds.")
+                current.coverage.forEach { Text(it, style = MaterialTheme.typography.labelSmall) }
             }
         }
     }
@@ -722,6 +763,7 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val STATS_REFRESH_MS = 1_000L
+        const val WATCH_SHOWN = 5
     }
 
     @Composable

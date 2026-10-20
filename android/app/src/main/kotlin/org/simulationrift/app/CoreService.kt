@@ -64,6 +64,16 @@ class CoreService : Service() {
             checkCaller()
             Core.rendererGone(generation, crashed)
         }
+
+        override fun reportAttempt(generation: Long, kind: String, origin: String) {
+            checkCaller()
+            Core.reportAttempt(generation, kind, origin)
+        }
+
+        override fun pageWatch(generation: Long): Bundle {
+            checkCaller()
+            return Core.pageWatch(generation)?.toBundle() ?: Bundle()
+        }
     }
 
     private fun checkCaller() = Rift.requireCaller(this, Rift.BROWSER_PACKAGE)

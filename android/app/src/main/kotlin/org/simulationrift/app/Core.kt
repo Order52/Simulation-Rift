@@ -21,6 +21,7 @@ import org.simulationrift.bridge.Fact
 import org.simulationrift.bridge.IBrowser
 import org.simulationrift.bridge.NavigationDecision
 import org.simulationrift.bridge.NetworkMode
+import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.SessionGrant
 import org.simulationrift.core.DisposalException
@@ -176,6 +177,12 @@ object Core {
     @Volatile private var currentGeneration: Long? = null
     @Volatile private var browser: RegisteredBrowser? = null
 
+    /** The current session's page watch (§10.5), with its generation. */
+    private class Watch(val generation: Long, val watcher: PageWatcher)
+    @Volatile private var watch: Watch? = null
+
+    private fun watcher(generation: Long): PageWatcher? = watch?.takeIf { it.generation == generation }?.watcher
+
     /**
      * Until the signed intelligence pack carries these lists (Phase 3), the
      * lookalike and shortener checks use this short built-in set.
@@ -264,6 +271,8 @@ object Core {
     private fun start(opened: Sessions, recovered: Long?) {
         try {
             val generation = opened.start().toLong()
+            // Before the generation is current, so its first decision is watched.
+            watch = Watch(generation, PageWatcher(NetworkLock.newSession()))
             currentGeneration = generation
             _state.value = State.Active(generation, recovered)
             Log.i(TAG, "session $generation active" + (recovered?.let { "; recovered interrupted session $it" } ?: ""))
@@ -398,8 +407,10 @@ object Core {
         val decision = when (val d = navigator.decide(url, sandboxVerified, database, nowUnix())) {
             is Navigation.Proceed -> NavigationDecision.Proceed(d.notes.map(::fact))
             is Navigation.Confirm -> NavigationDecision.Confirm(d.reasons.map(::fact), d.notes.map(::fact), displaySafe(url))
-            is Navigation.Block -> return NavigationDecision.Block(fact(d.reason), d.inspectAnyway, displaySafe(url))
+            is Navigation.Block -> NavigationDecision.Block(fact(d.reason), d.inspectAnyway, displaySafe(url))
         }
+        watcher(generation)?.navigation(url, decision)
+        if (decision is NavigationDecision.Block) return decision
         // INV-14: nothing loads unless every request goes through the proxy,
         // behind the lock unless the user chose reduced isolation.
         val network = registered?.network
@@ -429,6 +440,9 @@ object Core {
                 Download(key, displaySafe(info.url), failure = describe(e))
             }
             Log.i(TAG, "download $key in generation $generation: " + (outcome.file?.let { "stored ${it.size} bytes" } ?: "not captured: ${outcome.failure}"))
+            watcher(generation)?.let { watcher ->
+                outcome.file?.let { watcher.downloaded(it.displayName) } ?: watcher.downloadRefused(outcome.url, outcome.failure.orEmpty())
+            }
             if (generation == currentGeneration) {
                 _downloads.update { list -> list.map { if (it.key == key) outcome else it } }
                 outcome.file?.let { scan(it.id, scanWorker) }
@@ -460,6 +474,10 @@ object Core {
             }
             Log.i(TAG, "scan of $fileId in generation $generation after ${android.os.SystemClock.elapsedRealtime() - started} ms: " +
                 (verdict?.let { v -> "${v.label}; findings ${v.findings.map { "${it.check}:${it.id}" }}; gaps ${v.gaps}" } ?: "not run"))
+            if (verdict != null) {
+                val name = _downloads.value.firstNotNullOfOrNull { it.file?.takeIf { f -> f.id == fileId }?.displayName } ?: "a file"
+                watcher(generation)?.verdict(name, verdict)
+            }
             if (generation == currentGeneration) {
                 _verdicts.update { if (verdict == null) it - fileId else it + (fileId to verdict) }
             }
@@ -758,8 +776,49 @@ object Core {
 
     fun rendererGone(generation: Long, crashed: Boolean) {
         Log.w(TAG, "renderer gone (crashed=$crashed) in generation $generation; ending the session")
+        if (generation != currentGeneration) return
+        _notice.value = "Session $generation ended because the page's renderer " +
+            (if (crashed) "crashed. A crash can be a sign of an attack on the browser engine; " else "was stopped by the system; ") +
+            "the session's data was wiped."
         reset(generation)
     }
+
+    // ---- Live page watch (§10.5) ---------------------------------------------------
+
+    /**
+     * The browser engine refused something only it sees (a permission, a
+     * file chooser, fullscreen). Validated: the generation must be current
+     * with a registered browser, and `kind` one of [PageWatch.Attempt].
+     */
+    fun reportAttempt(generation: Long, kind: String, origin: String) {
+        if (browser?.generation != generation || kind !in PageWatch.Attempt.ALL) return
+        watcher(generation)?.attempt(kind, origin.take(MAX_ORIGIN_CHARS))
+    }
+
+    /** `generation`'s page watch, up to date, or null if it is not the current session. */
+    fun pageWatch(generation: Long): PageWatch? {
+        val watcher = watcher(generation)?.takeIf { generation == currentGeneration } ?: return null
+        watcher.egress(egressStats())
+        watcher.lock(NetworkLock.dropped.value)
+        return watcher.snapshot(coverage(generation))
+    }
+
+    /** What the watch covers in this session, so that "nothing seen" has a meaning. */
+    private fun coverage(generation: Long): List<String> = listOfNotNull(
+        when (val intel = _intel.value) {
+            is IntelStatus.Installed ->
+                "Threat database ${intel.snapshot}" + (if (intel.demo) " (demo: it lists only Rift's own test content)" else "") +
+                    (if (intel.stale) ", out of date" else "") + ": checked for every address and every request through Rift's proxy."
+            else -> "No threat database is installed: addresses are checked by Rift's built-in rules only."
+        },
+        "Watched: requests for location, camera, microphone, files and fullscreen; connections to your local network; " +
+            "connections around the proxy; every download, scanned in an isolated worker.",
+        "Not seen: what scripts do inside the page, what you type into it, the contents of HTTPS traffic, and what a page writes to the clipboard.",
+        ("Reduced isolation: there is no network lock in this session, so connections around the proxy are neither stopped nor seen.")
+            .takeIf { _reduced.value == generation },
+    )
+
+    private const val MAX_ORIGIN_CHARS = 2_048
 
     /** The browser registered for disposal, detached so no further calls reach it. */
     internal fun detachBrowser(): IBrowser? = browser?.binder.also { browser = null }

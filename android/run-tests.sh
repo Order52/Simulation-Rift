@@ -95,6 +95,8 @@ if [ "${RIFT_HOST_ONLY:-0}" != 1 ]; then
   grep -E "^OK|^Tests run|FAILURES" "$out/instrumentation.txt" || true
   "$adb" logcat -d -s Rift:I RiftBrowser:I ActivityManager:I | tr -d '\r' \
     | grep -E " (Rift|RiftBrowser) *:|simulationrift" > "$out/logcat-instrumented.txt" || true
+  # Screenshots some tests take of the trusted UI (w1).
+  "$adb" pull /sdcard/Android/data/$pkg/files/evidence/. "$out/screens" >/dev/null 2>&1 || true
 fi
 
 # ---- Host-driven tests (root) -------------------------------------------------
