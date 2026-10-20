@@ -46,3 +46,47 @@ jobs:
           name: linux-qt-q1
           path: out/
           if-no-files-found: ignore
+
+  q4-worker-lockdown:
+    name: Q4 worker lockdown inside Flatpak (L2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain and Flatpak
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          sudo apt-get update -q
+          sudo apt-get install -y -q flatpak
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          # The runtime the KDE 6.10 runtime is built on: the same bwrap and
+          # seccomp setup as the app's own sandbox.
+          flatpak install --user -y --noninteractive flathub org.freedesktop.Platform//25.08
+      - name: Build
+        working-directory: poc
+        run: cargo build --release --locked -p linux-worker-lockdown
+      - name: Run all modes inside a Flatpak sandbox
+        run: |
+          mkdir -p out
+          bin="$PWD/poc/target/release"
+          status=0
+          for mode in none fd-only ro-dir strict; do
+            echo "## mode $mode" | tee -a out/q4.txt
+            s=0
+            flatpak run --user --filesystem="$bin:ro" --command="$bin/linux-worker-lockdown" \
+              org.freedesktop.Platform//25.08 controller --mode "$mode" > out/mode.txt 2>&1 || s=$?
+            cat out/mode.txt | tee -a out/q4.txt
+            echo "exit status $s" | tee -a out/q4.txt
+            [ $s -eq 0 ] || status=1
+          done
+          # The sandbox the modes ran in, for the record.
+          flatpak run --user --command=sh org.freedesktop.Platform//25.08 -c \
+            'grep -E "^(Seccomp|NoNewPrivs)" /proc/self/status; ls -l /proc/self/ns' >> out/q4.txt 2>&1
+          cat out/q4.txt >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: linux-qt-q4
+          path: out/
+          if-no-files-found: ignore
