@@ -1433,12 +1433,7 @@ class SecurityTest {
     }
 
     private fun openBrowser(generation: Long, url: String?) {
-        context.startActivity(
-            Intent().setComponent(Rift.BROWSER_ACTIVITY)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra(Rift.EXTRA_GENERATION, generation)
-                .apply { url?.let { putExtra(Rift.EXTRA_URL, it) } },
-        )
+        Core.openWindow(context, generation, url)
         // The first start of the engine on a freshly booted emulator can take
         // most of the UI timeout by itself (n1 on API 33 in CI).
         val deadline = SystemClock.elapsedRealtime() + ENGINE_START_TIMEOUT_MS

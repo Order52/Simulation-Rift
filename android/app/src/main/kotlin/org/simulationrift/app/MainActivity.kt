@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import org.simulationrift.bridge.Rift
 import org.simulationrift.core.EgressStats
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
@@ -124,14 +123,8 @@ class MainActivity : ComponentActivity() {
         else -> null
     }
 
-    /** Starts the browser app's window for `generation`; it refuses to load pages without the lock's terms. */
-    private fun browse(generation: Long, input: String?) {
-        startActivity(
-            Intent().setComponent(Rift.BROWSER_ACTIVITY)
-                .putExtra(Rift.EXTRA_GENERATION, generation)
-                .apply { input?.let { putExtra(Rift.EXTRA_URL, it) } },
-        )
-    }
+    /** Starts the browser app's window for `generation` (Core.openWindow). */
+    private fun browse(generation: Long, input: String?) = Core.openWindow(this, generation, input)
 
     @Composable
     private fun Home() {

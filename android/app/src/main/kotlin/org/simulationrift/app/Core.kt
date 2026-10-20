@@ -3,7 +3,10 @@ package org.simulationrift.app
 import android.app.Application
 import android.app.Service
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import java.io.File
 import java.util.concurrent.Executors
@@ -16,6 +19,7 @@ import org.simulationrift.bridge.Fact
 import org.simulationrift.bridge.IBrowser
 import org.simulationrift.bridge.NavigationDecision
 import org.simulationrift.bridge.NetworkMode
+import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.SessionGrant
 import org.simulationrift.core.DisposalException
 import org.simulationrift.core.DownloadFailure
@@ -706,6 +710,36 @@ object Core {
         is PreviewFailure.Worker -> "the file could not be previewed: ${e.detail}"
         is PreviewFailure.Poisoned -> "session state is unusable after an internal error"
     }
+
+    /**
+     * Opens the browser app's window for `generation` (it refuses to load
+     * pages without the lock's terms). Twice on CI, Android removed the
+     * browser's task a few milliseconds after a window was started right
+     * after a wipe, so the browser never registered and no window appeared
+     * (cause not confirmed). If the browser has not registered for
+     * `generation` within [WINDOW_ATTACH_MS], the window is opened again, at
+     * most [WINDOW_REOPENS] times; each reopen is logged.
+     */
+    fun openWindow(context: Context, generation: Long, url: String?, reopens: Int = WINDOW_REOPENS) {
+        context.startActivity(
+            Intent().setComponent(Rift.BROWSER_ACTIVITY)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(Rift.EXTRA_GENERATION, generation)
+                .apply { url?.let { putExtra(Rift.EXTRA_URL, it) } },
+        )
+        if (reopens <= 0) return
+        val appContext = context.applicationContext
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (browser?.generation != generation && currentGeneration == generation) {
+                Log.w(TAG, "browser window for generation $generation did not attach; opening it again")
+                openWindow(appContext, generation, url, reopens - 1)
+            }
+        }, WINDOW_ATTACH_MS)
+    }
+
+    /** How long a new window may take to register its session (a cold engine start included). */
+    private const val WINDOW_ATTACH_MS = 15_000L
+    private const val WINDOW_REOPENS = 2
 
     fun rendererGone(generation: Long, crashed: Boolean) {
         Log.w(TAG, "renderer gone (crashed=$crashed) in generation $generation; ending the session")
