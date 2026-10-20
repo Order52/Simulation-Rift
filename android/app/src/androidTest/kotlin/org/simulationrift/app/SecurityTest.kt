@@ -728,7 +728,6 @@ class SecurityTest {
         throw AssertionError("no install outcome: ${Core.intelMessage.value}")
     }
 
-    /** Waits for the scan that follows each download. */
     // ---- Phase 4: the Rift Vault (§14, S18 on the device) ---------------------------
 
     @Test
@@ -1000,6 +999,103 @@ class SecurityTest {
         }
     }
 
+    // ---- Privacy (§17, §18): what Rift sends by itself ------------------------------
+
+    /**
+     * Local work and a manual update from the configured host move no byte
+     * on any real network for either of Rift's UIDs, and Rift schedules no
+     * alarm or job. The fixture and the update server are on loopback, which
+     * netstats does not count; traffic in the lock's tunnel (the browser's
+     * dropped packets) is excluded, as it leaves no device.
+     */
+    @Test
+    fun x1_localWorkAndUpdatesSendNothingElsewhere() {
+        val uids = mapOf(
+            "controller" to android.os.Process.myUid(),
+            "browser" to context.packageManager.getPackageUid(Rift.BROWSER_PACKAGE, 0),
+        )
+        destroyVault()
+        resetAndAwait(activeGeneration())
+        allowFixtureHost()
+        val served = File(context.cacheDir, "x1").apply { deleteRecursively() }
+        copyAsset("intel-demo/repo", served)
+        val server = java.net.ServerSocket(0, 8, java.net.InetAddress.getByName("127.0.0.1"))
+        val requests = java.util.concurrent.atomic.AtomicInteger()
+        thread(name = "x1-server", isDaemon = true) { serveFiles(server, served, requests) }
+        val before = uids.mapValues { networkBytes(it.value) }
+        try {
+            // (b) A manual update from the configured host.
+            Core.updateIntelOnline("http://localhost:${server.localPort}")
+            val installed = awaitIntelMessage()
+            assertTrue(installed, installed.startsWith("Installed demo-"))
+            // (a) Local work: a download from the fixture, its scan and preview,
+            // keeping it, scanning the vault's copy, locking and unlocking.
+            val file = download("/files/picture.png").file!!
+            verdictOf(file.id)
+            assertNotNull(previewOf(file.id).bitmap)
+            Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+            awaitVault<Locker.State.Unlocked>()
+            Core.keep(file.id)
+            awaitCondition("kept") { file.id in Locker.kept.value }
+            val id = (Locker.state.value as Locker.State.Unlocked).entries.single().id
+            val rescanned = vaultMessageOf { Locker.rescan(id) }
+            assertTrue(rescanned, rescanned.startsWith("Scanned again"))
+            Locker.lock()
+            awaitVault<Locker.State.Locked>()
+            // Idle with a session open (§18: no polling).
+            SystemClock.sleep(IDLE_MS)
+        } finally {
+            server.close()
+            served.deleteRecursively()
+        }
+        val after = uids.mapValues { networkBytes(it.value) }
+        // Any mention among alarms; among jobs, registered jobs ("JOB #…"), since
+        // the job dump also names every package in its quota and timer state.
+        val mentions = { line: String -> "org.simulationrift" in line && "org.simulationrift.app.test" !in line }
+        val scheduled = mapOf(
+            "alarm" to device.executeShellCommand("dumpsys alarm").lines().filter(mentions),
+            "jobscheduler" to device.executeShellCommand("dumpsys jobscheduler").lines().filter { "JOB #" in it && mentions(it) },
+        )
+        // Control: the measurement sees this UID's traffic. One TCP handshake
+        // from the controller's UID (this process) to a public address,
+        // without DNS (the local emulator's resolver once answered nothing).
+        val control = try {
+            java.net.Socket().use { it.connect(java.net.InetSocketAddress("1.1.1.1", 443), 10_000) }
+            val seen = networkBytes(uids.getValue("controller")) - after.getValue("controller")
+            assertTrue("the control request was not counted", seen > 0)
+            "control request counted ($seen bytes)"
+        } catch (e: java.io.IOException) {
+            "control not run (no network: $e), so the measurement's sensitivity is unverified here"
+        }
+        report("x1", "bytes on real networks before $before, after $after; update requests ${requests.get()}; " +
+            "alarm and job lines ${scheduled.mapValues { it.value.size }}; $control")
+        assertEquals("bytes on real networks", before, after)
+        assertEquals(emptyMap<String, List<String>>(), scheduled.filterValues { it.isNotEmpty() })
+        destroyVault()
+    }
+
+    /**
+     * Bytes `uid` moved on real networks, from netstats after a forced poll:
+     * every network but VPNs (type 17). Loopback belongs to no network, so it
+     * is not counted.
+     */
+    private fun networkBytes(uid: Int): Long {
+        device.executeShellCommand("dumpsys netstats --poll")
+        val section = device.executeShellCommand("dumpsys netstats detail").substringAfter("\nUID stats:").substringBefore("\nUID tag stats:")
+        var counting = false
+        var total = 0L
+        for (line in section.lines().map { it.trim() }) {
+            when {
+                line.startsWith("ident=") ->
+                    counting = Regex("""\buid=(\d+)""").find(line.substringAfterLast(']'))?.groupValues?.get(1)?.toInt() == uid &&
+                        !Regex("""\btype=17\b""").containsMatchIn(line)
+                counting && line.startsWith("st=") ->
+                    total += Regex("""\b[rt]b=(\d+)""").findAll(line).sumOf { it.groupValues[1].toLong() }
+            }
+        }
+        return total
+    }
+
     private fun destroyVault() {
         Locker.destroy()
         awaitVault<Locker.State.Absent>()
@@ -1058,6 +1154,7 @@ class SecurityTest {
         context.dataDir.walkTopDown().filter { it.isFile && contains(it.readBytes(), needle) }
             .map { it.relativeTo(context.dataDir).path }.toList()
 
+    /** Waits for the scan that follows each download. */
     private fun verdictOf(id: String): Verdict {
         val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
@@ -1342,6 +1439,7 @@ class SecurityTest {
         /** A session start or reset includes the browser wipe, whose clear may take up to 30 s (AndroidBrowserDisposal). */
         const val SESSION_TIMEOUT_MS = 60_000L
         const val WINDOW_ATTEMPTS = 3
+        const val IDLE_MS = 15_000L
 
         /** Intel messages that mean "still working". */
         val PROGRESS = setOf("Checking the update…", "Reading the update…", "Downloading the update…")
