@@ -200,7 +200,7 @@ Phase 2 findings, added to the list above: 15–26.
 | Android device matrix | Physical phones, OEM WebView builds, a 16 KB page-size device. All emulator levels (30, 33–36, both ABIs, 16 KB pages) have run. |
 | Deeper fuzzing | Ten targets, including the worker's image decoding and rule scanning, run on every push; a manual campaign workflow runs them for an hour each with coverage reports. Open: the first campaign's complete record, and campaigns longer than an hour (Phase 7). |
 | Phase 2 gate | The same suite on a physical phone; the instrumented suite against a release-like build. |
-| Phase 3 on Android | Built and passing on API 33–36 (both ABIs, 16 KB pages) on architecture 2.1. Open: a phone, and an import screen for user-chosen updates with a production root (release builds have none; being built). Done since: concurrent scan workers (two), short refusal messages, and a test that running scans keep their snapshot. |
+| Phase 3 on Android | Built and passing on API 33–36 (both ABIs, 16 KB pages) on architecture 2.1. Open: a phone, and a production root for release builds (the import screen and online updates are built: s16c, s16e). Done since: concurrent scan workers (two), short refusal messages, and a test that running scans keep their snapshot. |
 | Phases 4–7 | Everything in §5. |
 
 ## 4. Limitations and how to work around them
