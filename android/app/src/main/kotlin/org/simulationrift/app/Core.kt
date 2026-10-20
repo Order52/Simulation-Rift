@@ -129,9 +129,14 @@ object Core {
     private val _verdicts = MutableStateFlow<Map<String, Verdict?>>(emptyMap())
     val verdicts: StateFlow<Map<String, Verdict?>> = _verdicts
 
-    // Scans and database checks, one worker at a time (each holds the file or
-    // the rules in memory until its worker is retired).
-    private val scanning = Executors.newSingleThreadExecutor { Thread(it, "rift-scan") }
+    // Scans, a bounded number at a time: each holds its file (up to 32 MiB)
+    // and the rules in memory, and has its own fresh worker, until the worker
+    // is retired. A hung worker costs its own job up to the 17 s deadline,
+    // not the files queued behind it, unless every slot is hung at once.
+    private val scanning = Executors.newFixedThreadPool(SCAN_WORKERS) { Thread(it, "rift-scan") }
+
+    // Database updates, one at a time and in order.
+    private val updating = Executors.newSingleThreadExecutor { Thread(it, "rift-intel") }
     @Volatile private var database: Intel? = null
 
     /** The worker component for the scan after each download; tests substitute misbehaving ones. */
@@ -451,7 +456,7 @@ object Core {
     fun installIntel(trustedRoot: ByteArray, repository: File, service: Class<out Service> = PreviewService::class.java) {
         val intel = database ?: return
         _intelMessage.value = "Checking the update…"
-        scanning.execute {
+        updating.execute {
             _intelMessage.value = try {
                 intel.verifyOffline(trustedRoot, repository.path).use { pending ->
                     Scanner.check(app, pending, service)
@@ -476,7 +481,7 @@ object Core {
     }
 
     fun installDemoIntel(service: Class<out Service> = PreviewService::class.java) {
-        scanning.execute {
+        updating.execute {
             val copy = File(app.cacheDir, "intel-import")
             try {
                 copy.deleteRecursively()
@@ -484,7 +489,7 @@ object Core {
                 val root = app.assets.open("$DEMO_INTEL/root.json").use { it.readBytes() }
                 installIntel(root, File(copy, "repo"), service)
                 // Runs after the install on the same executor; the copy is not needed after.
-                scanning.execute { copy.deleteRecursively() }
+                updating.execute { copy.deleteRecursively() }
             } catch (e: java.io.IOException) {
                 _intelMessage.value = "the demo database is not available in this build: ${e.message}"
             }
@@ -503,6 +508,9 @@ object Core {
     }
 
     private const val DEMO_INTEL = "intel-demo"
+
+    /** Concurrent scans: enough that one hung worker does not hold the queue, few enough for memory. */
+    private const val SCAN_WORKERS = 2
 
     /** The user's per-session exception for one local host name (INV-13). */
     fun allowLocalHost(host: String) = worker.execute {

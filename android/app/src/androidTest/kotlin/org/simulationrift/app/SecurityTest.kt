@@ -28,6 +28,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.FixMethodOrder
@@ -457,13 +458,26 @@ class SecurityTest {
         Core.scanWorker = HangingScanService::class.java
         try {
             val started = SystemClock.elapsedRealtime()
-            val verdict = verdictOf(download("/files/demo-file.txt").file!!.id)
+            val hung = download("/files/demo-file.txt").file!!.id
+            // Queued for the hanging worker; files after it get a working one.
+            val queued = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
+            while (!Core.verdicts.value.containsKey(hung)) {
+                if (SystemClock.elapsedRealtime() > queued) throw AssertionError("no scan queued for $hung")
+                SystemClock.sleep(10)
+            }
+            Core.scanWorker = PreviewService::class.java
+            // A second scan finishes while the first worker still hangs (bounded pool).
+            val plain = verdictOf(download("/files/notes.txt").file!!.id)
+            val plainAt = SystemClock.elapsedRealtime() - started
+            assertEquals(ScanStatus.NOT_FLAGGED, plain.status)
+            assertNull("the hung scan finished first", Core.verdicts.value[hung])
+            val verdict = verdictOf(hung)
             val elapsed = SystemClock.elapsedRealtime() - started
             // The core's hash check still finds it; the missing rule scan is named.
             assertEquals(ScanStatus.KNOWN_MALICIOUS, verdict.status)
             assertEquals(listOf("file hash"), verdict.findings.map { it.check })
             assertTrue("${verdict.gaps}", verdict.gaps.single().contains("did not scan in time"))
-            report("s21b", "hung scan ended after $elapsed ms: ${verdict.label}; ${verdict.gaps}")
+            report("s21b", "hung scan ended after $elapsed ms: ${verdict.label}; ${verdict.gaps}; a scan queued after it finished at $plainAt ms: ${plain.label}")
         } finally {
             Core.scanWorker = PreviewService::class.java
         }
