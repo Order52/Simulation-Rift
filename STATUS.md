@@ -32,7 +32,7 @@ The Android debug build works end to end on emulators, and its browser is now is
 | Losing the lock ends the session | If another VPN starts, the session ends and the browser is wiped; Rift never takes the VPN back without you | S28 |
 | No silent downgrade | Without the lock the browser refuses to load pages; "reduced isolation" is an explicit per-session choice, labelled for the whole session | S28, S28b |
 | Listed hosts are not reached, even by a page's parts | The proxy checks every connection's destination against the threat database before resolving it (HTTPS by host only) | w1, Rust tests |
-| Page content stays out of shared system state | No recents screenshot of the browser window (API 33+); page text fields ask the keyboard not to learn | Recents checked by hand (h1: the stored snapshot is a blank fill); the keyboard flag is not tested |
+| Page content stays out of shared system state | No recents screenshot of the browser window (API 33+); every text field, in pages and in Rift, asks the keyboard not to learn | h2; recents checked by hand (h1: the stored snapshot is a blank fill) |
 
 **What it does not do:** escaped browser code can still reach **loopback** (other apps' local servers on the phone), which no Android VPN covers; only one VPN can run on a device, so users of another VPN get reduced isolation or nothing; the proxy does not see inside HTTPS; and a WebView exploit still has the current session's own browsing data. These are listed in [architecture §24](docs/architecture.md).
 
@@ -85,7 +85,6 @@ Android first; Linux is the last step.
 | One VPN per device: the lock cannot run next to another VPN. | Reduced isolation for one session, chosen and labelled; never automatic. |
 | If the controller is killed mid-session, the lock goes with it until the next launch wipes the browser. | The browser exits when the core dies; Android's always-on VPN with "block connections without VPN" would close the gap (a device setting). |
 | The live page watch cannot see what scripts do inside a page (fingerprinting, keystrokes, mining) or what a page writes to the clipboard; for HTTPS only hosts are checked against the database. | Stated in the watch itself; the network lock and the wipe at reset do not depend on the watch. |
-| Rift's own address bar does not ask the keyboard not to learn (Compose has no option for it). | Page text fields do; a native address field would close it. |
 | Sites that use HTTP authentication cannot be signed in to. | Only the proxy's own challenge is answered, so the token never reaches a site. |
 | `blob:`, `data:` and POST downloads cannot be captured. | Stated as unsupported. |
 | The Android worker is weaker than the Linux one (Android allows exec memory and `AF_UNIX`). | A seccomp filter on the parser thread; defence in depth, not a boundary. |
