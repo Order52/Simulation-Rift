@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
         // Not when Android recreates the activity (after a crash or a kill):
         // a link handed over before then is not opened again without the user.
         if (savedInstanceState == null) pendingLink = linkFrom(intent)
-        setContent { MaterialTheme { Home() } }
+        setContent { MaterialTheme { NoPersonalizedLearning { Home() } } }
     }
 
     override fun onStop() {

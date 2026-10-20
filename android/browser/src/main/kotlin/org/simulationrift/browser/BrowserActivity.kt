@@ -171,7 +171,7 @@ class BrowserActivity : ComponentActivity() {
             if (processGen != null) exitProcess("stale browser process")
             return
         }
-        setContent { MaterialTheme { BrowserScreen() } }
+        setContent { MaterialTheme { NoPersonalizedLearning { BrowserScreen() } } }
         bound = bindService(Intent().setComponent(Rift.CORE_SERVICE), connection, Context.BIND_AUTO_CREATE)
         if (!bound) screen = Screen.Ended("The protection core is unavailable.")
     }

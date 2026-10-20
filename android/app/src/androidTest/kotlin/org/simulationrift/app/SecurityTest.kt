@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.ResultReceiver
 import android.os.SystemClock
+import android.view.inputmethod.EditorInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -1232,6 +1233,75 @@ class SecurityTest {
         val next = resetAndAwait(generation)
         assertEquals(emptyList<PageWatch.Event>(), Core.pageWatch(next)?.events)
         assertNull("the old session's watch is gone", Core.pageWatch(generation))
+    }
+
+    /**
+     * Text fields ask the keyboard not to learn (§10.6): Rift's own address
+     * fields in both apps and a page's field. Read from the system's record
+     * of input starts, which is what the keyboard was given.
+     */
+    @Test
+    fun h2_keyboardsAreAskedNotToLearn() {
+        val home = openHome()
+        try {
+            val since = lastInputStart()
+            (device.wait(Until.findObject(By.res("home-address")), UI_TIMEOUT_MS) ?: throw AssertionError("home address field")).click()
+            assertLearningOff(context.packageName, since, "the home screen's address field")
+        } finally {
+            home.finish()
+        }
+        allowFixtureHost()
+        openBrowser(activeGeneration(), fixture("/type.html"))
+        val fields = { device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty() }
+        var since = lastInputStart()
+        (device.wait(Until.findObject(By.res("address")), UI_TIMEOUT_MS) ?: throw AssertionError("address bar")).click()
+        assertLearningOff(Rift.BROWSER_PACKAGE, since, "the browser's address bar")
+        device.pressBack() // the keyboard
+        since = lastInputStart()
+        // The page's field appears once the keyboard has gone and the page is laid out again.
+        val deadline = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
+        var page = fields().firstOrNull { it.resourceName != "address" }
+        while (page == null && SystemClock.elapsedRealtime() < deadline) {
+            SystemClock.sleep(200)
+            page = fields().firstOrNull { it.resourceName != "address" }
+        }
+        (page ?: throw AssertionError("the page's text field: ${fields().map { it.resourceName }}")).click()
+        assertLearningOff(Rift.BROWSER_PACKAGE, since, "the page's text field")
+        report("h2", "learning off in the home screen's address field, the browser's address bar and a page's field")
+    }
+
+    /** The number of the system's most recent input start (dumpsys input_method). */
+    private fun lastInputStart(): Int = inputStarts().maxOfOrNull { it.number } ?: 0
+
+    private data class InputStart(val number: Int, val pkg: String, val inputType: Int, val imeOptions: Int)
+
+    /** The input starts the system remembers, with the window's package and what the field asked for. */
+    private fun inputStarts(): List<InputStart> {
+        val dump = device.executeShellCommand("dumpsys input_method")
+        return Regex("""StartInput #(\d+):(.*?)(?=StartInput #|\z)""", RegexOption.DOT_MATCHES_ALL).findAll(dump).mapNotNull { m ->
+            val body = m.groupValues[2]
+            val pkg = Regex("""targetWin=\S+ \[([^\]]+)]""").find(body)?.groupValues?.get(1) ?: return@mapNotNull null
+            val type = Regex("""inputType=0x([0-9a-f]+)""").find(body)?.groupValues?.get(1)?.toLong(16)?.toInt() ?: return@mapNotNull null
+            val options = Regex("""imeOptions=0x([0-9a-f]+)""").find(body)?.groupValues?.get(1)?.toLong(16)?.toInt() ?: return@mapNotNull null
+            InputStart(m.groupValues[1].toInt(), pkg, type, options)
+        }.toList()
+    }
+
+    /** A text field in `pkg` started input after input start `since`, with IME_FLAG_NO_PERSONALIZED_LEARNING. */
+    private fun assertLearningOff(pkg: String, since: Int, what: String) {
+        val deadline = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
+        var seen: List<InputStart> = emptyList()
+        while (SystemClock.elapsedRealtime() < deadline) {
+            // inputType 0 is a window gaining focus, not a text field.
+            seen = inputStarts().filter { it.number > since && it.pkg == pkg && it.inputType != 0 }
+            if (seen.isNotEmpty()) break
+            SystemClock.sleep(200)
+        }
+        val latest = seen.maxByOrNull { it.number } ?: throw AssertionError("$what: no input start recorded for $pkg")
+        assertTrue(
+            "$what: imeOptions=0x${Integer.toHexString(latest.imeOptions)}",
+            latest.imeOptions and EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING != 0,
+        )
     }
 
     /** Saves the screen as evidence; run-tests.sh collects these into screens/. */
