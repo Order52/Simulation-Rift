@@ -46,8 +46,8 @@ for p in $pkg $outsider; do "$adb" shell appops set $p ACTIVATE_VPN allow; done
 # A slow emulator can show "System UI isn't responding" at boot, which covers
 # every window the tests look at. Close such dialogs (SecurityTest does too,
 # before each test) and keep a record of every ANR and crash in the run.
-# The vault test (v3) sets and clears a screen-lock PIN, which can leave the
-# keyguard up; the screen-reading steps below need the screen awake and open.
+# The screen-reading steps below need the screen awake and open; the vault
+# test (v3) sets and clears a screen-lock PIN, so dismiss any keyguard too.
 close_dialogs() {
   "$adb" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
   "$adb" shell wm dismiss-keyguard >/dev/null 2>&1 || true
@@ -152,6 +152,13 @@ tap() { # text|id value
   "$adb" shell input tap $xy
   sleep 1
 }
+# Scrolls the home screen by half the display's height. Fixed coordinates
+# missed CI's smaller emulator screen, where S16d and S16f never scrolled.
+scroll_down() {
+  dims="$("$adb" shell wm size | tr -d '\r' | sed -n 's/.*: *\([0-9]*\)x\([0-9]*\)$/\1 \2/p' | tail -1)"
+  w="${dims% *}" h="${dims#* }"
+  "$adb" shell input swipe $((w / 2)) $((h * 3 / 4)) $((w / 2)) $((h / 4)) 300
+}
 # The same, retried while the screen settles (bounded).
 tap_when() { i=0; until tap "$1" "$2"; do i=$((i + 1)); [ $i -lt 10 ] || return 1; sleep 1; done; }
 
@@ -169,9 +176,9 @@ update=/sdcard/Download/rift-s16d
 wait_log "session [0-9]+ active" 30 || true
 close_dialogs
 found=no
-for i in 1 2 3 4 5 6; do
+for _ in $(seq 20); do
   if tap id intel-import; then found=yes; break; fi
-  "$adb" shell input swipe 500 1600 500 600 300
+  scroll_down
   sleep 1
 done
 if [ $found = yes ] \
@@ -199,10 +206,10 @@ auto_time="$("$adb" shell settings get global auto_time | tr -d '\r')"
 sleep 4
 close_dialogs
 seen=no
-for i in 1 2 3 4 5 6; do
+for _ in $(seq 20); do
   "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1 \
     && "$adb" shell cat /data/local/tmp/rift-ui.xml | grep -q 'resource-id="intel-clock"' && { seen=yes; break; }
-  "$adb" shell input swipe 500 1600 500 600 300
+  scroll_down
   sleep 1
 done
 "$adb" shell date @$(date +%s) >/dev/null
