@@ -284,7 +284,7 @@ Everything else is a concrete type.
 
 ### 8.2 Manifest
 
-- Permissions: `INTERNET` only, plus `POST_NOTIFICATIONS` if transfer progress notifications are adopted. **No** camera, microphone, location, contacts, SMS, storage, accessibility, device-admin, or install-packages permissions. Because the permissions are absent, the OS denies them regardless of WebView callbacks (B4).
+- Permissions: `INTERNET` only, plus `POST_NOTIFICATIONS` if transfer progress notifications are adopted. The browser APK also requests `ACCESS_NETWORK_STATE` (a normal permission), so that it can confirm its default network is the lock before it loads a page (§8.8). **No** camera, microphone, location, contacts, SMS, storage, accessibility, device-admin, or install-packages permissions. Because the permissions are absent, the OS denies them regardless of WebView callbacks (B4).
 - `android:allowBackup="false"` and `dataExtractionRules` that exclude everything (INV-12).
 - `usesCleartextTraffic` is set only as required for user-initiated HTTP browsing. Rift's own traffic is HTTPS-only.
 - Intent filters: `ACTION_VIEW` for http/https (Rift appears as a browser choice) and `ACTION_SEND` with `text/plain` (URLs) and `*/*` (file import).
@@ -345,7 +345,7 @@ v2.0 ran the browser as a process of the controller's own APK, so an escape had 
 
 ### 8.5 Downloads **[PoC A3]**
 
-`DownloadListener` supplies the URL, user agent, Content-Disposition, and MIME type. `:browser` sends `submit_download { url, cookie header for that URL only, user agent, referer }` to the core. The core performs the fetch under INV-13 and writes into session quarantine.
+`DownloadListener` supplies the URL, user agent, Content-Disposition, and MIME type. The browser sends `submit_download { url, cookie header for that URL only, user agent, referer }` to the core. The core performs the fetch under INV-13 and writes into session quarantine.
 
 **Known unsupported in V1:** POST-generated responses, `blob:` and `data:` downloads, and single-use URLs already consumed by the engine. These show "this download cannot be captured safely". Rift adds no JavaScript bridge to support them.
 
@@ -353,7 +353,7 @@ PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and coo
 
 **Phase 2 implementation (`rift-core::download`).**
 - HTTP client: `ureq` 3.4 without default features, with `rustls` (ring) and the bundled Mozilla roots (`webpki-roots`). It is blocking and small, and it lets Rift resolve names itself: a resolver wrapper runs the destination check (INV-13) on every address of every hop, so a redirect or DNS answer to a private address is refused before connecting. Redirects are followed by Rift (at most 10). The bundled roots mean Rift does not trust user-installed CAs for its own fetches; the cost is that root updates ship with Rift releases. `rustls-platform-verifier` remains the alternative if that proves wrong.
-- The cookie header from `:browser` is sent only to the origin it was read for, never after a cross-origin redirect.
+- The cookie header from the browser is sent only to the origin it was read for, never after a cross-origin redirect.
 - The byte limit is applied to the stream, whatever `Content-Length` says. Reset sets a cancel flag that the transfer checks between chunks.
 - Local and private destinations need the user's explicit exception, which applies to one host name for one session only (another name for the same address is still refused).
 - Session quota: space is reserved before the transfer and the unused part released afterwards.
@@ -609,8 +609,8 @@ CREATING ─▶ ACTIVE ─▶ RESETTING ─▶ DESTROYED
 - **Android reset (v2.1):**
   1. Cancel transfers and retire workers; stop the session's egress proxy, which closes every tunnel.
   2. Drop the session key, which crypto-shreds quarantine.
-  3. Ask the browser to finish (best effort), then have its `SessionService` call `clearApplicationUserData()` on the browser app. The system kills every process of the package and deletes all of its data: WebView's directories, `shared_prefs/` (where PoC A2 found `AwOriginVisitLoggerPrefs.xml`), caches, and anything a compromised browser wrote. The controller waits for the binding to die.
-  4. Bind a fresh `SessionService` and require its inventory to contain no file at all (empty directories the platform creates, such as `cache/`, are allowed). A new process id is required.
+  3. Ask the browser to finish (best effort), then have its `SessionService` call `clearApplicationUserData()` on the browser app. The system kills every process of the package and deletes all of its data: WebView's directories, `shared_prefs/` (where PoC A2 found `AwOriginVisitLoggerPrefs.xml`), caches, and anything a compromised browser wrote. The controller waits for the binding to die and for the system's `ACTION_PACKAGE_DATA_CLEARED` broadcast for the browser package, which marks the end of the deletion (10 s limit for each, then the reset fails).
+  4. Bind a fresh `SessionService` and require its inventory to contain no file at all, in credential- and device-protected storage and the app's external directories (empty directories the platform creates, such as `cache/`, are allowed). A new process id is required. So that this holds, the browser APK removes the `androidx.startup` initializers, which would otherwise write files (such as the profile installer's marker) at every start.
   5. Verify the controller's own inventory against an **allowlist** of Rift's own files, as before: `files/rift/**`, `files/profileInstalled` and, in release builds, `files/profileinstaller_profileWrittenFor_lastUpdateTime.dat`. Since the controller never loads WebView, any WebView state there is a leftover.
   6. Increment the generation.
 
@@ -653,7 +653,7 @@ These are targets until measured on the declared reference devices (to be named 
 | Metric | Target |
 |---|---|
 | Cold start to interactive home | ≤ 1.0 s |
-| New session to first paint (cold, including WebView init and `:browser` start) | ≤ 1.5 s |
+| New session to first paint (cold, including WebView init and the browser app's start) | ≤ 1.5 s |
 | Local URL decision (canonicalize, lookups, heuristics) | p95 ≤ 5 ms |
 | Hashing and encryption during transfer | Not the bottleneck at network speed; ≥ 200 MB/s on device |
 | Worker cold start (Android, app zygote) | ≤ 300 ms |
@@ -816,6 +816,8 @@ Unit, property, and fuzz testing cover URL canonicalization, the table validator
 | Engine exploit chain reaches the browser app's `:web` process | It has the browser UID: this session's browsing state, the browser window, and loopback; not Rift's data, keys or the network beyond loopback (while the lock holds) | Two APKs (ADR-04); system wipe each reset; network lock (ADR-14); WebView minimum-version checks |
 | Loopback services on the device | Escaped browser code can connect to other apps' local servers (pages cannot: the proxy refuses loopback) | Stated; no Android mechanism closes loopback for one app |
 | Only one VPN per device | Users of another VPN cannot have the network lock | Explicit reduced mode per session, labelled; never a silent fallback |
+| The controller process dies while the browser runs | The lock goes with it. The browser exits when its binding to the core dies, but escaped code in the browser could stay running without the lock until the next launch wipes the app | The next launch wipes the browser before anything else (§15); Android's always-on VPN with "block connections without VPN" would close the gap, but it is a device setting Rift cannot set |
+| Sites that use HTTP authentication | The browser answers only the proxy's own challenge, so such sites cannot be signed in to | Stated; it keeps the proxy token from ever reaching a site |
 | No site isolation within a session | A renderer compromise from one site can read other sites' data in the same session | One session at a time; encourage reset between unrelated sites |
 | Network coverage gaps | With the lock, every connection is checked for destination class, but only main-frame navigations are checked against threat intelligence; HTTPS content is not inspected | State coverage honestly |
 | Download capture gaps | Some downloads are unsupported | Explicit UI message; no JS bridge |

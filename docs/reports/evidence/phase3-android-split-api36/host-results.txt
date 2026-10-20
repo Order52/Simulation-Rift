@@ -1,0 +1,2 @@
+S14 PASS (renderer killed; app alive (pid 21654); session 11 torn down; 12 active)
+S13 PASS (killed while RESETTING 13; recovery wiped the browser app (no files) before session 14 started)

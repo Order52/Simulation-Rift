@@ -1,6 +1,6 @@
 # Project status: Simulation-Rift
 
-**As of 18 Oct 2026.** For a short current snapshot, see [`../../STATUS.md`](../../STATUS.md). This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
+**As of 20 Oct 2026.** For a short current snapshot, see [`../../STATUS.md`](../../STATUS.md). This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`browser-isolation.md`](browser-isolation.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
 
 ## 1. Where the project stands
 
@@ -8,7 +8,7 @@
 |---|---|
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and A1–A7 on API 33/34 and a physical phone (the Phase 2 suite, which builds on them, passes on API 33/34). A1–A7 now also pass on a 16 KB page-size emulator (API 35). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
-| 2: Android vertical slice | **Built; tested on emulators** ([report](phase-2.md)). Shell, `:browser` sessions, captured downloads, isolated preview, reset and recovery. S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on API 36 and on API 35 with 16 KB pages (arm64), and on API 33 and 34 (x86_64, in CI). API 30 refuses browsing as designed. The R8 release build passes a smoke test. **Gate open:** a physical phone. |
+| 2: Android vertical slice | **Built; tested on emulators** ([report](phase-2.md)), and since 20 Oct on architecture 2.1: the browser is a separate app with its own UID behind a network lock, wiped by Android at every reset ([report](browser-isolation.md); S23–S28 and the whole earlier suite pass on API 36). Shell, browser sessions, captured downloads, isolated preview, reset and recovery. S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on API 36 and on API 35 with 16 KB pages (arm64), and on API 33 and 34 (x86_64, in CI). API 30 refuses browsing as designed. The R8 release build passes a smoke test. **Gate open:** a physical phone. |
 | 3: Scanner and signed intel | **In progress; built and tested on the host and on Android emulators** ([report](phase-3.md)). Pack validation, verdicts with a versioned cache, an atomic snapshot store, offline TUF import, and `rift-pack` with a harmless demo pack. On Android every download is scanned (core hash and type checks, then the rules in a fresh isolated worker) and the verdict is shown. S11, S16, S17, S21 and S22 pass on the host; S16, S21 and a hung scan worker pass on API 33 and 34 (CI) and on API 35 with 16 KB pages. **Not built:** an import screen with a production root, and online updates. |
 | 4: Vault | Format done (Phase 1); key providers and UI not started. |
 | 5: Linux app | Not started (worker lockdown and WebKit check proven in PoCs). |
@@ -112,6 +112,22 @@ Phase 2 findings, added to the list above: 15–26.
 29. (Phase 3) `build.sh` first put the demo keys under `~/.config`, which is a git repository on the development machine; `rift-pack` refused, and the default moved to `~/.local/share`.
 30. (Phase 3) tough and aws-lc-rs took `librift_ffi.so` from 3.15 to 7.45 MB (arm64) and from 3.52 to 8.32 MB (x86_64). Native code per ABI is now 19.3 MB (arm64) and 24.0 MB (x86_64) against the 25 MB budget.
 31. (Phase 3) A scan worker that hangs outside YARA-X is stopped by the controller's 17 s deadline, not the engine's 15 s timeout; scans run one at a time, so the queue waits too.
+32. (2.1) A `ResultReceiver` subclass cannot be unparcelled in another app; cross-app tests re-parcel it as a plain one.
+33. (2.1) A VPN app must call `VpnService.prepare()` itself even with consent pre-granted, or its VPN never starts.
+34. (2.1) Publishing a UI state update per packet the lock drops overloaded the emulator until system services stopped answering; counts are now published once a second at most.
+35. (2.1) After the controller is killed, Android recreates its activity with the original `VIEW` intent; the home screen reopened the old link in the new session. Links are now taken only from fresh intents.
+36. (2.1) androidx.core adds a signature permission of the app's own (`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`) to every app that uses it.
+
+### 2.7 Architecture 2.1 code (browser app and network lock)
+
+| Part | What it does |
+|---|---|
+| `rift-core::egress` | The browser's only way out: an HTTP proxy on 127.0.0.1 with a per-session port, token and realm; `CONNECT` and absolute `http://` only, bounded heads, one resolution per hop with INV-13's destination rule, no TLS inspection. Fuzzed (`egress_head`). |
+| `rift-ffi::egress` | One proxy per session, started when the browser registers, following the session's host exceptions, stopped before the browser is wiped. |
+| `android/bridge` | Shared Binder interfaces and codecs, package identities, and the per-call UID and signer check. |
+| `android/browser` | The browser app: `BrowserActivity` in `:web` (proxy override with implicit rules removed, VPN check, proxy-only credential answer) and `SessionService` (pid, inventory, system wipe). |
+| `android/app` | `NetworkLockService` (a VPN for the browser only that drops everything), the exported, signature-checked `CoreService`, wipe-based disposal, the lock and reduced-isolation UI. No WebView. |
+| `android/outsider`, escape probe | Test apps for S23, S24, S26 and S28. |
 
 ### 2.6 Phase 3 code (scanner and signed intel)
 
@@ -166,7 +182,10 @@ Phase 2 findings, added to the list above: 15–26.
 
 | Limitation | Why | Mitigation or way forward |
 |---|---|---|
-| A WebView escape lands in `:browser` with the app's UID | Android gives one UID per APK | Vault keys never enter `:browser`; auth-bound Keystore key; minimal Binder interface. Stronger: a separate browser APK (ADR-04, post-V1). |
+| A WebView escape lands in the browser app's `:web` process | The engine's own sandbox can fail | Since 2.1 that process has its own UID (no access to Rift's data), a network route only to Rift's proxy, and is wiped by Android at every reset (S23–S28). It still has the current session's own browsing data and the window. |
+| Escaped browser code can reach loopback | No VPN covers loopback, and Android has no per-app loopback control | Pages cannot (the proxy refuses loopback). Stated; the Linux design closes it with a network namespace. |
+| One VPN per device | Android runs one VPN at a time | Without the lock the browser refuses to browse; reduced isolation is an explicit, labelled per-session choice. |
+| The lock ends with the controller process | The VPN belongs to the controller | The browser exits when the core dies and is wiped at the next launch; escaped code could outlive the controller until then. |
 | `blob:`, `data:` and POST downloads cannot be captured | WebView does not report them or they cannot be re-fetched | Stated as unsupported. For `blob:` and `data:` Rift is never told, so it cannot even show a message. A JavaScript bridge could capture them but would add attack surface, so it is rejected for V1. |
 | Android worker is weaker than the Linux worker (exec memory, `AF_UNIX`; NoNewPrivs varies by image) | `isolated_app` policy is set by the OS; ART needs exec memory | A seccomp filter on the parser thread now denies sockets, exec mappings, exec and ptrace there (measured on API 36). Other threads share the address space, so it is defence in depth, not a boundary. |
 | Rift's own downloads trust only the bundled Mozilla roots | Chosen so user-installed CAs cannot intercept the core's fetches | Downloads behind a TLS-inspecting proxy fail. Switching to `rustls-platform-verifier` is the documented alternative if that proves unacceptable. |
@@ -192,7 +211,7 @@ Phase 2 findings, added to the list above: 15–26.
 3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.
 4. ~~Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.~~ Done.
 5. ~~Previews (images and PDF in the isolated worker, text as escaped plain text); reset and recovery.~~ Done (P1, P2, S3–S7, S12, S13, S19).
-6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done; a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
+6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done on 2.0; on 2.1 (browser app and network lock) API 36 done, the others and a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
 
 **Phase 3: Scanner and signed intel**
 7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store; scan jobs on Android after each download.~~ Done (host: S11, S17, S22; Android API 33–35: S21, hung worker). Open: pinning running scans to their snapshot, and concurrent scan workers.

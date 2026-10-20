@@ -1,0 +1,166 @@
+--------- beginning of main
+10-20 03:02:05.225 17339 17339 I Rift    : network lock active
+10-20 03:02:06.165 17379 17395 I RiftBrowser: system wipe requested in pid 17379
+10-20 03:02:06.539 17339 17372 I Rift    : browser wiped: pid 17379 -> 17407, no files
+10-20 03:02:06.547 17339 17372 I Rift    : session 1 active
+10-20 03:02:07.871 17339 17349 I Rift    : browser registered for generation 1, network LOCKED
+10-20 03:02:08.800 17339 17349 I Rift    : browser network in generation 1: proxied=true locked=true
+10-20 03:02:12.782 17407 17418 I RiftBrowser: system wipe requested in pid 17407
+10-20 03:02:14.256 17339 17372 I Rift    : browser wiped: pid 17407 -> 17675, no files
+10-20 03:02:14.265 17339 17372 I Rift    : generation 1 disposed
+10-20 03:02:14.274 17339 17372 I Rift    : session 2 active
+10-20 03:02:15.642 17339 17367 I Rift    : browser registered for generation 2, network LOCKED
+10-20 03:02:16.549 17339 17351 I Rift    : browser network in generation 2: proxied=true locked=true
+10-20 03:02:18.039 17339 17363 I Rift    : result n4: engine supported=true; bar: No page checked yet
+10-20 03:02:18.156 17339 17849 I Rift    : download 1 in generation 2: stored 107456 bytes
+10-20 03:02:18.164 17339 17853 I Rift    : scan of 03fd517f2747735cc06e457b4f717898 in generation 2 after 7 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:18.172 17339 17363 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=03fd517f2747735cc06e457b4f717898, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:02:18.429 17339 17857 I Rift    : preview of 03fd517f2747735cc06e457b4f717898 in generation 2 after 256 ms: 300x200
+10-20 03:02:18.508 17339 17897 I Rift    : download 2 in generation 2: stored 633 bytes
+10-20 03:02:18.509 17339 17853 I Rift    : scan of 23220361010b72ade5d5dbc51573d834 in generation 2 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:18.584 17339 17363 I Rift    : result download: /files/document.pdf -> QuarantinedFile(id=23220361010b72ade5d5dbc51573d834, displayName=document.pdf, size=633, sha256=d30973d92a1948ada613213a25d12a376e7f85f2769a2752dcef01e0ffeb99db, contentType=application/pdf, source=http://localhost:8766/files/document.pdf, redirects=0)
+10-20 03:02:19.311 17339 17857 I Rift    : preview of 23220361010b72ade5d5dbc51573d834 in generation 2 after 726 ms: 1582x2048
+10-20 03:02:19.388 17339 17849 I Rift    : download 3 in generation 2: stored 2056 bytes
+10-20 03:02:19.389 17339 17853 I Rift    : scan of b618802a7ac166bd8c01ff8e91b2642c in generation 2 after 0 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:19.459 17339 17363 I Rift    : result download: /files/broken.png -> QuarantinedFile(id=b618802a7ac166bd8c01ff8e91b2642c, displayName=broken.png, size=2056, sha256=7630fc84b891c670090a8e14448c7dc0b1c338ea47f86be5bb07363d4cd75619, contentType=image/png, source=http://localhost:8766/files/broken.png, redirects=0)
+10-20 03:02:19.539 17339 17857 I Rift    : preview of b618802a7ac166bd8c01ff8e91b2642c in generation 2 after 81 ms: failed: the file could not be previewed: the file is damaged or not what it claims to be
+10-20 03:02:19.560 17339 17363 I Rift    : result p1: picture 300x200; page 1582x2048; broken: the file could not be previewed: the file is damaged or not what it claims to be
+10-20 03:02:19.584 17339 17897 I Rift    : download 4 in generation 2: stored 72 bytes
+10-20 03:02:19.585 17339 17853 I Rift    : scan of dc79ac08ba7d5f72aebbdfe8b1175fb6 in generation 2 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:19.666 17339 17363 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=dc79ac08ba7d5f72aebbdfe8b1175fb6, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-20 03:02:19.670 17339 17857 I Rift    : preview of dc79ac08ba7d5f72aebbdfe8b1175fb6 in generation 2 after 4 ms: text, 86 chars
+10-20 03:02:19.717 17339 17363 I Rift    : result p2: text 86 chars; note: Plain text, not interpreted. Control and direction-changing characters are shown as \u{…}.
+10-20 03:02:20.463 17339 17363 I Rift    : result s03: isolated=true | uid=90003 | seccomp=2 | no_new_privs=1 | read_canary=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/canary.txt: open failed: ENOENT (No such file or directory) | list_app_files=DENIED SecurityException: list() returned null | write_app_files=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/from-worker: open failed: ENOENT (No such file or directory) | list_external_storage=DENIED NullPointerException: Attempt to get length of null array | tcp_connect=DENIED SocketException: socket failed: EPERM (Operation not permitted) | udp_socket=DENIED SocketException: socket failed: EPERM (Operation not permitted) | dns=DENIED SecurityException: Permission denied (missing INTERNET permission?) | clipboard=DENIED SecurityException: no clipboard service | bind_core=DENIED SecurityException: Isolated process not allowed to call bindService | unix_socket=ALLOWED created | exec_mapping=ALLOWED mapped | unix_socket_filtered_thread=DENIED ErrnoException: socket failed: EPERM (Operation not permitted) | exec_mapping_filtered_thread=DENIED ErrnoException: mmap failed: EPERM (Operation not permitted)
+10-20 03:02:20.759 17339 17849 I Rift    : download 5 in generation 2: stored 107456 bytes
+10-20 03:02:20.762 17339 17853 I Rift    : scan of 19cba4a2f466167813c7a0492b53da30 in generation 2 after 2 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:20.823 17339 17363 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=19cba4a2f466167813c7a0492b53da30, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:02:20.913 17339 17857 I Rift    : preview of 19cba4a2f466167813c7a0492b53da30 in generation 2 after 90 ms: 300x200
+10-20 03:02:20.924 17339 17363 I Rift    : result s04: isolated=true | uid=90004 | seccomp=2 | no_new_privs=1 | read_canary=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/canary.txt: open failed: ENOENT (No such file or directory) | list_app_files=DENIED SecurityException: list() returned null | write_app_files=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/from-worker: open failed: ENOENT (No such file or directory) | list_external_storage=DENIED NullPointerException: Attempt to get length of null array | tcp_connect=DENIED SocketException: socket failed: EPERM (Operation not permitted) | udp_socket=DENIED SocketException: socket failed: EPERM (Operation not permitted) | dns=DENIED SecurityException: Permission denied (missing INTERNET permission?) | clipboard=DENIED SecurityException: no clipboard service | bind_core=DENIED SecurityException: Isolated process not allowed to call bindService | unix_socket=ALLOWED created | exec_mapping=ALLOWED mapped | unix_socket_filtered_thread=DENIED ErrnoException: socket failed: EPERM (Operation not permitted) | exec_mapping_filtered_thread=DENIED ErrnoException: mmap failed: EPERM (Operation not permitted)
+10-20 03:02:20.951 17339 17897 I Rift    : download 6 in generation 2: stored 107456 bytes
+10-20 03:02:20.952 17339 17853 I Rift    : scan of 6be66747009025cccc70e2dda35f71ed in generation 2 after 2 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:21.032 17339 17363 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=6be66747009025cccc70e2dda35f71ed, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:02:21.110 17339 17857 I Rift    : preview of 6be66747009025cccc70e2dda35f71ed in generation 2 after 78 ms: failed: the preview worker sent an invalid reply (response field out of bounds: bitmap dimensions) and was stopped
+10-20 03:02:21.133 17339 17363 I Rift    : result s05: OversizedPreviewService: the preview worker sent an invalid reply (response field out of bounds: bitmap dimensions) and was stopped
+10-20 03:02:21.214 17339 17857 I Rift    : preview of 6be66747009025cccc70e2dda35f71ed in generation 2 after 81 ms: failed: the preview worker sent an invalid reply (frame of 4294967295 bytes exceeds the limit) and was stopped
+10-20 03:02:21.233 17339 17363 I Rift    : result s05: GarbagePreviewService: the preview worker sent an invalid reply (frame of 4294967295 bytes exceeds the limit) and was stopped
+10-20 03:02:21.306 17339 17857 I Rift    : preview of 6be66747009025cccc70e2dda35f71ed in generation 2 after 72 ms: failed: the preview worker sent an invalid reply (response belongs to job 7, expected 8) and was stopped
+10-20 03:02:21.334 17339 17363 I Rift    : result s05: ReplayingPreviewService: the preview worker sent an invalid reply (response belongs to job 7, expected 8) and was stopped
+10-20 03:02:21.409 17339 17857 I Rift    : preview of 6be66747009025cccc70e2dda35f71ed in generation 2 after 75 ms: 300x200
+10-20 03:02:21.462 17339 17849 I Rift    : download 7 in generation 2: stored 107456 bytes
+10-20 03:02:21.463 17339 17853 I Rift    : scan of 649fc00defcb3df51c7280752e9f6676 in generation 2 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:21.541 17339 17363 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=649fc00defcb3df51c7280752e9f6676, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:02:21.614 17339 17857 I Rift    : preview of 649fc00defcb3df51c7280752e9f6676 in generation 2 after 73 ms: failed: the worker stopped unexpectedly
+10-20 03:02:33.719 17339 17857 I Rift    : preview of 649fc00defcb3df51c7280752e9f6676 in generation 2 after 12075 ms: failed: the worker did not render in time and was stopped
+10-20 03:02:33.895 17339 17857 I Rift    : preview of 649fc00defcb3df51c7280752e9f6676 in generation 2 after 94 ms: 300x200
+10-20 03:02:33.902 17339 17363 I Rift    : result s06: crash: the worker stopped unexpectedly; hang ended after 12157 ms: the worker did not render in time and was stopped; slowest UI round trip 2 ms
+10-20 03:02:33.931 17339 17897 I Rift    : download 8 in generation 2: stored 107456 bytes
+10-20 03:02:33.933 17339 17853 I Rift    : scan of 8ded786f6a148e4d6a45d4b872be7f44 in generation 2 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:34.009 17339 17363 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=8ded786f6a148e4d6a45d4b872be7f44, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:02:34.011 17339 17857 I Rift    : preview of 8ded786f6a148e4d6a45d4b872be7f44 in generation 2 after 2 ms: failed: the worker is not declared as an isolated process, so this feature is disabled
+10-20 03:02:34.128 17339 17857 I Rift    : preview of 8ded786f6a148e4d6a45d4b872be7f44 in generation 2 after 65 ms: failed: the preview worker is not confined (the worker reports no seccomp filter), so previews are disabled
+10-20 03:02:34.169 17339 17363 I Rift    : result s07: non-isolated: the worker is not declared as an isolated process, so this feature is disabled; no seccomp: the preview worker is not confined (the worker reports no seccomp filter), so previews are disabled
+10-20 03:02:34.731 17339 17849 I Rift    : download 9 in generation 2: not captured: the file is larger than the 104857600-byte limit
+10-20 03:02:34.781 17339 17363 I Rift    : result download: /files/big -> the file is larger than the 104857600-byte limit
+10-20 03:02:34.805 17675 17685 I RiftBrowser: system wipe requested in pid 17675
+10-20 03:02:35.924 17339 17372 I Rift    : browser wiped: pid 17675 -> 18555, no files
+10-20 03:02:35.931 17339 17372 I Rift    : generation 2 disposed
+10-20 03:02:35.941 17339 17372 I Rift    : session 3 active
+10-20 03:02:37.014 17339 17351 I Rift    : browser registered for generation 3, network LOCKED
+10-20 03:02:37.723 17339 17351 I Rift    : browser network in generation 3: proxied=true locked=true
+10-20 03:02:38.597 17339 17897 I Rift    : download 10 in generation 3: not captured: localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 03:02:38.687 17339 17363 I Rift    : result download: http://localhost:8766/files/hello.txt -> localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 03:02:38.737 17339 17849 I Rift    : download 11 in generation 3: not captured: 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 03:02:38.809 17339 17363 I Rift    : result download: http://localhost:8766/files/to-loopback -> 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 03:02:38.907 17339 17897 I Rift    : download 12 in generation 3: stored 1040 bytes
+10-20 03:02:38.908 17339 17853 I Rift    : scan of 04876792c81ffff3f8d96e31743d020c in generation 3 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:38.919 17339 17363 I Rift    : result download: /files/hello.txt -> QuarantinedFile(id=04876792c81ffff3f8d96e31743d020c, displayName=hello.txt, size=1040, sha256=b996cb5919d5b903999e90db3fc84b05ab73d46c0a2546651035a1a530e57935, contentType=text/plain, source=http://localhost:8766/files/hello.txt, redirects=0)
+10-20 03:02:39.094 17339 17849 I Rift    : download 13 in generation 3: stored 16 bytes
+10-20 03:02:39.095 17339 17853 I Rift    : scan of f470a2edb6348b0c69ac81a3acfd280b in generation 3 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:39.147 17339 17363 I Rift    : result download: /files/hostile -> QuarantinedFile(id=f470a2edb6348b0c69ac81a3acfd280b, displayName=evilgpj.pdf, size=16, sha256=c5c2e8be6ad0825a56ded1f1a153ceaf11dc060ab44b120a94406a08207babc2, contentType=application/pdf, source=http://localhost:8766/files/hostile, redirects=0)
+10-20 03:02:39.242 17339 17897 I Rift    : download 14 in generation 3: stored 1050 bytes
+10-20 03:02:39.243 17339 17853 I Rift    : scan of a60ca8f8cc84013eb155bb6cb55e53d0 in generation 3 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:39.261 17339 17363 I Rift    : result download: /login?next=/files/private.bin -> QuarantinedFile(id=a60ca8f8cc84013eb155bb6cb55e53d0, displayName=private.bin, size=1050, sha256=306153a5ff5fd7b62d9abf47f378fd7224ae53083811c8a2ceb79f9ebad57127, contentType=application/octet-stream, source=http://localhost:8766/files/private.bin, redirects=0)
+10-20 03:02:39.750 18555 18574 I RiftBrowser: system wipe requested in pid 18555
+10-20 03:02:41.428 17339 17372 I Rift    : browser wiped: pid 18555 -> 18826, no files
+10-20 03:02:41.433 17339 17372 I Rift    : generation 3 disposed
+10-20 03:02:41.445 17339 17372 I Rift    : session 4 active
+10-20 03:02:42.584 17339 17367 I Rift    : browser registered for generation 4, network LOCKED
+10-20 03:02:43.404 17339 17351 I Rift    : browser network in generation 4: proxied=true locked=true
+10-20 03:02:44.716 17339 17363 I Rift    : result s12: reset_ms=1738 generation=3->4
+10-20 03:02:44.756 18826 18842 I RiftBrowser: system wipe requested in pid 18826
+10-20 03:02:46.203 17339 17372 I Rift    : browser wiped: pid 18826 -> 19031, no files
+10-20 03:02:46.205 17339 17372 I Rift    : generation 4 disposed
+10-20 03:02:46.213 17339 17372 I Rift    : session 5 active
+10-20 03:02:47.321 17339 17351 I Rift    : browser registered for generation 5, network LOCKED
+10-20 03:02:48.151 17339 17351 I Rift    : browser network in generation 5: proxied=true locked=true
+10-20 03:02:49.201 17339 17849 I Rift    : download 15 in generation 5: stored 1040 bytes
+10-20 03:02:49.213 17339 17853 I Rift    : scan of 5668307fa9af19d24a4f1a6c78e7af9e in generation 5 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:49.263 17339 17363 I Rift    : result download: /files/hello.txt -> QuarantinedFile(id=5668307fa9af19d24a4f1a6c78e7af9e, displayName=hello.txt, size=1040, sha256=b996cb5919d5b903999e90db3fc84b05ab73d46c0a2546651035a1a530e57935, contentType=text/plain, source=http://localhost:8766/files/hello.txt, redirects=0)
+10-20 03:02:49.319 17339 17897 I Rift    : download 16 in generation 5: stored 82 bytes
+10-20 03:02:49.320 17339 17853 I Rift    : scan of 0cff3e10182dd1d5784bf8c7f812cf5e in generation 5 after 1 ms: Suspicious; findings [type:type-mismatch]; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:49.370 17339 17363 I Rift    : result download: /files/invoice.pdf -> QuarantinedFile(id=0cff3e10182dd1d5784bf8c7f812cf5e, displayName=invoice.pdf, size=82, sha256=fbfff15ff40830e2c8fcc7656a1b3fa7a877264c59456392c78b6375832e17bf, contentType=application/pdf, source=http://localhost:8766/files/invoice.pdf, redirects=0)
+10-20 03:02:49.370 17339 17363 I Rift    : result s16a: plain: Not fully scanned [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]; invoice.pdf: Suspicious [Named as .pdf, but the content is a Windows executable.]
+10-20 03:02:49.396 17339 17853 I Rift    : intel install: the update was refused: the update could not be verified: Failed to fetch file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar: Transport 'other' error fetching 'file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar': Hash mismatch for file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar: calculated 7536b8de119a8ecaa1d14a1d4ce21eb50c9346939fa60c8eb99d0051f346394e, expected 2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a
+10-20 03:02:49.433 17339 17363 I Rift    : result s16b: the update was refused: the update could not be verified: Failed to fetch file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar: Transport 'other' error fetching 'file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar': Hash mismatch for file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar: calculated 7536b8de119a8ecaa1d14a1d4ce21eb50c9346939fa60c8eb99d0051f346394e, expected 2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a
+10-20 03:02:49.456 17339 17849 I Rift    : download 17 in generation 5: stored 107456 bytes
+10-20 03:02:49.457 17339 17853 I Rift    : scan of d6a54255e9c0251aba4fe342af36f1b1 in generation 5 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:49.539 17339 17363 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=d6a54255e9c0251aba4fe342af36f1b1, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:02:49.764 17339 17857 I Rift    : preview of d6a54255e9c0251aba4fe342af36f1b1 in generation 5 after 225 ms: 300x200
+10-20 03:02:49.813 17339 17897 I Rift    : download 18 in generation 5: stored 633 bytes
+10-20 03:02:49.814 17339 17853 I Rift    : scan of 1704ad579caabf77e3c41616c00c99f3 in generation 5 after 0 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:49.895 17339 17363 I Rift    : result download: /files/document.pdf -> QuarantinedFile(id=1704ad579caabf77e3c41616c00c99f3, displayName=document.pdf, size=633, sha256=d30973d92a1948ada613213a25d12a376e7f85f2769a2752dcef01e0ffeb99db, contentType=application/pdf, source=http://localhost:8766/files/document.pdf, redirects=0)
+10-20 03:02:50.175 17339 17857 I Rift    : preview of 1704ad579caabf77e3c41616c00c99f3 in generation 5 after 279 ms: 1582x2048
+10-20 03:02:50.223 17339 17849 I Rift    : download 19 in generation 5: stored 72 bytes
+10-20 03:02:50.224 17339 17853 I Rift    : scan of 2daa0d911f2d25ca9b24f468de86aae1 in generation 5 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:02:50.302 17339 17363 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=2daa0d911f2d25ca9b24f468de86aae1, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-20 03:02:50.303 17339 17857 I Rift    : preview of 2daa0d911f2d25ca9b24f468de86aae1 in generation 5 after 0 ms: text, 86 chars
+10-20 03:02:50.624 17339 17363 I Rift    : result s19: plaintext marker found in: [none]
+10-20 03:02:50.884 17339 17853 I Rift    : intel install: Installed demo-20261019T235726Z.
+10-20 03:02:50.929 17339 17897 I Rift    : download 20 in generation 5: stored 60 bytes
+10-20 03:02:51.011 17339 17363 I Rift    : result download: /files/demo-file.txt -> QuarantinedFile(id=8d6bc24182ece9f58c6dc02692763ad9, displayName=demo-file.txt, size=60, sha256=ab43ce0067c219fee61f976d94591a0497f147e413d2f7bca4cfe51108382cc7, contentType=text/plain, source=http://localhost:8766/files/demo-file.txt, redirects=0)
+10-20 03:02:51.052 17339 17853 I Rift    : scan of 8d6bc24182ece9f58c6dc02692763ad9 in generation 5 after 122 ms: Known malicious; findings [file hash:demo-file, rules:rift_demo_marker]; gaps []
+10-20 03:02:51.114 17339 17849 I Rift    : download 21 in generation 5: stored 72 bytes
+10-20 03:02:51.173 17339 17363 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=4992027ccc9d36f64165998b33bcddde, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-20 03:02:51.246 17339 17853 I Rift    : scan of 4992027ccc9d36f64165998b33bcddde in generation 5 after 131 ms: Not flagged; findings []; gaps []
+10-20 03:02:51.274 17339 17363 I Rift    : result s21a: database demo-20261019T235726Z; demo-file.txt: Known malicious [file hash:demo-file, rules:rift_demo_marker] yara-x 1.21.0; notes.txt: Not flagged
+10-20 03:02:51.297 19031 19061 I RiftBrowser: system wipe requested in pid 19031
+10-20 03:02:52.328 17339 17372 I Rift    : browser wiped: pid 19031 -> 19395, no files
+10-20 03:02:52.331 17339 17372 I Rift    : generation 5 disposed
+10-20 03:02:52.336 17339 17372 I Rift    : session 6 active
+10-20 03:02:53.312 17339 18312 I Rift    : browser registered for generation 6, network LOCKED
+10-20 03:02:54.059 17339 17351 I Rift    : browser network in generation 6: proxied=true locked=true
+10-20 03:02:54.801 17339 17897 I Rift    : download 22 in generation 6: stored 60 bytes
+10-20 03:02:54.900 17339 17363 I Rift    : result download: /files/demo-file.txt -> QuarantinedFile(id=d47138627df3bd33ee7eae89d828e5f9, displayName=demo-file.txt, size=60, sha256=ab43ce0067c219fee61f976d94591a0497f147e413d2f7bca4cfe51108382cc7, contentType=text/plain, source=http://localhost:8766/files/demo-file.txt, redirects=0)
+10-20 03:03:12.029 17339 17853 I Rift    : scan of d47138627df3bd33ee7eae89d828e5f9 in generation 6 after 17227 ms: Known malicious; findings [file hash:demo-file]; gaps [The rule scan failed: the worker did not scan in time and was stopped.]
+10-20 03:03:12.052 17339 17363 I Rift    : result s21b: hung scan ended after 19684 ms: Known malicious; [The rule scan failed: the worker did not scan in time and was stopped.]
+10-20 03:03:28.155 17339 17363 I Rift    : result s23: bind.worker=DENIED SecurityException: Not allowed to bind to service Intent { xflg=0x4 cmp=org.simulationrift.app/.PreviewService } | core.stale=ALLOWED register=Refused decide=stale-session | dns=DENIED UnknownHostException: Unable to resolve host "example.com": No address associated with hostname | file.device=DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.app: open failed: ENOENT (No such file or directory) | file.marker=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/rift/session.marker: open failed: ENOENT (No such file or directory) | file.prefs=DENIED FileNotFoundException: /data/data/org.simulationrift.app/shared_prefs: open failed: ENOENT (No such file or directory) | file.rift=DENIED FileNotFoundException: /data/data/org.simulationrift.app/files/rift: open failed: ENOENT (No such file or directory) | process=org.simulationrift.browser:web | tcp.host=DENIED SocketTimeoutException: failed to connect to /10.0.2.2 (port 8766) from /10.111.0.1 (port 55982) after 3000ms | tcp.loopback=ALLOWED connected | tcp.public=DENIED SocketTimeoutException: failed to connect to /1.1.1.1 (port 443) from /10.111.0.1 (port 58276) after 3000ms | udp.host=ALLOWED sent (whether it arrived is in the fixture's UDP log) | uid=10231
+10-20 03:03:29.116 17339 17363 I Rift    : result s24: bind.core=DENIED SecurityException: Not allowed to bind to service Intent { xflg=0x4 cmp=org.simulationrift.app/.CoreService } | bind.session=DENIED SecurityException: Not allowed to bind to service Intent { xflg=0x4 cmp=org.simulationrift.browser/.SessionService } | permission=DENIED | proxy.none=ALLOWED HTTP/1.1 407 Proxy Authentication Required | proxy.wrong=ALLOWED HTTP/1.1 407 Proxy Authentication Required | start.browser=DENIED SecurityException: Permission Denial: starting Intent { xflg=0x4 cmp=org.simulationrift.browser/.BrowserActivity (has extras) } from ProcessRecord{ed2174e 20339:org.simulationrift.outsider/u0a232} (pid=20339, uid=10232) requires org.simulationrift.permission.RIFT
+10-20 03:03:35.273 17339 17363 I Rift    : result s25: page: {"control":"answered","loopback":"answered","emulator_host":"answered","loopback_v6":"answered","websocket":"error","webrtc":"candidate:2671121269 1 udp 2113937151 10.111.0.1 40598 typ host generation 0 ufrag qbMJ network-cost 999\ncandidate:1065902608 1 udp 2113942271 fd00:7269:6674::1 50227 typ host generation 0 ufrag qbMJ network-cost 999","done":"1"}; arrived: [tcp control host=localhost:8766]; refused by the proxy: [127.0.0.1:8766, 10.0.2.2:8766, [::1]:8766, 127.0.0.1:8766]
+10-20 03:03:57.534 17339 17363 I Rift    : result s26: candidates: [10.111.0.1, fd00:7269:6674::1]; device addresses: [fe80::4891:abff:fe8a:92a2, fe80::5054:ff:fe12:3456, fec0::5054:ff:fe12:3456, 10.0.2.15, fe80::cdc7:ebd7:aefd:7251, fec0::a940:f251:d922:6920, fec0::f460:400a:427a:bb75, 10.0.2.16]; arrived: [tcp control host=localhost:8766]; dropped: Dropped(packets=50, destinations=[protocol 0 [ff02::16], ICMPv6 [ff02::2], TCP 10.111.0.2:853, TCP 10.0.2.2:8766, TCP 1.1.1.1:443, UDP 10.0.2.2:3478, UDP 10.111.0.2:53]); tcp.host=DENIED SocketTimeoutException: failed to connect to /10.0.2.2 (port 8766) from /10.111.0.1 (port 39404) after 3000ms | tcp.public=DENIED SocketTimeoutException: failed to connect to /1.1.1.1 (port 443) from /10.111.0.1 (port 35234) after 3000ms | tcp.loopback=ALLOWED connected | udp.host=ALLOWED sent (whether it arrived is in the fixture's UDP log) | dns=DENIED UnknownHostException: Unable to resolve host "example.com": No address associated with hostname
+10-20 03:03:57.802 19395 19406 I RiftBrowser: system wipe requested in pid 19395
+10-20 03:03:58.683 17339 17372 I Rift    : browser wiped: pid 19395 -> 21104, no files
+10-20 03:03:58.686 17339 17372 I Rift    : generation 6 disposed
+10-20 03:03:58.696 17339 17372 I Rift    : session 7 active
+10-20 03:03:58.710 17339 17363 I Rift    : result s27: generation 6->7 in 920 ms; browser pid 19395->21104; files 72->0
+10-20 03:03:59.429 17339 17366 I Rift    : browser registered for generation 7, network LOCKED
+10-20 03:03:59.962 17339 17366 I Rift    : browser network in generation 7: proxied=true locked=true
+10-20 03:04:01.103 17339 17351 W Rift    : network lock lost: another VPN started, or the network lock was turned off in Settings
+10-20 03:04:01.220 21148 21238 I RiftBrowser: browser process exiting: network lock lost
+10-20 03:04:01.383 17339 17372 I Rift    : browser did not answer shutdown: android.os.DeadObjectException
+10-20 03:04:01.409 21104 21127 I RiftBrowser: system wipe requested in pid 21104
+10-20 03:04:02.439 17339 17372 I Rift    : browser wiped: pid 21104 -> 21329, no files
+10-20 03:04:02.447 17339 17372 I Rift    : generation 7 disposed
+10-20 03:04:02.482 17339 17372 I Rift    : session 8 active
+10-20 03:04:04.962 17339 17363 I Rift    : result s28: lock lost: Lost(reason=another VPN started, or the network lock was turned off in Settings); session 7 -> 8; browser wiped
+10-20 03:04:05.051 17339 17339 I Rift    : network lock active
+10-20 03:04:05.176 21329 21340 I RiftBrowser: system wipe requested in pid 21329
+10-20 03:04:06.195 17339 17372 I Rift    : browser wiped: pid 21329 -> 21444, no files
+10-20 03:04:06.198 17339 17372 I Rift    : generation 8 disposed
+10-20 03:04:06.203 17339 17372 I Rift    : session 9 active
+10-20 03:04:06.965 17339 17348 I Rift    : browser registered for generation 9, network REDUCED
+10-20 03:04:07.530 17339 17348 I Rift    : browser network in generation 9: proxied=true locked=true
+10-20 03:04:08.605 21444 21459 I RiftBrowser: system wipe requested in pid 21444
+10-20 03:04:09.350 17339 17372 I Rift    : browser wiped: pid 21444 -> 21579, no files
+10-20 03:04:09.353 17339 17372 I Rift    : generation 9 disposed
+10-20 03:04:09.359 17339 17372 I Rift    : session 10 active
+10-20 03:04:09.377 17339 17363 I Rift    : result s28b: generation 9 ran with reduced isolation, labelled; 10 did not
