@@ -224,6 +224,11 @@ for _ in $(seq 20); do
   scroll_down
   sleep 1
 done
+if [ $seen = no ]; then
+  # As for S16d. Without S16d's database there is nothing to warn about.
+  "$adb" exec-out screencap -p > "$out/s16f-screen.png" 2>/dev/null || true
+  "$adb" shell cat /data/local/tmp/rift-ui.xml > "$out/s16f-ui.xml" 2>/dev/null || true
+fi
 "$adb" shell date @$(date +%s) >/dev/null
 "$adb" shell settings put global auto_time "${auto_time:-1}"
 "$adb" shell am force-stop $pkg
