@@ -39,6 +39,17 @@ Recorded in [`dependencies.md`](dependencies.md): how dependencies are checked, 
 |---|---|---|---|
 | l1 | Both APKs carry their notices, and the controller shows them | **Pass (API 35, 3 of 3 runs).** The controller's assets hold the Android libraries (155 lines, with JNA and libffi's notice), the Rust crates (285 crates, 12 579 lines, with YARA-X's copyright and the MPL-2.0 text) and the Apache License. The browser APK holds its own list (with the WebView library and no JNA) and the Apache License. "Open-source licences" on the home screen opened the list, and Back returned to the home screen. A screenshot showed the list readable at 1080 px. The first version of the test swiped with UiAutomator's own scroll and did not reach the button in 2 of 3 runs; it now swipes along the column's right-hand margin, where there is no text field. Why the first one failed is not confirmed (a focused text field's keyboard is the suspect, as in S16d). | `l1_*`, `android/notices.py`, `android/notices.gradle.kts` |
 
+## Fault injection
+
+The host kills the controller with `SIGKILL` (as the OS or a crash would) at a random moment while it writes, then starts it again and checks what is left. The test controller writes in a loop and logs each completed step, so the host knows how far it got before the kill. `RIFT_FAULT_ONLY=1` runs only these rounds; `RIFT_FAULT_ROUNDS` sets their number (8 by default).
+
+| ID | Test | Result | Where |
+|---|---|---|---|
+| F1/F2 | Kill while keeping files into the vault, then check the vault | **Pass (API 35, 8 of 8 kills, twice: alone and in the full run).** Kills came 0.15–3.0 s into each round, after 39–363 completed keeps. Each time the vault opened, held every completed entry and at most one more (a keep whose kill came after its write but before its log line), had no stored file without an entry, and every entry exported to the exact bytes kept (SHA-256), with no plaintext marker anywhere in the app's files. | `f0`–`f2`, [evidence](evidence/phase7-faults-api35-16k/) |
+| F3/F4 | Kill while installing the threat database, then check it | **Pass (8 of 8, twice).** One install takes about 0.5–1.2 s on this emulator, and kills came 0.01–1.2 s into it, plus one after it finished. Each time the database was either installed whole or still missing, never damaged; once installed it still found the demo file; and no update copy was left behind (after the fix in finding 6). | `f3`, `f4` |
+
+What this does not cover: a full disk, a kill of the browser app during a page load (S14 kills its renderer), a power loss (a kill leaves the kernel's page cache intact, so it does not test `fsync` ordering), and other Android versions.
+
 ## Findings
 
 1. **NAT64 addresses refused every IPv4-only host** (project status finding 50). The core refused all of `64:ff9b::/32` as non-public, and the proxy and the downloader refuse a name if any of its addresses is refused. On a DNS64 network (common on IPv6-only mobile networks) every IPv4-only host also resolves to `64:ff9b::<IPv4>`, so browsing and downloads to all of them were refused. The host network test found it: on this development network, `wrong.host.badssl.com` resolved to such an address. Fixed: an address in RFC 6052's well-known prefix `64:ff9b::/96` is judged by the IPv4 address it carries (so `64:ff9b::7f00:1`, loopback, and `64:ff9b::a9fe:a9fe`, link-local, are still refused). The rest of the /32, including RFC 8215's local-use `64:ff9b:1::/48`, stays refused, because the address it carries says nothing about where the translator sends it. `transfer` tests cover each case.
@@ -46,6 +57,9 @@ Recorded in [`dependencies.md`](dependencies.md): how dependencies are checked, 
 3. **The scrypt work factor could refuse the right passphrase** (Phase 4 finding 6, project status 48). Found by a full run in this phase and fixed in Phase 4's code: every passphrase wrapping uses N = 2^17.
 4. **The local emulator's DNS stopped answering** (finding 49). x1's control first used a host name and failed; the shell could not resolve names either. The control now uses an IP address, so a broken resolver cannot make the measurement look sensitive or insensitive by accident. A restart of the emulator fixed DNS.
 5. **Twenty shipped crates publish no licence file** (finding 52). Found while generating the notices: they include YARA-X (BSD-3-Clause, whose notice must be reproduced), the uniffi crates (MPL-2.0) and several Wasmtime crates. Their texts now come from their repositories, pinned by version, and three crates have none anywhere (see [`dependencies.md`](dependencies.md)). JNA's archive also carries no licence text, although its native library contains libffi (MIT).
+6. **A kill during an install left the update's copy behind** (finding 53). F4 found the working copy of the update under `files/rift/import` after a kill. It is Rift's own state, on the disposal allowlist, so it did not break isolation, but it stayed on disk until the next import. It is now removed at every start, on the update executor, so before any new install.
+7. **An install asked for before the database was open did nothing, silently** (finding 54). F4's first version installed right after the start, while the database was still opening; nothing happened and the home screen said nothing. It now says the database is not open yet.
+8. **A browser window that never attached came back on CI** (finding 47, open). On API 34, Android removed a new browser window's task within milliseconds, right after a wipe, so the browser never registered. The cause is still not confirmed. The home screen and the tests now use `Core.openWindow`, which opens the window again if the browser has not registered within 15 s (at most twice) and logs it.
 
 ## Release gates (§24)
 
@@ -59,7 +73,7 @@ Recorded in [`dependencies.md`](dependencies.md): how dependencies are checked, 
 
 ## Still to do in Phase 7
 
-- **Fault injection on the device** beyond S13 (kill during reset) and S14 (renderer crash): for example, a kill while keeping a file or while installing an update, and a full disk.
+- **More fault injection:** a full disk, power loss (which a kill does not simulate), and the same rounds on other Android versions. Kills while keeping and while installing are done (F1–F4).
 - **Long fuzz campaigns** with coverage measurement. The seven targets run for 60 s each on every push, which is not a release-grade campaign.
 - **An external review.**
 - **A physical phone**, for everything above and for the hardware Keystore.

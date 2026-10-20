@@ -13,7 +13,7 @@
 | 4: Vault | **Built and tested on the host and the API 35 emulator** ([report](phase-4.md)): a Keystore key behind BiometricPrompt (or a passphrase), keep from quarantine, warned export, lock on request, in the background and when idle, and a no-plaintext-on-disk inventory. Kept files preview in an isolated worker until the vault locks; a recovery passphrase opens a vault whose key was lost. **Open:** a physical phone (the emulator's Keystore is software only). |
 | 5: Linux app | Not started. **Moved to the last step** and **to Qt instead of GTK4** (decided 20 Oct 2026); the design will be revised before any code. |
 | 6: AI experiment | Not started; deferred and gated by design. |
-| 7: Hardening | **Started on Android** ([report](phase-7.md)): privacy measurements x1 (local work and updates move no byte on real networks; nothing scheduled) and x2 (browsing leaves only through the controller's proxy) pass on API 35; the dependency and licence inventory is written ([inventory](dependencies.md)). Both APKs carry generated third-party notices, shown in the app (l1). Android libraries are locked (`gradle.lockfile`) and their runtime classpaths scanned with OSV-Scanner on every push. **Open:** fault injection, long fuzz campaigns, an external review, and release gates that need a phone. |
+| 7: Hardening | **Started on Android** ([report](phase-7.md)): privacy measurements x1 (local work and updates move no byte on real networks; nothing scheduled) and x2 (browsing leaves only through the controller's proxy) pass on API 35; the dependency and licence inventory is written ([inventory](dependencies.md)). Both APKs carry generated third-party notices, shown in the app (l1). Android libraries are locked (`gradle.lockfile`) and their runtime classpaths scanned with OSV-Scanner on every push. Kill-fault rounds (F1–F4: the controller killed while keeping into the vault or installing the database) pass 8 of 8 on API 35. **Open:** more fault injection (full disk, power loss), long fuzz campaigns, an external review, and release gates that need a phone. |
 
 ## 2. What was done
 
@@ -134,6 +134,9 @@ Phase 2 findings, added to the list above: 15–26.
 50. (Phase 7) The core refused all of `64:ff9b::/32`, and the proxy and the downloader refuse a name if any of its addresses is refused. On a DNS64 network (common on IPv6-only mobile networks) every IPv4-only host also resolves to `64:ff9b::<IPv4>`, so all of them were refused; the host network test found it on the development network. Addresses in the well-known `64:ff9b::/96` are now judged by the IPv4 address they carry; the rest of the /32 (including local-use `64:ff9b:1::/48`) stays refused.
 51. (Phase 7) Two crypto libraries shipped: `ureq`'s TLS used `ring`, `tough` uses `aws-lc-rs`. The core's TLS now uses rustls' aws-lc-rs provider and `ring` is in no build. `librift_ffi.so` went from 7.76 to 7.50 MB (arm64) and from 8.66 to 8.99 MB (x86_64, since aws-lc's x86_64 cipher code is now linked). Native code per ABI is now 19.2 MB (arm64) and 24.5 MB (x86_64); x86_64 has 0.5 MB of the 25 MB budget left. TLS was rechecked on the host and on the device (x2).
 52. (Phase 7) Twenty shipped crates publish no licence file, among them YARA-X (BSD-3-Clause, whose notice must be reproduced), uniffi (MPL-2.0) and several Wasmtime crates; JNA's archive carries none although its native code contains libffi (MIT). The generated notices take their texts from the upstream repositories, pinned by version (`android/licence-texts/`), and the build fails for an unlisted crate.
+53. (Phase 7) A kill of the controller during a database install (F4) left the update's working copy under `files/rift/import` until the next import. It is Rift's own state on the disposal allowlist, so isolation held; it is now removed at every start, before any new install.
+54. (Phase 7) An install asked for before the threat database was open did nothing and said nothing (found by F4's first version). It now says that the database is not open yet.
+55. (Phase 7) Finding 47 came back on CI (API 34). Windows are now opened by `Core.openWindow`, which opens the window again, at most twice, if the browser has not registered within 15 s, and logs each reopen. The cause is still not confirmed.
 
 ### 2.8 Phase 4 code (vault)
 
@@ -249,7 +252,7 @@ Phase 2 findings, added to the list above: 15–26.
 
 **Phase 6 and 7 (Android)**
 10. Optional AI experiment, shipped only if it adds measured value.
-11. Hardening: ~~privacy network checks~~ (x1, x2 on API 35; [phase-7.md](phase-7.md)) , ~~the dependency and licence inventory~~ ([dependencies.md](dependencies.md)) , ~~the in-app licence notices~~ (l1) and ~~an Android advisory check~~; open: fuzz campaigns, fault injection, release gates (§24), and an external security review before any release claim.
+11. Hardening: ~~privacy network checks~~ (x1, x2 on API 35; [phase-7.md](phase-7.md)) , ~~the dependency and licence inventory~~ ([dependencies.md](dependencies.md)) , ~~the in-app licence notices~~ (l1) and ~~an Android advisory check~~ and ~~kill-fault rounds~~ (F1–F4); open: fuzz campaigns, more fault injection (full disk, power loss), release gates (§24), and an external security review before any release claim.
 
 **Phase 5: Linux (last, decided 20 Oct 2026)**
 12. A Qt desktop app on the shared core (not GTK4), with the worker lockdown and a fail-closed engine-sandbox check. The §9 design is revised for Qt and its PoCs redone first.

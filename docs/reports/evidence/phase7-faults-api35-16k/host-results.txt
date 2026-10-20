@@ -1,0 +1,6 @@
+S16d PASS (intel import: copied 8 files, skipped 1;intel install: Installed demo-20261020T100341Z.;)
+S16f PASS (the clock warning was shown)
+S14 PASS (renderer killed; app alive (pid 8295); session 20 torn down; 21 active)
+S13 PASS (killed while RESETTING 22; recovery wiped the browser app (no files) before session 23 started)
+F2 PASS (8 kills while keeping; 1:killed-2.319s,kept-46 2:killed-1.731s,kept-83 3:killed-1.880s,kept-127 4:killed-0.433s,kept-139 5:killed-2.549s,kept-196 6:killed-2.555s,kept-251 7:killed-2.508s,kept-304 8:killed-2.925s,kept-363)
+F4 PASS (8 kills while installing (one install: 466 ms); 1:killed-after-install 2:killed-0.093 3:killed-0.455 4:killed-0.242 5:killed-0.320 6:killed-0.279 7:killed-0.343 8:killed-0.013)
