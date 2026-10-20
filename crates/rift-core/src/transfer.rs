@@ -21,8 +21,8 @@ pub enum DestinationError {
 pub fn check_destination(addr: IpAddr) -> Result<(), DestinationError> {
     let public = match addr {
         IpAddr::V4(v4) => is_public_v4(v4),
-        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
-            Some(mapped) => is_public_v4(mapped),
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped().or_else(|| nat64_well_known(v6)) {
+            Some(carried) => is_public_v4(carried),
             None => is_public_v6(v6),
         },
     };
@@ -31,6 +31,21 @@ pub fn check_destination(addr: IpAddr) -> Result<(), DestinationError> {
     } else {
         Err(DestinationError::NonPublic(addr))
     }
+}
+
+/// The IPv4 address in RFC 6052's well-known prefix `64:ff9b::/96`, which a
+/// NAT64 gateway translates to. DNS64 networks (common on IPv6-only mobile
+/// networks) answer with such an address for every IPv4-only host, so it is
+/// judged by the address it carries; refusing the prefix outright refused
+/// those hosts (Phase 7). The rest of `64:ff9b::/32`, including RFC 8215's
+/// local-use `64:ff9b:1::/48`, stays refused.
+fn nat64_well_known(ip: Ipv6Addr) -> Option<Ipv4Addr> {
+    let [a, b, c, d, e, f, ..] = ip.segments();
+    if [a, b, c, d, e, f] != [0x0064, 0xff9b, 0, 0, 0, 0] {
+        return None;
+    }
+    let [.., w, x, y, z] = ip.octets();
+    Some(Ipv4Addr::new(w, x, y, z))
 }
 
 fn is_public_v4(ip: Ipv4Addr) -> bool {
@@ -58,7 +73,7 @@ fn is_public_v6(ip: Ipv6Addr) -> bool {
         || (first & 0xffc0) == 0xfe80 // link-local fe80::/10
         || (first & 0xffc0) == 0xfec0 // deprecated site-local
         || (first == 0x2001 && ip.segments()[1] == 0x0db8) // documentation
-        || (first == 0x0064 && ip.segments()[1] == 0xff9b)) // NAT64 can reach IPv4 private space
+        || (first == 0x0064 && ip.segments()[1] == 0xff9b)) // NAT64 other than the well-known /96
 }
 
 const MAX_DISPLAY_NAME_CHARS: usize = 120;
@@ -210,7 +225,10 @@ mod tests {
             "ff02::1",
             "::ffff:127.0.0.1",
             "::ffff:192.168.0.1",
-            "64:ff9b::a00:1",
+            "64:ff9b::a00:1",       // NAT64 of 10.0.0.1
+            "64:ff9b::7f00:1",      // of 127.0.0.1
+            "64:ff9b::a9fe:a9fe",   // of 169.254.169.254
+            "64:ff9b:1::6814:179a", // RFC 8215 local-use prefix
             "2001:db8::1",
         ] {
             let addr: IpAddr = blocked.parse().unwrap();
@@ -224,6 +242,7 @@ mod tests {
             "1.1.1.1",
             "2606:4700:4700::1111",
             "::ffff:8.8.8.8",
+            "64:ff9b::6814:179a", // DNS64's answer for 104.20.23.154
         ] {
             let addr: IpAddr = allowed.parse().unwrap();
             assert!(
