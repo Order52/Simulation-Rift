@@ -9,9 +9,11 @@ to its proxy over that socketpair (SCM_RIGHTS); this process answers it as
 an HTTP proxy that knows one destination. In the product this is rift-core's
 checking egress proxy; here it only shows the path works.
 
-Usage: controller.py proxy|direct <seconds to stay open>
-  proxy   the engine is told to use the forwarder; the page must load
-  direct  no proxy: the engine connects itself, so the page must not load
+Usage: controller.py proxy|proxy-offscreen|direct <seconds to stay open>
+  proxy            the engine is told to use the forwarder; the page must load
+  proxy-offscreen  the same with Qt's offscreen platform (no display needed)
+  direct           no proxy, offscreen: the engine connects itself, so the
+                   page must not load
 """
 
 import os
@@ -96,7 +98,7 @@ def main():
         log(f"reaches {HOST_PAGE[0]}:{HOST_PAGE[1]} directly")
     ours, theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
     os.set_inheritable(theirs.fileno(), True)
-    url = "http://rift-probe.test:8765/" if case == "proxy" else "http://127.0.0.1:8765/"
+    url = "http://rift-probe.test:8765/" if case.startswith("proxy") else "http://127.0.0.1:8765/"
     command = [
         "flatpak-spawn", "--sandbox", "--no-network", "--watch-bus",
         "--sandbox-flag=share-display", "--sandbox-flag=share-gpu", "--sandbox-flag=allow-dbus",
@@ -104,8 +106,12 @@ def main():
         f"--env=RIFT_PROXY_FD={theirs.fileno()}",
         "--env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess",
     ]
-    if "DISPLAY" in os.environ:
-        command.append(f"--env=DISPLAY={os.environ['DISPLAY']}")
+    if case == "proxy":
+        for name in ("DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY"):
+            if name in os.environ:
+                command.append(f"--env={name}={os.environ[name]}")
+    else:
+        command.append("--env=QT_QPA_PLATFORM=offscreen")
     command += ["/app/bin/browser-host.py", case, url, linger]
     log(f"spawning: {' '.join(command)}")
     child = subprocess.Popen(command, pass_fds=(theirs.fileno(),))

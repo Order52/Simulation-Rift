@@ -4,6 +4,7 @@
 #   proxy   the page must load through the controller (app exit 0), every
 #           direct attempt from the sub-sandbox must be blocked, and the
 #           renderers must still be sandboxed by the engine (host probe 0)
+#   proxy-offscreen  the same with Qt's offscreen platform
 #   direct  without the proxy the engine must fail to load the page (exit 3)
 # Exits nonzero unless both cases give the expected result.
 # Usage (inside dbus-run-session and xvfb-run): sh run-ci.sh <out-dir>
@@ -17,7 +18,7 @@ server=$!
 trap 'kill $server 2>/dev/null' EXIT
 sleep 1
 fail() { echo "$1" >> "$out/unexpected"; echo "UNEXPECTED: $1"; }
-for case in proxy direct; do
+for case in proxy proxy-offscreen direct; do
   flatpak run org.simulationrift.QtNetLock "$case" 15 > "$out/$case-app.txt" 2>&1 &
   app=$!
   i=0
@@ -30,10 +31,10 @@ for case in proxy direct; do
   grep -E "^(probe|host|controller):" "$out/$case-app.txt"
   cat "$out/$case-host.txt"
   if grep -q ": REACHED" "$out/$case-app.txt"; then fail "$case: the sub-sandbox reached the network"; fi
-  if [ "$case" = proxy ]; then
-    [ $appstatus -eq 0 ] || fail "proxy: page did not load (exit $appstatus)"
-    grep -q "^controller: allowed GET http://rift-probe.test:8765/" "$out/$case-app.txt" || fail "proxy: no request reached the controller"
-    [ $verdict -eq 0 ] || fail "proxy: renderers not sandboxed by the engine (host probe exit $verdict)"
+  if [ "$case" != direct ]; then
+    [ $appstatus -eq 0 ] || fail "$case: page did not load (exit $appstatus)"
+    grep -q "^controller: allowed GET http://rift-probe.test:8765/" "$out/$case-app.txt" || fail "$case: no request reached the controller"
+    [ $verdict -eq 0 ] || fail "$case: renderers not sandboxed by the engine (host probe exit $verdict)"
   else
     [ $appstatus -eq 3 ] || fail "direct: expected a failed load (exit 3), got $appstatus"
   fi
