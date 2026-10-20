@@ -31,7 +31,9 @@
    - Six advisories cannot apply: they need two engines, `wasmtime-wasi`, the component model or async.
    - One (recursive-type stack overflow) could crash the worker. That is contained by confinement and reported as "not fully scanned".
 
-   The exceptions are scoped and justified in `deny.toml`. **Action:** remove them when a YARA-X release depends on Wasmtime ≥ 48.0.6, which fixes all seven. `bincode` (used by YARA-X for serialization) is unmaintained but not vulnerable. Rift never deserializes untrusted bincode.
+   - Added 20 Oct 2026: an eighth (RUSTSEC-2026-0379, Cranelift's native aarch64 code for large `br_table`s) cannot apply either. Rift enables YARA-X's `pulley` feature, which sets `config.target("pulley64")`, so rules are never compiled to aarch64 code.
+
+   The exceptions are scoped and justified in `deny.toml`. **Action:** remove them when a YARA-X release depends on Wasmtime ≥ 48.0.7, which fixes all eight. `bincode` (used by YARA-X for serialization) is unmaintained but not vulnerable. Rift never deserializes untrusted bincode.
 
 5. **YARA-X timeouts start a thread, which the Linux worker must never do (L2).** `Scanner::set_timeout` lazily spawns a global heartbeat thread. Under lockdown the `clone` is denied and the worker dies; the controller reported this as a failure, not a clean scan. Starting the thread before lockdown would have been a real hole: seccomp without TSYNC and Landlock confine only the calling thread. The design changes (architecture §7.3):
    - the Linux supervisor enforces scan deadlines by killing the worker (`rift_worker::Deadline::Supervisor`), with `RLIMIT_CPU` as backstop;
