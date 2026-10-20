@@ -20,7 +20,8 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use age::secrecy::{ExposeSecret, SecretString};
+/// Re-exported so callers hand secrets over without depending on age.
+pub use age::secrecy::{ExposeSecret, SecretString};
 
 use crate::vault::{
     self, IndexEntry, ObjectId, VaultError, VaultIndex, VaultKey, read_index, write_index,

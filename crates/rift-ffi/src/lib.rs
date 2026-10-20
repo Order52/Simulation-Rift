@@ -20,10 +20,14 @@ uniffi::setup_scaffolding!();
 
 mod egress;
 mod scan;
+mod vault;
 pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressStats};
 pub use scan::{
     Intel, IntelFailure, IntelStatus, PendingIntel, ScanFailure, ScanFinding, ScanJob, ScanStart,
     ScanStatus, Verdict,
+};
+pub use vault::{
+    PlatformKey, VaultEntry, VaultFailure, VaultHandle, VaultProtection, vault_protection,
 };
 
 /// One explainable fact for the trusted UI: `code` is stable, `text` is a
@@ -1372,6 +1376,150 @@ mod tests {
                 .join(generation.to_string())
                 .exists()
         );
+    }
+
+    #[test]
+    fn saved_files_outlive_the_session_in_the_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_dir = root(&dir) + "/vault";
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        let url = format!("http://localhost:{}/report", serve(b"kept on purpose"));
+        let file = sessions.download(generation, info(url)).unwrap();
+
+        assert!(matches!(
+            VaultHandle::create_with_passphrase(vault_dir.clone(), b"too short".to_vec()),
+            Err(VaultFailure::WeakPassphrase { minimum: 10 })
+        ));
+        let vault =
+            VaultHandle::create_with_passphrase(vault_dir.clone(), b"correct horse".to_vec())
+                .unwrap();
+        assert_eq!(
+            vault_protection(vault_dir.clone()),
+            Some(VaultProtection::Passphrase)
+        );
+        let saved = sessions
+            .save_to_vault(generation, file.id.clone(), vault.clone(), 1_700_000_000)
+            .unwrap();
+        assert_eq!(
+            (
+                saved.display_name.as_str(),
+                saved.size,
+                saved.sha256.as_str()
+            ),
+            ("rfdp.exe", file.size, file.sha256.as_str())
+        );
+        assert_ne!(saved.id, file.id, "the vault names objects itself");
+        assert!(matches!(
+            sessions.save_to_vault(generation, "00".repeat(16), vault.clone(), 0),
+            Err(VaultFailure::NotFound)
+        ));
+
+        // The session ends; the saved copy does not.
+        sessions.reset().unwrap();
+        assert!(matches!(
+            sessions.save_to_vault(generation, file.id, vault.clone(), 0),
+            Err(VaultFailure::SessionEnded)
+        ));
+        vault.lock();
+        assert!(matches!(vault.entries(), Err(VaultFailure::Locked)));
+        drop(vault);
+        let reopened = VaultHandle::open(vault_dir.clone()).unwrap();
+        assert!(!reopened.is_unlocked());
+        assert!(matches!(
+            reopened.unlock_with_passphrase(b"wrong horse!".to_vec()),
+            Err(VaultFailure::WrongSecret)
+        ));
+        assert!(matches!(
+            reopened.platform_wrapped(),
+            Err(VaultFailure::WrongProtection)
+        ));
+        reopened
+            .unlock_with_passphrase(b"correct horse".to_vec())
+            .unwrap();
+        assert_eq!(reopened.entries().unwrap(), vec![saved.clone()]);
+        assert_eq!(reopened.read(saved.id.clone()).unwrap(), b"kept on purpose");
+        reopened.remove(saved.id.clone()).unwrap();
+        assert!(reopened.entries().unwrap().is_empty());
+        assert!(matches!(
+            reopened.read(saved.id),
+            Err(VaultFailure::UnknownObject)
+        ));
+        assert!(matches!(
+            VaultHandle::create_with_passphrase(vault_dir, b"another passphrase".to_vec()),
+            Err(VaultFailure::Exists)
+        ));
+    }
+
+    /// Stands in for Android Keystore: "wraps" by reversing, or refuses.
+    struct FakeKey {
+        refuse: bool,
+        calls: AtomicU64,
+    }
+
+    impl PlatformKey for FakeKey {
+        fn wrap(&self, mut secret: Vec<u8>) -> Result<Vec<u8>, VaultFailure> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.refuse {
+                return Err(VaultFailure::Platform {
+                    detail: "no secure lock screen".into(),
+                });
+            }
+            secret.reverse();
+            Ok(secret)
+        }
+    }
+
+    #[test]
+    fn a_platform_vault_opens_with_the_secret_the_platform_unwraps() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_dir = root(&dir);
+        let refusing = Arc::new(FakeKey {
+            refuse: true,
+            calls: AtomicU64::new(0),
+        });
+        assert!(matches!(
+            VaultHandle::create_for_platform(vault_dir.clone(), refusing),
+            Err(VaultFailure::Platform { detail }) if detail == "no secure lock screen"
+        ));
+        assert_eq!(
+            vault_protection(vault_dir.clone()),
+            None,
+            "nothing was created"
+        );
+
+        let key = Arc::new(FakeKey {
+            refuse: false,
+            calls: AtomicU64::new(0),
+        });
+        let vault = VaultHandle::create_for_platform(vault_dir.clone(), key.clone()).unwrap();
+        assert!(vault.is_unlocked());
+        drop(vault);
+        assert!(matches!(
+            VaultHandle::create_for_platform(vault_dir.clone(), key.clone()),
+            Err(VaultFailure::Exists)
+        ));
+        assert_eq!(
+            key.calls.load(Ordering::SeqCst),
+            1,
+            "no prompt for a vault that exists"
+        );
+
+        let reopened = VaultHandle::open(vault_dir.clone()).unwrap();
+        assert_eq!(vault_protection(vault_dir), Some(VaultProtection::Platform));
+        assert!(matches!(
+            reopened.unlock_with_passphrase(b"any passphrase".to_vec()),
+            Err(VaultFailure::WrongProtection)
+        ));
+        let mut secret = reopened.platform_wrapped().unwrap();
+        assert!(matches!(
+            reopened.unlock_with_secret(secret.clone()),
+            Err(VaultFailure::WrongSecret)
+        ));
+        secret.reverse();
+        reopened.unlock_with_secret(secret).unwrap();
+        assert!(reopened.entries().unwrap().is_empty());
     }
 
     /// 1x1 RGBA PNG.
