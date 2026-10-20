@@ -692,7 +692,7 @@ class SecurityTest {
     )
 
     private fun activeGenerationAfter(generation: Long): Long {
-        val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+        val deadline = SystemClock.elapsedRealtime() + SESSION_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
             val state = Core.state.value
             if (state is Core.State.Active && state.generation != generation) return state.generation
@@ -1020,7 +1020,7 @@ class SecurityTest {
     }
 
     private fun activeGeneration(): Long {
-        val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+        val deadline = SystemClock.elapsedRealtime() + SESSION_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
             when (val state = Core.state.value) {
                 is Core.State.Active -> return state.generation
@@ -1033,7 +1033,7 @@ class SecurityTest {
 
     private fun resetAndAwait(generation: Long): Long {
         Core.reset(generation)
-        val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+        val deadline = SystemClock.elapsedRealtime() + SESSION_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
             val state = Core.state.value
             if (state is Core.State.Active && state.generation != generation) return state.generation
@@ -1255,6 +1255,9 @@ class SecurityTest {
         const val UI_TIMEOUT_MS = 10_000L
         const val PAGE_TIMEOUT_MS = 20_000L
         const val CORE_TIMEOUT_MS = 15_000L
+
+        /** A session start or reset includes the browser wipe, whose clear may take up to 30 s (AndroidBrowserDisposal). */
+        const val SESSION_TIMEOUT_MS = 60_000L
 
         /** Intel messages that mean "still working". */
         val PROGRESS = setOf("Checking the update…", "Reading the update…", "Downloading the update…")

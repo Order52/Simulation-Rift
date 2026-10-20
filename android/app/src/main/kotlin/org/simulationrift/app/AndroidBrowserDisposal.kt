@@ -103,7 +103,9 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
             } finally {
                 old.close()
             }
-            await(cleared, "Android did not confirm that the browser app's data was cleared")
+            val started = System.nanoTime()
+            await(cleared, "Android did not confirm that the browser app's data was cleared", CLEAR_TIMEOUT_MS)
+            Log.i(TAG, "browser data cleared after ${(System.nanoTime() - started) / 1_000_000} ms")
             checkFresh(oldPid)
             wipedThisLaunch = true
         } finally {
@@ -147,10 +149,10 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
         throw checkNotNull(failure)
     }
 
-    private fun <T> await(future: CompletableFuture<T>, failure: String): T = try {
-        future.get(WIPE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+    private fun <T> await(future: CompletableFuture<T>, failure: String, timeoutMs: Long = WIPE_TIMEOUT_MS): T = try {
+        future.get(timeoutMs, TimeUnit.MILLISECONDS)
     } catch (e: TimeoutException) {
-        throw DisposalException.Failed("$failure within $WIPE_TIMEOUT_MS ms")
+        throw DisposalException.Failed("$failure within $timeoutMs ms")
     }
 
     /** A binding to the browser's session service. */
@@ -215,6 +217,13 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
 
     companion object {
         private const val WIPE_TIMEOUT_MS = 10_000L
+
+        /**
+         * The first clears after an install took 9.2 s and over 10 s to be
+         * confirmed on a cold CI emulator (API 34), later ones under 0.5 s.
+         * Running out still fails the reset.
+         */
+        private const val CLEAR_TIMEOUT_MS = 30_000L
         private const val BIND_TIMEOUT_MS = 10_000L
         private const val FRESH_ATTEMPTS = 3
 
