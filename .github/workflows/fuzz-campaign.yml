@@ -65,7 +65,9 @@ jobs:
           cargo +"$NIGHTLY" fuzz coverage "$TARGET" 2>&1 | tail -3
           host="$(rustc +"$NIGHTLY" -vV | sed -n 's/^host: //p')"
           llvm_cov="$(rustc +"$NIGHTLY" --print sysroot)/lib/rustlib/$host/bin/llvm-cov"
-          "$llvm_cov" report "fuzz/target/$host/coverage/$host/release/$TARGET" \
+          # cargo fuzz coverage builds under target/ of the directory it runs
+          # in (here the repository root), not under fuzz/target.
+          "$llvm_cov" report "target/$host/coverage/$host/release/$TARGET" \
             -instr-profile="fuzz/coverage/$TARGET/coverage.profdata" \
             -ignore-filename-regex='(\.cargo|rustc)/' > out/coverage.txt
           cat out/coverage.txt
