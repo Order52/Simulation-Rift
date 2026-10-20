@@ -1,0 +1,356 @@
+10-20 03:19:45.372   527  1679 I ActivityManager: Force stopping org.simulationrift.app appid=10192 user=0: start instr
+10-20 03:19:45.390   527   559 I ActivityManager: Start proc 4381:org.simulationrift.app/u0a192 for added application org.simulationrift.app
+10-20 03:19:52.233  4381  4381 I Rift    : network lock active
+10-20 03:19:52.316   527   559 I ActivityManager: Start proc 4721:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:19:52.578  4721  4732 I RiftBrowser: system wipe requested in pid 4721
+10-20 03:19:52.579   527  1680 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:19:52.617   527  1680 I ActivityManager: Killing 4721:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:19:52.667   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:19:53.136   527   559 I ActivityManager: Start proc 4802:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:19:53.587  4381  4706 I Rift    : browser wiped: pid 4721 -> 4802, no files
+10-20 03:19:53.592  4381  4706 I Rift    : session 1 active
+10-20 03:19:53.713   527   559 I ActivityManager: Start proc 4846:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:19:54.138  4381  4401 I Rift    : browser registered for generation 1, network LOCKED
+10-20 03:19:54.314   527   559 I ActivityManager: Start proc 4925:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0ai9000 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-20 03:19:55.458  4381  4401 I Rift    : browser network in generation 1: proxied=true locked=true
+10-20 03:19:56.691  4846  4846 I RiftBrowser: new link in generation 1 (engine running)
+10-20 03:19:57.752  4846  4846 I RiftBrowser: new link in generation 1 (engine running)
+10-20 03:19:58.449  4802  4828 I RiftBrowser: system wipe requested in pid 4802
+10-20 03:19:58.449   527  1684 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:19:58.638   527  1684 I ActivityManager: Killing 4802:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:19:58.651   527  1684 I ActivityManager: Killing 4846:org.simulationrift.browser:web/u0a193 (adj 200): stop org.simulationrift.browser due to clear data
+10-20 03:19:58.766   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:19:58.891   527   559 I ActivityManager: Start proc 5271:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:19:59.166  4381  4706 I Rift    : browser wiped: pid 4802 -> 5271, no files
+10-20 03:19:59.180  4381  4706 I Rift    : generation 1 disposed
+10-20 03:19:59.197  4381  4706 I Rift    : session 2 active
+10-20 03:19:59.242   527   559 I ActivityManager: Start proc 5297:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:19:59.774  4381  5186 I Rift    : browser registered for generation 2, network LOCKED
+10-20 03:19:59.945   527   559 I ActivityManager: Start proc 5395:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i1 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-20 03:20:01.099  4381  4475 I Rift    : browser network in generation 2: proxied=true locked=true
+10-20 03:20:01.882  4381  4459 I Rift    : result n4: engine supported=true; bar: No page checked yet
+10-20 03:20:01.943  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:02.097  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:02.265  4381  5573 I Rift    : download 1 in generation 2: stored 107456 bytes
+10-20 03:20:02.318  4381  5590 I Rift    : scan of a19f3f274ebf95ebd7945a78c38718c8 in generation 2 after 4 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:02.350  4381  4459 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=a19f3f274ebf95ebd7945a78c38718c8, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:20:02.840   527   559 I ActivityManager: Start proc 5637:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_1/u0ai0 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_1}
+10-20 03:20:03.164   527  2352 I ActivityManager: Killing 5637:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_1/u0a192i-9000 (adj 0): isolated not needed
+10-20 03:20:03.271  4381  5593 I Rift    : preview of a19f3f274ebf95ebd7945a78c38718c8 in generation 2 after 876 ms: 300x200
+10-20 03:20:03.285  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:03.356  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:03.432  4381  5669 I Rift    : download 2 in generation 2: stored 633 bytes
+10-20 03:20:03.436  4381  5674 I Rift    : scan of 6b3d8c33e2e970b1880cfe1aaf385bc9 in generation 2 after 2 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:03.489  4381  4459 I Rift    : result download: /files/document.pdf -> QuarantinedFile(id=6b3d8c33e2e970b1880cfe1aaf385bc9, displayName=document.pdf, size=633, sha256=d30973d92a1948ada613213a25d12a376e7f85f2769a2752dcef01e0ffeb99db, contentType=application/pdf, source=http://localhost:8766/files/document.pdf, redirects=0)
+10-20 03:20:03.559   527   559 I ActivityManager: Start proc 5679:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_2/u0ai1 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_2}
+10-20 03:20:04.491   527   902 I ActivityManager: Killing 5679:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_2/u0a192i-8999 (adj 0): isolated not needed
+10-20 03:20:04.965  4381  5593 I Rift    : preview of 6b3d8c33e2e970b1880cfe1aaf385bc9 in generation 2 after 1475 ms: 1582x2048
+10-20 03:20:05.009  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:05.042  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:05.077  4381  5573 I Rift    : download 3 in generation 2: stored 2056 bytes
+10-20 03:20:05.079  4381  5590 I Rift    : scan of fad66ee7c06ce3bb86b8b2fc524537fe in generation 2 after 2 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:05.117  4381  4459 I Rift    : result download: /files/broken.png -> QuarantinedFile(id=fad66ee7c06ce3bb86b8b2fc524537fe, displayName=broken.png, size=2056, sha256=7630fc84b891c670090a8e14448c7dc0b1c338ea47f86be5bb07363d4cd75619, contentType=image/png, source=http://localhost:8766/files/broken.png, redirects=0)
+10-20 03:20:05.181   527   559 I ActivityManager: Start proc 5789:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_3/u0ai2 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_3}
+10-20 03:20:05.431   527  1680 I ActivityManager: Killing 5789:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_3/u0a192i-8998 (adj 0): isolated not needed
+10-20 03:20:05.437  4381  5593 I Rift    : preview of fad66ee7c06ce3bb86b8b2fc524537fe in generation 2 after 320 ms: failed: the file could not be previewed: the file is damaged or not what it claims to be
+10-20 03:20:05.469  4381  4459 I Rift    : result p1: picture 300x200; page 1582x2048; broken: the file could not be previewed: the file is damaged or not what it claims to be
+10-20 03:20:07.008  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:07.255  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:07.477  4381  5669 I Rift    : download 4 in generation 2: stored 72 bytes
+10-20 03:20:07.526  4381  5674 I Rift    : scan of 5d8589ba3c575b26d86f9aa671bf896c in generation 2 after 40 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:07.531  4381  4459 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=5d8589ba3c575b26d86f9aa671bf896c, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-20 03:20:07.572  4381  5593 I Rift    : preview of 5d8589ba3c575b26d86f9aa671bf896c in generation 2 after 39 ms: text, 86 chars
+10-20 03:20:07.582  4381  4459 I Rift    : result p2: text 86 chars; note: Plain text, not interpreted. Control and direction-changing characters are shown as \u{…}.
+10-20 03:20:07.716  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:09.174  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:11.185   527   559 I ActivityManager: Start proc 6140:org.simulationrift.app:org.simulationrift.app.ProbeWorkerService:probe_74854953115/u0ai0 for  {org.simulationrift.app/org.simulationrift.app.ProbeWorkerService:probe_74854953115}
+10-20 03:20:11.403   527   908 I ActivityManager: Killing 6140:org.simulationrift.app:org.simulationrift.app.ProbeWorkerService:probe_74854953115/u0a192i-9000 (adj 0): isolated not needed
+10-20 03:20:11.408  4381  4459 I Rift    : result s03: isolated=true | uid=90000 | seccomp=2 | no_new_privs=1 | read_canary=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/canary.txt: open failed: ENOENT (No such file or directory) | list_app_files=DENIED SecurityException: list() returned null | write_app_files=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/from-worker: open failed: ENOENT (No such file or directory) | list_external_storage=DENIED NullPointerException: Attempt to invoke interface method 'android.os.storage.StorageVolume[] android.os.storage.IStorageManager.getVolumeList(int, java.lang.String, int)' on a null object reference | tcp_connect=DENIED SocketException: socket failed: EACCES (Permission denied) | udp_socket=DENIED SocketException: socket failed: EACCES (Permission denied) | dns=DENIED SecurityException: Permission denied (missing INTERNET permission?) | clipboard=DENIED SecurityException: no clipboard service | bind_core=DENIED SecurityException: Isolated process not allowed to call bindService | unix_socket=ALLOWED created | exec_mapping=ALLOWED mapped | unix_socket_filtered_thread=DENIED ErrnoException: socket failed: EPERM (Operation not permitted) | exec_mapping_filtered_thread=DENIED ErrnoException: mmap failed: EPERM (Operation not permitted)
+10-20 03:20:11.458   527   559 I ActivityManager: Start proc 6168:org.simulationrift.app:org.simulationrift.app.ProbeWorkerService:probe_75682750794/u0ai1 for  {org.simulationrift.app/org.simulationrift.app.ProbeWorkerService:probe_75682750794}
+10-20 03:20:11.674   527  2875 I ActivityManager: Killing 6168:org.simulationrift.app:org.simulationrift.app.ProbeWorkerService:probe_75682750794/u0a192i-8999 (adj 0): isolated not needed
+10-20 03:20:11.683  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:11.717  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:11.752  4381  5573 I Rift    : download 5 in generation 2: stored 107456 bytes
+10-20 03:20:11.758  4381  5590 I Rift    : scan of 55ecd6b089db8f697fa48b4cbb36fb2e in generation 2 after 3 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:11.778  4381  4459 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=55ecd6b089db8f697fa48b4cbb36fb2e, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:20:11.801   527   559 I ActivityManager: Start proc 6224:org.simulationrift.app:org.simulationrift.app.FilterCheckingPreviewService:worker_4/u0ai2 for  {org.simulationrift.app/org.simulationrift.app.FilterCheckingPreviewService:worker_4}
+10-20 03:20:11.887   527  2352 I ActivityManager: Killing 6224:org.simulationrift.app:org.simulationrift.app.FilterCheckingPreviewService:worker_4/u0a192i-8998 (adj 0): isolated not needed
+10-20 03:20:11.892  4381  5593 I Rift    : preview of 55ecd6b089db8f697fa48b4cbb36fb2e in generation 2 after 114 ms: 300x200
+10-20 03:20:11.929  4381  4459 I Rift    : result s04: isolated=true | uid=90001 | seccomp=2 | no_new_privs=1 | read_canary=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/canary.txt: open failed: ENOENT (No such file or directory) | list_app_files=DENIED SecurityException: list() returned null | write_app_files=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/from-worker: open failed: ENOENT (No such file or directory) | list_external_storage=DENIED NullPointerException: Attempt to invoke interface method 'android.os.storage.StorageVolume[] android.os.storage.IStorageManager.getVolumeList(int, java.lang.String, int)' on a null object reference | tcp_connect=DENIED SocketException: socket failed: EACCES (Permission denied) | udp_socket=DENIED SocketException: socket failed: EACCES (Permission denied) | dns=DENIED SecurityException: Permission denied (missing INTERNET permission?) | clipboard=DENIED SecurityException: no clipboard service | bind_core=DENIED SecurityException: Isolated process not allowed to call bindService | unix_socket=ALLOWED created | exec_mapping=ALLOWED mapped | unix_socket_filtered_thread=DENIED ErrnoException: socket failed: EPERM (Operation not permitted) | exec_mapping_filtered_thread=DENIED ErrnoException: mmap failed: EPERM (Operation not permitted)
+10-20 03:20:11.957  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:11.981  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:11.997  4381  5669 I Rift    : download 6 in generation 2: stored 107456 bytes
+10-20 03:20:12.002  4381  5674 I Rift    : scan of a35a558db09958e2928252aa8b91c685 in generation 2 after 2 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:12.067  4381  4459 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=a35a558db09958e2928252aa8b91c685, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:20:12.089   527   559 I ActivityManager: Start proc 6257:org.simulationrift.app:org.simulationrift.app.OversizedPreviewService:worker_5/u0ai3 for  {org.simulationrift.app/org.simulationrift.app.OversizedPreviewService:worker_5}
+10-20 03:20:12.175   527  1662 I ActivityManager: Killing 6257:org.simulationrift.app:org.simulationrift.app.OversizedPreviewService:worker_5/u0a192i-8997 (adj 0): isolated not needed
+10-20 03:20:12.176  4381  5593 I Rift    : preview of a35a558db09958e2928252aa8b91c685 in generation 2 after 109 ms: failed: the preview worker sent an invalid reply (response field out of bounds: bitmap dimensions) and was stopped
+10-20 03:20:12.218  4381  4459 I Rift    : result s05: OversizedPreviewService: the preview worker sent an invalid reply (response field out of bounds: bitmap dimensions) and was stopped
+10-20 03:20:12.245   527   559 I ActivityManager: Start proc 6277:org.simulationrift.app:org.simulationrift.app.GarbagePreviewService:worker_6/u0ai4 for  {org.simulationrift.app/org.simulationrift.app.GarbagePreviewService:worker_6}
+10-20 03:20:12.321   527  1662 I ActivityManager: Killing 6277:org.simulationrift.app:org.simulationrift.app.GarbagePreviewService:worker_6/u0a192i-8996 (adj 0): isolated not needed
+10-20 03:20:12.323  4381  5593 I Rift    : preview of a35a558db09958e2928252aa8b91c685 in generation 2 after 105 ms: failed: the preview worker sent an invalid reply (frame of 4294967295 bytes exceeds the limit) and was stopped
+10-20 03:20:12.368  4381  4459 I Rift    : result s05: GarbagePreviewService: the preview worker sent an invalid reply (frame of 4294967295 bytes exceeds the limit) and was stopped
+10-20 03:20:12.393   527   559 I ActivityManager: Start proc 6296:org.simulationrift.app:org.simulationrift.app.ReplayingPreviewService:worker_7/u0ai5 for  {org.simulationrift.app/org.simulationrift.app.ReplayingPreviewService:worker_7}
+10-20 03:20:12.478   527  1920 I ActivityManager: Killing 6296:org.simulationrift.app:org.simulationrift.app.ReplayingPreviewService:worker_7/u0a192i-8995 (adj 0): isolated not needed
+10-20 03:20:12.480  4381  5593 I Rift    : preview of a35a558db09958e2928252aa8b91c685 in generation 2 after 110 ms: failed: the preview worker sent an invalid reply (response belongs to job 7, expected 8) and was stopped
+10-20 03:20:12.519  4381  4459 I Rift    : result s05: ReplayingPreviewService: the preview worker sent an invalid reply (response belongs to job 7, expected 8) and was stopped
+10-20 03:20:12.545   527   559 I ActivityManager: Start proc 6317:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_8/u0ai6 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_8}
+10-20 03:20:12.623   527  1662 I ActivityManager: Killing 6317:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_8/u0a192i-8994 (adj 0): isolated not needed
+10-20 03:20:12.628  4381  5593 I Rift    : preview of a35a558db09958e2928252aa8b91c685 in generation 2 after 109 ms: 300x200
+10-20 03:20:12.690  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:12.715  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:12.725  4381  5573 I Rift    : download 7 in generation 2: stored 107456 bytes
+10-20 03:20:12.728  4381  5590 I Rift    : scan of f81ef14c9deb14193457656f78ff0d54 in generation 2 after 2 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:12.790  4381  4459 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=f81ef14c9deb14193457656f78ff0d54, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:20:12.814   527   559 I ActivityManager: Start proc 6349:org.simulationrift.app:org.simulationrift.app.CrashingPreviewService:worker_9/u0ai7 for  {org.simulationrift.app/org.simulationrift.app.CrashingPreviewService:worker_9}
+10-20 03:20:12.891   527  2875 I ActivityManager: Process org.simulationrift.app:org.simulationrift.app.CrashingPreviewService:worker_9 (pid 6349) has died: vis BTOP
+10-20 03:20:12.892   527  2875 W ActivityManager: Scheduling restart of crashed service org.simulationrift.app/.CrashingPreviewService:worker_9 in 1000ms for connection
+10-20 03:20:12.894  4381  5593 I Rift    : preview of f81ef14c9deb14193457656f78ff0d54 in generation 2 after 103 ms: failed: the worker stopped unexpectedly
+10-20 03:20:12.967   527   559 I ActivityManager: Start proc 6367:org.simulationrift.app:org.simulationrift.app.HangingPreviewService:worker_10/u0ai8 for  {org.simulationrift.app/org.simulationrift.app.HangingPreviewService:worker_10}
+10-20 03:20:25.055   527  2353 I ActivityManager: Killing 6367:org.simulationrift.app:org.simulationrift.app.HangingPreviewService:worker_10/u0a192i-8992 (adj 0): isolated not needed
+10-20 03:20:25.063  4381  5593 I Rift    : preview of f81ef14c9deb14193457656f78ff0d54 in generation 2 after 12122 ms: failed: the worker did not render in time and was stopped
+10-20 03:20:25.209   527   559 I ActivityManager: Start proc 7111:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_11/u0ai9 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_11}
+10-20 03:20:25.385   527  1721 I ActivityManager: Killing 7111:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_11/u0a192i-8991 (adj 0): isolated not needed
+10-20 03:20:25.423  4381  5593 I Rift    : preview of f81ef14c9deb14193457656f78ff0d54 in generation 2 after 242 ms: 300x200
+10-20 03:20:25.434  4381  4459 I Rift    : result s06: crash: the worker stopped unexpectedly; hang ended after 12240 ms: the worker did not render in time and was stopped; slowest UI round trip 3 ms
+10-20 03:20:25.495  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:25.541  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:25.606  4381  5669 I Rift    : download 8 in generation 2: stored 107456 bytes
+10-20 03:20:25.612  4381  5674 I Rift    : scan of 848300f8932c5d338070e4aff8a4e124 in generation 2 after 5 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:25.698  4381  4459 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=848300f8932c5d338070e4aff8a4e124, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:20:25.701  4381  5593 I Rift    : preview of 848300f8932c5d338070e4aff8a4e124 in generation 2 after 3 ms: failed: the worker is not declared as an isolated process, so this feature is disabled
+10-20 03:20:25.789   527   559 I ActivityManager: Start proc 7165:org.simulationrift.app:org.simulationrift.app.NoSeccompPreviewService:worker_12/u0ai10 for  {org.simulationrift.app/org.simulationrift.app.NoSeccompPreviewService:worker_12}
+10-20 03:20:25.936   527  1684 I ActivityManager: Killing 7165:org.simulationrift.app:org.simulationrift.app.NoSeccompPreviewService:worker_12/u0a192i-8990 (adj 0): isolated not needed
+10-20 03:20:25.938  4381  5593 I Rift    : preview of 848300f8932c5d338070e4aff8a4e124 in generation 2 after 189 ms: failed: the preview worker is not confined (the worker reports no seccomp filter), so previews are disabled
+10-20 03:20:25.953  4381  4459 I Rift    : result s07: non-isolated: the worker is not declared as an isolated process, so this feature is disabled; no seccomp: the preview worker is not confined (the worker reports no seccomp filter), so previews are disabled
+10-20 03:20:25.976  5297  5297 I RiftBrowser: new link in generation 2 (engine running)
+10-20 03:20:25.998  5297  5297 I RiftBrowser: download handed to the core in generation 2
+10-20 03:20:26.995  4381  5573 I Rift    : download 9 in generation 2: not captured: the file is larger than the 104857600-byte limit
+10-20 03:20:27.081  4381  4459 I Rift    : result download: /files/big -> the file is larger than the 104857600-byte limit
+10-20 03:20:27.153  5271  7224 I RiftBrowser: system wipe requested in pid 5271
+10-20 03:20:27.154   527   908 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:20:27.244   527   908 I ActivityManager: Killing 5271:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:20:27.256   527   908 I ActivityManager: Killing 5297:org.simulationrift.browser:web/u0a193 (adj 200): stop org.simulationrift.browser due to clear data
+10-20 03:20:27.339   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:20:27.537   527   559 I ActivityManager: Start proc 7260:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:20:27.882  4381  4706 I Rift    : browser wiped: pid 5271 -> 7260, no files
+10-20 03:20:27.901  4381  4706 I Rift    : generation 2 disposed
+10-20 03:20:27.918  4381  4706 I Rift    : session 3 active
+10-20 03:20:27.985   527   559 I ActivityManager: Start proc 7291:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:20:29.040  4381  5253 I Rift    : browser registered for generation 3, network LOCKED
+10-20 03:20:29.210   527   559 I ActivityManager: Start proc 7358:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i2 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-20 03:20:29.329  4381  5253 I Rift    : browser network in generation 3: proxied=true locked=true
+10-20 03:20:29.597  4381  5669 I Rift    : download 10 in generation 3: not captured: localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 03:20:29.690  4381  4459 I Rift    : result download: http://localhost:8766/files/hello.txt -> localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 03:20:29.722  4381  5573 I Rift    : download 11 in generation 3: not captured: 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 03:20:29.812  4381  4459 I Rift    : result download: http://localhost:8766/files/to-loopback -> 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 03:20:29.816  7291  7291 I RiftBrowser: new link in generation 3 (engine running)
+10-20 03:20:29.831  7291  7291 I RiftBrowser: download handed to the core in generation 3
+10-20 03:20:29.841  4381  5669 I Rift    : download 12 in generation 3: stored 1040 bytes
+10-20 03:20:29.842  4381  5590 I Rift    : scan of e1196186458667b2caafba4a0eb5b70a in generation 3 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:29.917  4381  4459 I Rift    : result download: /files/hello.txt -> QuarantinedFile(id=e1196186458667b2caafba4a0eb5b70a, displayName=hello.txt, size=1040, sha256=b996cb5919d5b903999e90db3fc84b05ab73d46c0a2546651035a1a530e57935, contentType=text/plain, source=http://localhost:8766/files/hello.txt, redirects=0)
+10-20 03:20:29.938  7291  7291 I RiftBrowser: new link in generation 3 (engine running)
+10-20 03:20:29.948  7291  7291 I RiftBrowser: download handed to the core in generation 3
+10-20 03:20:29.955  4381  5573 I Rift    : download 13 in generation 3: stored 16 bytes
+10-20 03:20:29.957  4381  5674 I Rift    : scan of 66671ea569a76841ad0fbc6feb635a65 in generation 3 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:30.041  4381  4459 I Rift    : result download: /files/hostile -> QuarantinedFile(id=66671ea569a76841ad0fbc6feb635a65, displayName=evilgpj.pdf, size=16, sha256=c5c2e8be6ad0825a56ded1f1a153ceaf11dc060ab44b120a94406a08207babc2, contentType=application/pdf, source=http://localhost:8766/files/hostile, redirects=0)
+10-20 03:20:30.059  7291  7291 I RiftBrowser: new link in generation 3 (engine running)
+10-20 03:20:30.074  7291  7291 I RiftBrowser: download handed to the core in generation 3
+10-20 03:20:30.081  4381  5669 I Rift    : download 14 in generation 3: stored 1050 bytes
+10-20 03:20:30.082  4381  5590 I Rift    : scan of d97b6dc484aa58ad22c59debc8bff4b7 in generation 3 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:30.160  4381  4459 I Rift    : result download: /login?next=/files/private.bin -> QuarantinedFile(id=d97b6dc484aa58ad22c59debc8bff4b7, displayName=private.bin, size=1050, sha256=306153a5ff5fd7b62d9abf47f378fd7224ae53083811c8a2ceb79f9ebad57127, contentType=application/octet-stream, source=http://localhost:8766/files/private.bin, redirects=0)
+10-20 03:20:30.185  7291  7291 I RiftBrowser: new link in generation 3 (engine running)
+10-20 03:20:30.305  7291  7291 I RiftBrowser: new link in generation 3 (engine running)
+10-20 03:20:30.504  7260  7285 I RiftBrowser: system wipe requested in pid 7260
+10-20 03:20:30.504   527  1925 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:20:30.548   527  1925 I ActivityManager: Killing 7260:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:20:30.550   527  1925 I ActivityManager: Killing 7291:org.simulationrift.browser:web/u0a193 (adj 200): stop org.simulationrift.browser due to clear data
+10-20 03:20:30.573   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:20:30.612   527   559 I ActivityManager: Start proc 7546:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:20:30.804  4381  4706 I Rift    : browser wiped: pid 7260 -> 7546, no files
+10-20 03:20:30.809  4381  4706 I Rift    : generation 3 disposed
+10-20 03:20:30.823  4381  4706 I Rift    : session 4 active
+10-20 03:20:30.885   527   559 I ActivityManager: Start proc 7586:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:20:31.134  4381  5253 I Rift    : browser registered for generation 4, network LOCKED
+10-20 03:20:31.198   527   559 I ActivityManager: Start proc 7624:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i3 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-20 03:20:31.781  4381  7538 I Rift    : browser network in generation 4: proxied=true locked=true
+10-20 03:20:32.166  4381  4459 I Rift    : result s12: reset_ms=412 generation=3->4
+10-20 03:20:32.270  7546  7573 I RiftBrowser: system wipe requested in pid 7546
+10-20 03:20:32.271   527  1924 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:20:32.336   527  1924 I ActivityManager: Killing 7546:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:20:32.340   527  1924 I ActivityManager: Killing 7586:org.simulationrift.browser:web/u0a193 (adj 200): stop org.simulationrift.browser due to clear data
+10-20 03:20:32.364   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:20:32.430   527   559 I ActivityManager: Start proc 7761:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:20:32.600  4381  4706 I Rift    : browser wiped: pid 7546 -> 7761, no files
+10-20 03:20:32.602  4381  4706 I Rift    : generation 4 disposed
+10-20 03:20:32.617  4381  4706 I Rift    : session 5 active
+10-20 03:20:32.710   527   559 I ActivityManager: Start proc 7796:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:20:32.998  4381  5253 I Rift    : browser registered for generation 5, network LOCKED
+10-20 03:20:33.090   527   559 I ActivityManager: Start proc 7836:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i4 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-20 03:20:33.632  4381  5186 I Rift    : browser network in generation 5: proxied=true locked=true
+10-20 03:20:34.272  7796  7796 I RiftBrowser: download handed to the core in generation 5
+10-20 03:20:34.318  4381  5573 I Rift    : download 15 in generation 5: stored 1040 bytes
+10-20 03:20:34.324  4381  5674 I Rift    : scan of 2928dafe602b95d1fac8a3bc60f26090 in generation 5 after 2 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:34.396  4381  4459 I Rift    : result download: /files/hello.txt -> QuarantinedFile(id=2928dafe602b95d1fac8a3bc60f26090, displayName=hello.txt, size=1040, sha256=b996cb5919d5b903999e90db3fc84b05ab73d46c0a2546651035a1a530e57935, contentType=text/plain, source=http://localhost:8766/files/hello.txt, redirects=0)
+10-20 03:20:34.401  7796  7796 I RiftBrowser: new link in generation 5 (engine running)
+10-20 03:20:34.432  7796  7796 I RiftBrowser: download handed to the core in generation 5
+10-20 03:20:34.447  4381  5669 I Rift    : download 16 in generation 5: stored 82 bytes
+10-20 03:20:34.456  4381  5590 I Rift    : scan of 3e683205994a901c4eaa0d435bee762d in generation 5 after 7 ms: Suspicious; findings [type:type-mismatch]; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:34.504  4381  4459 I Rift    : result download: /files/invoice.pdf -> QuarantinedFile(id=3e683205994a901c4eaa0d435bee762d, displayName=invoice.pdf, size=82, sha256=fbfff15ff40830e2c8fcc7656a1b3fa7a877264c59456392c78b6375832e17bf, contentType=application/pdf, source=http://localhost:8766/files/invoice.pdf, redirects=0)
+10-20 03:20:34.504  4381  4459 I Rift    : result s16a: plain: Not fully scanned [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]; invoice.pdf: Suspicious [Named as .pdf, but the content is a Windows executable.]
+10-20 03:20:34.589  4381  7939 W Rift    : intel update not installed
+10-20 03:20:34.589  4381  7939 W Rift    : org.simulationrift.core.IntelFailure$Refused: reason=TAMPERED, detail=the update could not be verified: Failed to fetch file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar: Transport 'other' error fetching 'file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar': Hash mismatch for file:///data/data/org.simulationrift.app/cache/s16b/repo/targets/2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a.rules.yar: calculated 7536b8de119a8ecaa1d14a1d4ce21eb50c9346939fa60c8eb99d0051f346394e, expected 2e5f102254e5db054d0a43cd8ebac106dae6461d9d92eb47093dcabe516e358a
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.read(rift_ffi.kt:5119)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.read(rift_ffi.kt:5111)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.FfiConverter.liftFromRustBuffer(rift_ffi.kt:198)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.liftFromRustBuffer(rift_ffi.kt:5111)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.liftFromRustBuffer(rift_ffi.kt:5111)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.FfiConverterRustBuffer.lift(rift_ffi.kt:215)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.lift(rift_ffi.kt:5111)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.lift(rift_ffi.kt:5111)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.IntelFailure$ErrorHandler.lift(rift_ffi.kt:5102)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.IntelFailure$ErrorHandler.lift(rift_ffi.kt:5101)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.Rift_ffiKt.uniffiCheckCallStatus(rift_ffi.kt:282)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.Rift_ffiKt.access$uniffiCheckCallStatus(rift_ffi.kt:1)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.core.Intel.verifyOffline(rift_ffi.kt:6700)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.app.Core.installIntel$lambda$28(Core.kt:461)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at org.simulationrift.app.Core$$ExternalSyntheticLambda2.run(D8$$SyntheticClass:0)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+10-20 03:20:34.589  4381  7939 W Rift    : 	at java.lang.Thread.run(Thread.java:1012)
+10-20 03:20:34.591  4381  7939 I Rift    : intel install: the update was refused: a file in it does not match its signature
+10-20 03:20:34.607  4381  4459 I Rift    : result s16b: the update was refused: a file in it does not match its signature
+10-20 03:20:34.660  7796  7796 I RiftBrowser: new link in generation 5 (engine running)
+10-20 03:20:34.684  7796  7796 I RiftBrowser: download handed to the core in generation 5
+10-20 03:20:34.711  4381  5573 I Rift    : download 17 in generation 5: stored 107456 bytes
+10-20 03:20:34.714  4381  5674 I Rift    : scan of edbb69dd532db36050eabdd86394e3da in generation 5 after 3 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:34.763  4381  4459 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=edbb69dd532db36050eabdd86394e3da, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 03:20:35.087   527   559 I ActivityManager: Start proc 7977:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_13/u0ai0 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_13}
+10-20 03:20:35.332   527  1679 I ActivityManager: Killing 7977:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_13/u0a192i-9000 (adj 0): isolated not needed
+10-20 03:20:35.343  4381  5593 I Rift    : preview of edbb69dd532db36050eabdd86394e3da in generation 5 after 580 ms: 300x200
+10-20 03:20:35.386  7796  7796 I RiftBrowser: new link in generation 5 (engine running)
+10-20 03:20:35.412  7796  7796 I RiftBrowser: download handed to the core in generation 5
+10-20 03:20:35.441  4381  5669 I Rift    : download 18 in generation 5: stored 633 bytes
+10-20 03:20:35.445  4381  5590 I Rift    : scan of c6805a98eb06ee0443ee41477ad5af45 in generation 5 after 4 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:35.487  4381  4459 I Rift    : result download: /files/document.pdf -> QuarantinedFile(id=c6805a98eb06ee0443ee41477ad5af45, displayName=document.pdf, size=633, sha256=d30973d92a1948ada613213a25d12a376e7f85f2769a2752dcef01e0ffeb99db, contentType=application/pdf, source=http://localhost:8766/files/document.pdf, redirects=0)
+10-20 03:20:35.535   527   559 I ActivityManager: Start proc 8007:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_14/u0ai1 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_14}
+10-20 03:20:35.806   527  2126 I ActivityManager: Killing 8007:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_14/u0a192i-8999 (adj 0): isolated not needed
+10-20 03:20:36.114  4381  5593 I Rift    : preview of c6805a98eb06ee0443ee41477ad5af45 in generation 5 after 626 ms: 1582x2048
+10-20 03:20:36.149  7796  7796 I RiftBrowser: new link in generation 5 (engine running)
+10-20 03:20:36.165  7796  7796 I RiftBrowser: download handed to the core in generation 5
+10-20 03:20:36.180  4381  5573 I Rift    : download 19 in generation 5: stored 72 bytes
+10-20 03:20:36.184  4381  5674 I Rift    : scan of a30abd6b957314fe2413a23c229b3488 in generation 5 after 3 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 03:20:36.256  4381  4459 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=a30abd6b957314fe2413a23c229b3488, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-20 03:20:36.259  4381  5593 I Rift    : preview of a30abd6b957314fe2413a23c229b3488 in generation 5 after 2 ms: text, 86 chars
+10-20 03:20:36.520  4381  4459 I Rift    : result s19: plaintext marker found in: [none]
+10-20 03:20:36.638   527   559 I ActivityManager: Start proc 8054:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_15/u0ai2 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_15}
+10-20 03:20:36.766   527   902 I ActivityManager: Killing 8054:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_15/u0a192i-8998 (adj 0): isolated not needed
+10-20 03:20:36.776  4381  7939 I Rift    : intel install: Installed demo-20261020T031603Z.
+10-20 03:20:36.817  7796  7796 I RiftBrowser: new link in generation 5 (engine running)
+10-20 03:20:36.830  7796  7796 I RiftBrowser: download handed to the core in generation 5
+10-20 03:20:36.838  4381  5669 I Rift    : download 20 in generation 5: stored 60 bytes
+10-20 03:20:36.866   527   559 I ActivityManager: Start proc 8079:org.simulationrift.app:org.simulationrift.app.FilterCheckingPreviewService:worker_16/u0ai3 for  {org.simulationrift.app/org.simulationrift.app.FilterCheckingPreviewService:worker_16}
+10-20 03:20:36.919  4381  4459 I Rift    : result download: /files/demo-file.txt -> QuarantinedFile(id=ac85135c40482341838b72ecc4073613, displayName=demo-file.txt, size=60, sha256=ab43ce0067c219fee61f976d94591a0497f147e413d2f7bca4cfe51108382cc7, contentType=text/plain, source=http://localhost:8766/files/demo-file.txt, redirects=0)
+10-20 03:20:36.949   527   902 I ActivityManager: Killing 8079:org.simulationrift.app:org.simulationrift.app.FilterCheckingPreviewService:worker_16/u0a192i-8997 (adj 0): isolated not needed
+10-20 03:20:36.951  4381  5590 I Rift    : scan of ac85135c40482341838b72ecc4073613 in generation 5 after 113 ms: Known malicious; findings [file hash:demo-file, rules:rift_demo_marker]; gaps []
+10-20 03:20:36.972  7796  7796 I RiftBrowser: new link in generation 5 (engine running)
+10-20 03:20:36.984  7796  7796 I RiftBrowser: download handed to the core in generation 5
+10-20 03:20:36.993  4381  5573 I Rift    : download 21 in generation 5: stored 72 bytes
+10-20 03:20:37.018   527   559 I ActivityManager: Start proc 8101:org.simulationrift.app:org.simulationrift.app.FilterCheckingPreviewService:worker_17/u0ai4 for  {org.simulationrift.app/org.simulationrift.app.FilterCheckingPreviewService:worker_17}
+10-20 03:20:37.074  4381  4459 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=c7b872fff49641f702afed4d2660d93a, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-20 03:20:37.159   527  1683 I ActivityManager: Killing 8101:org.simulationrift.app:org.simulationrift.app.FilterCheckingPreviewService:worker_17/u0a192i-8996 (adj 0): isolated not needed
+10-20 03:20:37.161  4381  5674 I Rift    : scan of c7b872fff49641f702afed4d2660d93a in generation 5 after 168 ms: Not flagged; findings []; gaps []
+10-20 03:20:37.175  4381  4459 I Rift    : result s21a: database demo-20261020T031603Z; demo-file.txt: Known malicious [file hash:demo-file, rules:rift_demo_marker] yara-x 1.21.0; notes.txt: Not flagged
+10-20 03:20:37.245  7761  7779 I RiftBrowser: system wipe requested in pid 7761
+10-20 03:20:37.258   527  2126 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:20:37.305   527  2126 I ActivityManager: Killing 7761:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:20:37.312   527  2126 I ActivityManager: Killing 7796:org.simulationrift.browser:web/u0a193 (adj 200): stop org.simulationrift.browser due to clear data
+10-20 03:20:37.328   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:20:37.410   527   559 I ActivityManager: Start proc 8154:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:20:37.564  4381  4706 I Rift    : browser wiped: pid 7761 -> 8154, no files
+10-20 03:20:37.572  4381  4706 I Rift    : generation 5 disposed
+10-20 03:20:37.576  4381  4706 I Rift    : session 6 active
+10-20 03:20:37.664   527   559 I ActivityManager: Start proc 8177:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:20:37.994  4381  4401 I Rift    : browser registered for generation 6, network LOCKED
+10-20 03:20:38.086   527   559 I ActivityManager: Start proc 8221:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i5 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-20 03:20:38.694  4381  5253 I Rift    : browser network in generation 6: proxied=true locked=true
+10-20 03:20:38.968  8177  8177 I RiftBrowser: download handed to the core in generation 6
+10-20 03:20:38.978  4381  5669 I Rift    : download 22 in generation 6: stored 60 bytes
+10-20 03:20:39.006   527   559 I ActivityManager: Start proc 8301:org.simulationrift.app:org.simulationrift.app.HangingScanService:worker_18/u0ai5 for  {org.simulationrift.app/org.simulationrift.app.HangingScanService:worker_18}
+10-20 03:20:39.037  4381  4459 I Rift    : result download: /files/demo-file.txt -> QuarantinedFile(id=edd16c907ba35da147939956273dce43, displayName=demo-file.txt, size=60, sha256=ab43ce0067c219fee61f976d94591a0497f147e413d2f7bca4cfe51108382cc7, contentType=text/plain, source=http://localhost:8766/files/demo-file.txt, redirects=0)
+10-20 03:20:39.042  8177  8177 I RiftBrowser: new link in generation 6 (engine running)
+10-20 03:20:39.058  8177  8177 I RiftBrowser: download handed to the core in generation 6
+10-20 03:20:39.066  4381  5573 I Rift    : download 23 in generation 6: stored 72 bytes
+10-20 03:20:39.097   527   559 I ActivityManager: Start proc 8319:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_19/u0ai6 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_19}
+10-20 03:20:39.149  4381  4459 I Rift    : result download: /files/notes.txt -> QuarantinedFile(id=ea6a1fcc7782e8af9a9d14943d1fd662, displayName=notes.txt, size=72, sha256=5823c1f3c70a6ffdcd53d55ad5f30a1f395c9ee576763024f723927c55205f4c, contentType=text/plain; charset=utf-8, source=http://localhost:8766/files/notes.txt, redirects=0)
+10-20 03:20:39.207   527  2126 I ActivityManager: Killing 8319:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_19/u0a192i-8994 (adj 0): isolated not needed
+10-20 03:20:39.216  4381  5674 I Rift    : scan of ea6a1fcc7782e8af9a9d14943d1fd662 in generation 6 after 148 ms: Not flagged; findings []; gaps []
+10-20 03:20:56.123   527  1721 I ActivityManager: Killing 8301:org.simulationrift.app:org.simulationrift.app.HangingScanService:worker_18/u0a192i-8995 (adj 0): isolated not needed
+10-20 03:20:56.128  4381  5590 I Rift    : scan of edd16c907ba35da147939956273dce43 in generation 6 after 17150 ms: Known malicious; findings [file hash:demo-file]; gaps [The rule scan failed: the worker did not scan in time and was stopped.]
+10-20 03:20:56.150  4381  4459 I Rift    : result s21b: hung scan ended after 18544 ms: Known malicious; [The rule scan failed: the worker did not scan in time and was stopped.]; a scan queued after it finished at 1643 ms: Not flagged
+10-20 03:20:56.191   527  1683 W ActivityManager: Permission Denial: Accessing service org.simulationrift.app/.PreviewService from pid=8177, uid=10193 that is not exported from uid 10192
+10-20 03:21:12.243  4381  4459 I Rift    : result s23: bind.worker=DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.app/.PreviewService } | core.stale=ALLOWED register=Refused decide=stale-session | dns=DENIED UnknownHostException: Unable to resolve host "example.com": No address associated with hostname | file.device=DENIED FileNotFoundException: /data/user_de/0/org.simulationrift.app: open failed: ENOENT (No such file or directory) | file.marker=DENIED FileNotFoundException: /data/user/0/org.simulationrift.app/files/rift/session.marker: open failed: ENOENT (No such file or directory) | file.prefs=DENIED FileNotFoundException: /data/data/org.simulationrift.app/shared_prefs: open failed: ENOENT (No such file or directory) | file.rift=DENIED FileNotFoundException: /data/data/org.simulationrift.app/files/rift: open failed: ENOENT (No such file or directory) | process=org.simulationrift.browser:web | tcp.host=DENIED SocketTimeoutException: failed to connect to /10.0.2.2 (port 8766) from /10.111.0.1 (port 38468) after 3000ms | tcp.loopback=ALLOWED connected | tcp.public=DENIED SocketTimeoutException: failed to connect to /1.1.1.1 (port 443) from /10.111.0.1 (port 58102) after 3000ms | udp.host=ALLOWED sent (whether it arrived is in the fixture's UDP log) | uid=10193
+10-20 03:21:12.284  8177  8177 I RiftBrowser: new link in generation 6 (engine running)
+10-20 03:21:12.499   527   559 I ActivityManager: Start proc 9166:org.simulationrift.outsider/u0a194 for next-top-activity {org.simulationrift.outsider/org.simulationrift.outsider.OutsiderActivity}
+10-20 03:21:12.659   527  1924 W ActivityManager: Permission Denial: Accessing service org.simulationrift.browser/.SessionService from pid=9166, uid=10194 requires org.simulationrift.permission.RIFT
+10-20 03:21:12.659   527  1925 W ActivityManager: Permission Denial: Accessing service org.simulationrift.app/.CoreService from pid=9166, uid=10194 requires org.simulationrift.permission.RIFT
+10-20 03:21:12.694  4381  4459 I Rift    : result s24: bind.core=DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.app/.CoreService } | bind.session=DENIED SecurityException: Not allowed to bind to service Intent { cmp=org.simulationrift.browser/.SessionService } | permission=DENIED | proxy.none=ALLOWED HTTP/1.1 407 Proxy Authentication Required | proxy.wrong=ALLOWED HTTP/1.1 407 Proxy Authentication Required | start.browser=DENIED SecurityException: Permission Denial: starting Intent { cmp=org.simulationrift.browser/.BrowserActivity (has extras) } from ProcessRecord{46fc391 9166:org.simulationrift.outsider/u0a194} (pid=9166, uid=10194) requires org.simulationrift.permission.RIFT
+10-20 03:21:12.733  8177  8177 I RiftBrowser: new link in generation 6 (engine running)
+10-20 03:21:18.167  4381  4459 I Rift    : result s25: page: {"control":"answered","loopback":"answered","emulator_host":"answered","loopback_v6":"answered","websocket":"error","webrtc":"candidate:1567955204 1 udp 2113937151 10.111.0.1 39451 typ host generation 0 ufrag FLfQ network-cost 999","done":"1"}; arrived: [tcp control host=localhost:8766]; refused by the proxy: [127.0.0.1:8766, 10.0.2.2:8766, [::1]:8766, 127.0.0.1:8766]
+10-20 03:21:18.242  8177  8177 I RiftBrowser: new link in generation 6 (engine running)
+10-20 03:21:23.543   527   879 W ActivityManager: Permission Denial: Accessing service org.simulationrift.app/.PreviewService from pid=8177, uid=10193 that is not exported from uid 10192
+10-20 03:21:40.582  4381  4459 I Rift    : result s26: candidates: [10.111.0.1]; device addresses: [fe80::d4d2:c1ff:fe49:2103, fe80::5054:ff:fe12:3456, fec0::5054:ff:fe12:3456, 10.0.2.15, fe80::6eb8:88ae:6175:1f4b, fec0::2713:6bd3:bdd2:4ac7, fec0::cb85:28a:931:c088, 10.0.2.16]; arrived: [tcp control host=localhost:8766]; dropped: Dropped(packets=43, destinations=[protocol 0 [ff02::16], ICMPv6 [ff02::2], TCP 10.111.0.2:853, TCP 10.0.2.2:8766, TCP 1.1.1.1:443, UDP 10.0.2.2:3478, UDP 10.111.0.2:53]); tcp.host=DENIED SocketTimeoutException: failed to connect to /10.0.2.2 (port 8766) from /10.111.0.1 (port 55826) after 3000ms | tcp.public=DENIED SocketTimeoutException: failed to connect to /1.1.1.1 (port 443) from /10.111.0.1 (port 47252) after 3000ms | tcp.loopback=ALLOWED connected | udp.host=ALLOWED sent (whether it arrived is in the fixture's UDP log) | dns=DENIED UnknownHostException: Unable to resolve host "example.com": No address associated with hostname
+10-20 03:21:40.602  8177  8177 I RiftBrowser: new link in generation 6 (engine running)
+10-20 03:21:40.845  8154 10058 I RiftBrowser: system wipe requested in pid 8154
+10-20 03:21:40.845   527   879 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:21:40.891   527   879 I ActivityManager: Killing 8154:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:21:40.894   527   879 I ActivityManager: Killing 8177:org.simulationrift.browser:web/u0a193 (adj 200): stop org.simulationrift.browser due to clear data
+10-20 03:21:40.917   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:21:40.978   527   559 I ActivityManager: Start proc 10086:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:21:41.131  4381  4706 I Rift    : browser wiped: pid 8154 -> 10086, no files
+10-20 03:21:41.135  4381  4706 I Rift    : generation 6 disposed
+10-20 03:21:41.139  4381  4706 I Rift    : session 7 active
+10-20 03:21:41.163  4381  4459 I Rift    : result s27: generation 6->7 in 374 ms; browser pid 8154->10086; files 55->0
+10-20 03:21:41.225   527   559 I ActivityManager: Start proc 10135:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:21:41.441  4381  5253 I Rift    : browser registered for generation 7, network LOCKED
+10-20 03:21:41.513   527   559 I ActivityManager: Start proc 10170:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i6 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-20 03:21:42.035  4381  5253 I Rift    : browser network in generation 7: proxied=true locked=true
+10-20 03:21:42.462  4381  5253 W Rift    : network lock lost: another VPN started, or the network lock was turned off in Settings
+10-20 03:21:42.522 10086 10115 I RiftBrowser: system wipe requested in pid 10086
+10-20 03:21:42.526   527  2876 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:21:42.568   527  2876 I ActivityManager: Killing 10086:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:21:42.571   527  2876 I ActivityManager: Killing 10135:org.simulationrift.browser:web/u0a193 (adj 200): stop org.simulationrift.browser due to clear data
+10-20 03:21:42.674   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:21:42.730   527   559 I ActivityManager: Start proc 10289:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:21:42.857  4381  4706 I Rift    : browser wiped: pid 10086 -> 10289, no files
+10-20 03:21:42.861  4381  4706 I Rift    : generation 7 disposed
+10-20 03:21:42.864  4381  4706 I Rift    : session 8 active
+10-20 03:21:43.389   527   559 I ActivityManager: Start proc 10330:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:21:44.607  4381  4459 I Rift    : result s28: lock lost: Lost(reason=another VPN started, or the network lock was turned off in Settings); session 7 -> 8; browser wiped
+10-20 03:21:44.650  4381  4381 I Rift    : network lock active
+10-20 03:21:44.712 10289 10308 I RiftBrowser: system wipe requested in pid 10289
+10-20 03:21:44.712   527   541 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:21:44.747   527   541 I ActivityManager: Killing 10289:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:21:44.748   527   541 I ActivityManager: Killing 10330:org.simulationrift.browser:web/u0a193 (adj 0): stop org.simulationrift.browser due to clear data
+10-20 03:21:44.767   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:21:44.866   527   559 I ActivityManager: Start proc 10405:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:21:45.047  4381  4706 I Rift    : browser wiped: pid 10289 -> 10405, no files
+10-20 03:21:45.052  4381  4706 I Rift    : generation 8 disposed
+10-20 03:21:45.054  4381  4706 I Rift    : session 9 active
+10-20 03:21:45.085   527   559 I ActivityManager: Start proc 10429:org.simulationrift.browser:web/u0a193 for next-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-20 03:21:45.248  4381  4401 I Rift    : browser registered for generation 9, network REDUCED
+10-20 03:21:45.311   527   559 I ActivityManager: Start proc 10466:com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i7 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-20 03:21:45.802  4381  4401 I Rift    : browser network in generation 9: proxied=true locked=true
+10-20 03:21:46.478 10405 10427 I RiftBrowser: system wipe requested in pid 10405
+10-20 03:21:46.479   527  1924 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=0: clear data
+10-20 03:21:46.523   527  1924 I ActivityManager: Killing 10405:org.simulationrift.browser/u0a193 (adj 100): stop org.simulationrift.browser due to clear data
+10-20 03:21:46.535   527  1924 I ActivityManager: Killing 10429:org.simulationrift.browser:web/u0a193 (adj 200): stop org.simulationrift.browser due to clear data
+10-20 03:21:46.555   527   558 I ActivityManager: Force stopping org.simulationrift.browser appid=10193 user=-1: clearApplicationUserData
+10-20 03:21:46.637   527   559 I ActivityManager: Start proc 10547:org.simulationrift.browser/u0a193 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-20 03:21:46.784  4381  4706 I Rift    : browser wiped: pid 10405 -> 10547, no files
+10-20 03:21:46.789  4381  4706 I Rift    : generation 9 disposed
+10-20 03:21:46.791  4381  4706 I Rift    : session 10 active
+10-20 03:21:46.811  4381  4459 I Rift    : result s28b: generation 9 ran with reduced isolation, labelled; 10 did not
+10-20 03:21:46.828   527   540 I ActivityManager: Force stopping org.simulationrift.app appid=10192 user=0: finished inst
+10-20 03:21:46.836   527   540 I ActivityManager: Killing 4381:org.simulationrift.app/u0a192 (adj 0): stop org.simulationrift.app due to finished inst
+10-20 03:21:46.839   527   540 I ActivityManager:   Force stopping service ServiceRecord{eceb174 u0 org.simulationrift.app/.PreviewService}

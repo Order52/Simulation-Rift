@@ -164,7 +164,7 @@ Phase 2 findings, added to the list above: 15–26.
 | Android device matrix | Physical phones, OEM WebView builds, a 16 KB page-size device. All emulator levels (30, 33–36, both ABIs, 16 KB pages) have run. |
 | Deeper fuzzing | Fuzz targets for the worker's decoders; long scheduled campaigns and coverage measurement (Phase 7). |
 | Phase 2 gate | The same suite on a physical phone; the instrumented suite against a release-like build. |
-| Phase 3 on Android | Built and passing on API 36 and API 35 (16 KB pages) on architecture 2.1, and on API 33/34 on 2.0. Open: the CI rerun on 2.1, a phone, and an import screen for user-chosen updates with a production root (release builds have none; being built). Done since: concurrent scan workers (two), short refusal messages, and a test that running scans keep their snapshot. |
+| Phase 3 on Android | Built and passing on API 33–36 (both ABIs, 16 KB pages) on architecture 2.1. Open: a phone, and an import screen for user-chosen updates with a production root (release builds have none; being built). Done since: concurrent scan workers (two), short refusal messages, and a test that running scans keep their snapshot. |
 | Online updates | An HTTP transport for tough over the core's own fetcher (INV-13). |
 | Phases 4–7 | Everything in §5. |
 
@@ -215,7 +215,7 @@ Phase 2 findings, added to the list above: 15–26.
 3. ~~Compose UI shell; the `:browser` session with the WebView configuration from §8.4; navigation policy wired through the core.~~ Done.
 4. ~~Download capture → core re-fetch → encrypted quarantine, with the unsupported cases shown as such.~~ Done.
 5. ~~Previews (images and PDF in the isolated worker, text as escaped plain text); reset and recovery.~~ Done (P1, P2, S3–S7, S12, S13, S19).
-6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done on 2.0; on 2.1 (browser app and network lock) API 36 and API 35 (16 KB pages) done; API 33/34 (CI rerun) and a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
+6. Security tests on the device matrix: **API 36, API 35 (16 KB pages), API 33 and 34 x86_64 (CI) done on 2.0; on 2.1 (browser app and network lock) API 36, API 35 (16 KB pages) and API 33/34 x86_64 (CI run 39363201440) done; a physical phone open.** Release build: R8 configured and smoke-tested. The parser-thread seccomp filter is done.
 
 **Phase 3: Scanner and signed intel**
 7. ~~Verdict assembly and a cache bound to rule and engine versions; the snapshot store; scan jobs on Android after each download.~~ Done (host: S11, S17, S22; Android API 33–36: S21, hung worker). Running scans keep their starting snapshot (rift-ffi test), and two scan workers run at a time (S21b).
