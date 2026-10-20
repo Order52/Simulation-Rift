@@ -59,6 +59,26 @@ def main():
     attempt("dns dl.flathub.org", lambda: socket.getaddrinfo("dl.flathub.org", 443))
     attempt("tcp 1.1.1.1:443", lambda: connect(("1.1.1.1", 443)))
     attempt("tcp host loopback 127.0.0.1:8765", lambda: connect(("127.0.0.1", 8765)))
+    # A compromised browser host can ask the Flatpak portal for a new
+    # process. If the portal gave it the app's network, the lock would be
+    # one call away. --host needs a D-Bus name the app is not given.
+    probe = ("import socket\n"
+             "for a in (('1.1.1.1', 443), ('127.0.0.1', 8765)):\n"
+             "    try:\n"
+             "        socket.create_connection(a, timeout=5).close(); print('REACHED', a)\n"
+             "    except OSError as e:\n"
+             "        print('blocked', a, e)\n")
+    for name, spawn in (("portal spawn", ["flatpak-spawn"]),
+                        ("portal spawn --sandbox", ["flatpak-spawn", "--sandbox"]),
+                        ("host spawn", ["flatpak-spawn", "--host"])):
+        try:
+            result = subprocess.run(spawn + ["/usr/bin/python3", "-I", "-c", probe],
+                                    capture_output=True, text=True, timeout=60)
+            lines = (result.stdout + result.stderr).strip().replace("\n", " | ")
+            reached = "REACHED" if "REACHED" in result.stdout else "blocked"
+            say(f"{name}: {reached} (exit {result.returncode}: {lines[:300]})")
+        except (OSError, subprocess.TimeoutExpired) as error:
+            say(f"{name}: blocked ({error})")
     listener = socket.create_server(FORWARDER)
     threading.Thread(target=forward, args=(listener, channel), daemon=True).start()
     command = ["/app/bin/qt-probe", url, linger]

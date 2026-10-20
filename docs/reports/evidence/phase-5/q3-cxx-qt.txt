@@ -1,0 +1,27 @@
+# PoC Q3: a cxx-qt 0.10 QML app over rift-core, built as a Flatpak in org.kde.Sdk 6.10
+# with org.freedesktop.Sdk.Extension.rust-stable (25.08). linux-qt-poc run 39510673541 (commit 8e0bb7f).
+# The first run (39507119054) stopped before compiling: the workspace declared
+# rust-version 1.99 and the extension has 1.98.1. This run used --ignore-rust-version.
+
+## size, time, linked Qt
+flatpak-builder seconds (SDK download included): 444
+cargo 1.98.1 (797e8a9bc 2026-08-05)
+   Compiling rift-core v0.1.0 (/run/build/rift-qt-core-probe/crates/rift-core)
+    Finished `release` profile [optimized] target(s) in 6m 04s
+-rwxr-xr-x 1 runner runner 1579128 Jan  1  1970 build-q3/files/bin/rift-qt-core-probe
+	libQt6Qml.so.6 => /usr/lib/x86_64-linux-gnu/libQt6Qml.so.6 (0x00007fb6e8c00000)
+	libQt6Gui.so.6 => /usr/lib/x86_64-linux-gnu/libQt6Gui.so.6 (0x00007fb6e8000000)
+	libQt6Core.so.6 => /usr/lib/x86_64-linux-gnu/libQt6Core.so.6 (0x00007fb6e7800000)
+	libQt6Network.so.6 => /usr/lib/x86_64-linux-gnu/libQt6Network.so.6 (0x00007fb6e6e00000)
+	libQt6DBus.so.6 => /usr/lib/x86_64-linux-gnu/libQt6DBus.so.6 (0x00007fb6e8a22000)
+
+## self-test output (QT_QPA_PLATFORM=offscreen)
+Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+qml: q3: HTTP://Example.COM/a/../b?x#frag -> http://example.com/b?x
+qml: q3: http://раypal.com/ -> http://xn--ypal-43d9g.com/
+qml: q3: http://[::1 -> refused: URL host is not valid
+
+## expected (computed with rift-core on the host) and compared with diff: identical
+q3: HTTP://Example.COM/a/../b?x#frag -> http://example.com/b?x
+q3: http://раypal.com/ -> http://xn--ypal-43d9g.com/
+q3: http://[::1 -> refused: URL host is not valid

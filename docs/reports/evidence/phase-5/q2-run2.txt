@@ -1,0 +1,176 @@
+# PoC Q2, run 2: linux-qt-poc run 39510673541 (commit 8e0bb7f)
+# The offscreen cases are the evidence for the network lock. The X11 case
+# failed because the session bus (and the portal) started without DISPLAY;
+# fixed in 9795f27.
+
+Linux runnervm8k3b6 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Flatpak 1.14.6
+qtwebengine application base	io.qt.qtwebengine.BaseApp		6.10	flathub
+Mesa	org.freedesktop.Platform.GL.default	26.2.4	25.08	flathub
+Mesa (Extra)	org.freedesktop.Platform.GL.default	26.2.4	25.08-extra	flathub
+Codecs Extra Extension	org.freedesktop.Platform.codecs-extra		25.08-extra	flathub
+Adwaita theme	org.kde.KStyle.Adwaita		6.10	flathub
+KDE Application Platform	org.kde.Platform		6.10	flathub
+KDE Software Development Kit	org.kde.Sdk		6.10	flathub
+QtNetLock	org.simulationrift.QtNetLock		master	qtnetlock-origin
+
+## proxy: app exit 250, host probe exit 2
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=DISPLAY=:99 --env=XAUTHORITY=/run/flatpak/Xauthority /app/bin/browser-host.py proxy http://rift-probe.test:8765/ 15
+host: interfaces: lo
+host: DISPLAY=None
+host: XAUTHORITY=/run/flatpak/Xauthority (exists: False)
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=None
+host: /tmp/.X11-unix: 
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+controller: browser host exit 250
+verdict: 0 of 0 renderers sandboxed by the engine; 0 of 0 with user and network namespaces of their own
+UNEXPECTED: proxy: page did not load (exit 250)
+UNEXPECTED: proxy: no request reached the controller
+UNEXPECTED: proxy: renderers not sandboxed by the engine (host probe exit 2)
+
+## proxy-offscreen: app exit 0, host probe exit 0
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=QT_QPA_PLATFORM=offscreen /app/bin/browser-host.py proxy-offscreen http://rift-probe.test:8765/ 15
+host: interfaces: lo
+host: DISPLAY=None
+host: XAUTHORITY=None
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=offscreen
+host: /tmp/.X11-unix: 
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+probe: qt 6.10.3, pid 4, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: proxy 127.0.0.1:8899
+controller: allowed GET http://rift-probe.test:8765/
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=29
+probe: inside sees pid 11 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 29 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 7 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,net,ipc
+probe: inside sees 3 engine processes
+probe: ready
+controller: allowed GET http://rift-probe.test:8765/favicon.ico
+controller: browser host exit 0
+host sees pid 5261 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,pid new_vs_app=- unreadable_ns=mnt,net,ipc
+host sees pid 5275 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+host sees pid 5301 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+app main pid 5224: Seccomp=2 filters=1 new_vs_host=user,mnt,pid,net
+verdict: 1 of 1 renderers sandboxed by the engine; 0 of 1 with user and network namespaces of their own
+
+## direct: app exit 3, host probe exit 0
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=QT_QPA_PLATFORM=offscreen /app/bin/browser-host.py direct http://127.0.0.1:8765/ 15
+host: interfaces: lo
+host: DISPLAY=None
+host: XAUTHORITY=None
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=offscreen
+host: /tmp/.X11-unix: 
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+probe: qt 6.10.3, pid 4, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: loaded=no title=127.0.0.1 renderer pid (as the engine reports it)=29
+probe: inside sees pid 11 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 29 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 7 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,net,ipc
+probe: inside sees 3 engine processes
+probe: ready
+controller: browser host exit 3
+host sees pid 5517 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,pid new_vs_app=- unreadable_ns=mnt,net,ipc
+host sees pid 5531 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+host sees pid 5557 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 new_vs_host=user,mnt,pid,net,ipc new_vs_app=mnt,pid,net,ipc
+app main pid 5513: Seccomp=2 filters=1 new_vs_host=user,mnt,pid,net
+verdict: 1 of 1 renderers sandboxed by the engine; 0 of 1 with user and network namespaces of their own
+
+proxy: page did not load (exit 250)
+proxy: no request reached the controller
+proxy: renderers not sandboxed by the engine (host probe exit 2)
+
+## proxy: the app's full output
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=DISPLAY=:99 --env=XAUTHORITY=/run/flatpak/Xauthority /app/bin/browser-host.py proxy http://rift-probe.test:8765/ 15
+host: interfaces: lo
+host: DISPLAY=None
+host: XAUTHORITY=/run/flatpak/Xauthority (exists: False)
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=None
+host: /tmp/.X11-unix: 
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+qt.qpa.xcb: could not connect to display 
+qt.qpa.plugin: From 6.5.0, xcb-cursor0 or libxcb-cursor0 is needed to load the Qt xcb platform plugin.
+qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: linuxfb, vkkhrdisplay, wayland-brcm, wayland-egl, wayland, eglfs, vnc, xcb, minimal, offscreen, minimalegl.
+
+controller: browser host exit 250
+
+## proxy-offscreen: the app's full output
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=QT_QPA_PLATFORM=offscreen /app/bin/browser-host.py proxy-offscreen http://rift-probe.test:8765/ 15
+host: interfaces: lo
+host: DISPLAY=None
+host: XAUTHORITY=None
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=offscreen
+host: /tmp/.X11-unix: 
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+probe: qt 6.10.3, pid 4, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: proxy 127.0.0.1:8899
+QRhiGles2: Failed to create temporary context
+QRhiGles2: Failed to create context
+This plugin does not support createPlatformVulkanInstance
+QVulkanInstance: Failed to initialize Vulkan
+Unable to detect GPU vendor.
+[4:15:1020/225231.411294:ERROR:bus.cc(408)] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+Call for getting org.freedesktop.portal.FileChooser version failed QDBusError("org.freedesktop.DBus.Error.InvalidArgs", "No such interface “org.freedesktop.portal.FileChooser”")
+qt.dbus.integration: QDBusConnection: name 'org.freedesktop.portal.Desktop' had owner '' but we thought it was ':1.13'
+controller: allowed GET http://rift-probe.test:8765/
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=29
+probe: inside sees pid 11 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 29 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 7 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,net,ipc
+probe: inside sees 3 engine processes
+probe: ready
+controller: allowed GET http://rift-probe.test:8765/favicon.ico
+controller: browser host exit 0
+
+## direct: the app's full output
+controller: reaches 127.0.0.1:8765 directly
+controller: spawning: flatpak-spawn --sandbox --no-network --watch-bus --sandbox-flag=share-display --sandbox-flag=share-gpu --sandbox-flag=allow-dbus --forward-fd=4 --env=RIFT_PROXY_FD=4 --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess --env=QT_QPA_PLATFORM=offscreen /app/bin/browser-host.py direct http://127.0.0.1:8765/ 15
+host: interfaces: lo
+host: DISPLAY=None
+host: XAUTHORITY=None
+host: WAYLAND_DISPLAY=None
+host: QT_QPA_PLATFORM=offscreen
+host: /tmp/.X11-unix: 
+host: dns dl.flathub.org: blocked (gaierror: [Errno -3] Temporary failure in name resolution)
+host: tcp 1.1.1.1:443: blocked (OSError: [Errno 101] Network is unreachable)
+host: tcp host loopback 127.0.0.1:8765: blocked (ConnectionRefusedError: [Errno 111] Connection refused)
+Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+probe: qt 6.10.3, pid 4, QTWEBENGINE_DISABLE_SANDBOX=unset
+QRhiGles2: Failed to create temporary context
+QRhiGles2: Failed to create context
+This plugin does not support createPlatformVulkanInstance
+QVulkanInstance: Failed to initialize Vulkan
+Unable to detect GPU vendor.
+[4:15:1020/225246.820431:ERROR:bus.cc(408)] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+Call for getting org.freedesktop.portal.FileChooser version failed QDBusError("org.freedesktop.DBus.Error.InvalidArgs", "No such interface “org.freedesktop.portal.FileChooser”")
+Fontconfig error: Cannot load default config file: No such file: (null)
+probe: loaded=no title=127.0.0.1 renderer pid (as the engine reports it)=29
+probe: inside sees pid 11 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 29 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,net,ipc
+probe: inside sees pid 7 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,net,ipc
+probe: inside sees 3 engine processes
+probe: ready
+controller: browser host exit 3

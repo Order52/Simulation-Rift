@@ -22,10 +22,8 @@ modules:
     buildsystem: simple
     build-commands:
       - cargo --version
-      # The workspace declares rust-version 1.99 (the pinned toolchain); the
-      # SDK extension had 1.98.1 on 20 Oct. The PoC builds anyway to find out
-      # whether the core needs 1.99 or only declares it.
-      - cargo build --release --locked --ignore-rust-version --manifest-path poc/linux-qt/q3-cxx-qt/Cargo.toml
+      # The workspace's rust-version is this extension's compiler (1.98).
+      - cargo build --release --locked --manifest-path poc/linux-qt/q3-cxx-qt/Cargo.toml
       - install -Dm755 poc/linux-qt/q3-cxx-qt/target/release/rift-qt-core-probe /app/bin/rift-qt-core-probe
     sources:
       # The repository root: rift-core is a path dependency.
