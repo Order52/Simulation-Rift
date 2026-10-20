@@ -1699,6 +1699,10 @@ class SecurityTest {
      * the column and then back up: on CI's API 34 the watch card was not
      * reached in 30 quick swipes down, most likely because a fling carried
      * it past the screen, and a search that only goes down never sees it again.
+     * The dump of a later failure showed the real cause: the screen showed the
+     * top of the column while UiAutomator's node cache still held texts from
+     * further down, so every read was stale. Each read now starts from a
+     * cleared cache.
      */
     private fun scrollHomeTo(selector: androidx.test.uiautomator.BySelector, what: String): UiObject2 {
         assertNotNull("scrollable; in front: ${device.currentPackageName}", device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS))
@@ -1720,6 +1724,7 @@ class SecurityTest {
             }
         }
         // Evidence for run-tests.sh, which pulls the evidence folder.
+        freshNodes()
         val name = "not-reached-" + what.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
         context.getExternalFilesDir("evidence")?.let { dir ->
             device.dumpWindowHierarchy(File(dir, "$name.xml"))
@@ -1734,14 +1739,27 @@ class SecurityTest {
 
     /** `selector`'s object once it is in the same place in two reads 300 ms apart (bounded), or null. */
     private fun settled(selector: androidx.test.uiautomator.BySelector): UiObject2? {
+        freshNodes()
         var before = device.findObject(selector)?.visibleBounds
         repeat(10) {
             SystemClock.sleep(300)
+            freshNodes()
             val found = device.findObject(selector)
             if (found == null || found.visibleBounds == before) return found
             before = found.visibleBounds
         }
         return null
+    }
+
+    /**
+     * Drops UiAutomator's cached accessibility nodes (API 34+), so the next
+     * read describes the screen as it is: after scrolling, API 34 kept
+     * serving the nodes of an earlier position of the home screen's column.
+     */
+    private fun freshNodes() {
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            assertTrue("the accessibility cache could not be cleared", instrumentation.uiAutomation.clearCache())
+        }
     }
 
     /** Types the PIN into the system's credential screen once BiometricPrompt shows it. */
