@@ -1,0 +1,103 @@
+# PoC Q4: worker lockdown (L2) inside a Flatpak sandbox
+# linux-qt-poc run 39506105945 (commit e26c627), ubuntu-24.04, org.freedesktop.Platform//25.08, flatpak run --command
+
+## mode none
+## mode `none`
+
+- worker report: `READY lockdown=disabled (negative control)`
+- /proc/3/status: NoNewPrivs=1 Seccomp=2
+
+| probe | argument | expected | observed | result |
+|---|---|---|---|---|
+| `open_file` | `/tmp/rift-l2-2/canary-secret.txt` | allowed | ALLOWED opened | pass |
+| `open_file` | `/etc/passwd` | allowed | ALLOWED opened | pass |
+| `list_dir` | `/` | allowed | ALLOWED 15 entries | pass |
+| `create_file` | `/tmp/rift-l2-2/created-by-worker` | allowed | ALLOWED created | pass |
+| `socket_inet` | `` | allowed | ALLOWED created | pass |
+| `socket_unix` | `` | allowed | ALLOWED created | pass |
+| `spawn_process` | `` | allowed | ALLOWED ran: exit status: 0 | pass |
+| `ptrace_parent` | `` | allowed | DENIED EPERM: Operation not permitted | inconclusive (environment already blocks it) |
+| `signal_parent` | `` | allowed | ALLOWED signalled | pass |
+| `mmap_exec` | `` | allowed | ALLOWED mapped executable page | pass |
+| `alloc_mib` | `1024` | allowed | ALLOWED 1024 MiB committed | pass |
+| `alloc_mib` | `64` | allowed | ALLOWED 64 MiB committed | pass |
+| `read_input` | `` | allowed | ALLOWED 300000 bytes checksum=f4b48b8e72cf2ca1 (checksum matches) | pass |
+| `yara_scan` | `` | allowed | ALLOWED yara.status=OK yara.matches=rift_demo_marker yara.bytes=39 yara.compile_ms=3.8 yara.scan_ms=0.0 yara.mib_per_s=1 | pass |
+| `memfd_output` | `` | allowed | ALLOWED 1048576 bytes sealed; post-seal write denied (EPERM: Operation not permitted) / controller: seals verified, content verified, controller write denied (Operation not permitted (os error 1)) | pass |
+
+exit status 0
+## mode fd-only
+## mode `fd-only`
+
+- worker report: `READY landlock=fully-enforced seccomp=on`
+- /proc/3/status: NoNewPrivs=1 Seccomp=2
+
+| probe | argument | expected | observed | result |
+|---|---|---|---|---|
+| `open_file` | `/tmp/rift-l2-2/canary-secret.txt` | denied | DENIED EPERM: Operation not permitted | pass |
+| `open_file` | `/etc/passwd` | denied | DENIED EPERM: Operation not permitted | pass |
+| `list_dir` | `/` | denied | DENIED EPERM: Operation not permitted | pass |
+| `create_file` | `/tmp/rift-l2-2/created-by-worker` | denied | DENIED EPERM: Operation not permitted | pass |
+| `socket_inet` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `socket_unix` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `spawn_process` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `ptrace_parent` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `signal_parent` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `mmap_exec` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `alloc_mib` | `1024` | denied | DENIED allocation refused | pass |
+| `alloc_mib` | `64` | allowed | ALLOWED 64 MiB committed | pass |
+| `read_input` | `` | allowed | ALLOWED 300000 bytes checksum=f4b48b8e72cf2ca1 (checksum matches) | pass |
+| `yara_scan` | `` | allowed | ALLOWED yara.status=OK yara.matches=rift_demo_marker yara.bytes=39 yara.compile_ms=4.2 yara.scan_ms=0.1 yara.mib_per_s=1 | pass |
+| `memfd_output` | `` | allowed | ALLOWED 1048576 bytes sealed; post-seal write denied (EPERM: Operation not permitted) / controller: seals verified, content verified, controller write denied (Operation not permitted (os error 1)) | pass |
+
+exit status 0
+## mode ro-dir
+## mode `ro-dir`
+
+- worker report: `READY landlock=fully-enforced seccomp=on`
+- /proc/3/status: NoNewPrivs=1 Seccomp=2
+- read-only directory: `/usr/share/X11`
+
+| probe | argument | expected | observed | result |
+|---|---|---|---|---|
+| `open_file` | `/tmp/rift-l2-2/canary-secret.txt` | denied | DENIED EACCES: Permission denied | pass |
+| `open_file` | `/etc/passwd` | denied | DENIED EACCES: Permission denied | pass |
+| `list_dir` | `/` | denied | DENIED EACCES: Permission denied | pass |
+| `create_file` | `/tmp/rift-l2-2/created-by-worker` | denied | DENIED EPERM: Operation not permitted | pass |
+| `socket_inet` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `socket_unix` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `spawn_process` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `ptrace_parent` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `signal_parent` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `mmap_exec` | `` | denied | DENIED EPERM: Operation not permitted | pass |
+| `alloc_mib` | `1024` | denied | DENIED allocation refused | pass |
+| `alloc_mib` | `64` | allowed | ALLOWED 64 MiB committed | pass |
+| `read_input` | `` | allowed | ALLOWED 300000 bytes checksum=f4b48b8e72cf2ca1 (checksum matches) | pass |
+| `yara_scan` | `` | allowed | ALLOWED yara.status=OK yara.matches=rift_demo_marker yara.bytes=39 yara.compile_ms=3.7 yara.scan_ms=0.0 yara.mib_per_s=1 | pass |
+| `memfd_output` | `` | allowed | ALLOWED 1048576 bytes sealed; post-seal write denied (EPERM: Operation not permitted) / controller: seals verified, content verified, controller write denied (Operation not permitted (os error 1)) | pass |
+| `open_file` | `/usr/share/X11/XErrorDB` | allowed | ALLOWED opened | pass |
+
+exit status 0
+## mode strict
+## mode `strict`
+
+- worker report: `READY landlock=fully-enforced seccomp=on`
+- reply to `socket_inet`: Err(ECONNRESET)
+- worker exit: Ok(ExitStatus(unix_wait_status(159))) (signal Some(31), SIGSYS = 31)
+- result: pass
+
+exit status 0
+NoNewPrivs:	1
+Seccomp:	2
+Seccomp_filters:	1
+total 0
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 cgroup -> cgroup:[4026531835]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 ipc -> ipc:[4026532332]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 mnt -> mnt:[4026532274]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 net -> net:[4026532334]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 pid -> pid:[4026532333]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 pid_for_children -> pid:[4026532333]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 time -> time:[4026531834]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 time_for_children -> time:[4026531834]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 user -> user:[4026532268]
+lrwxrwxrwx 1 runner runner 0 Oct 20 22:14 uts -> uts:[4026531838]

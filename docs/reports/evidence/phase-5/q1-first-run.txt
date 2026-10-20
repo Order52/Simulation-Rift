@@ -1,0 +1,47 @@
+# PoC Q1, first run: linux-qt-poc run 39505969652 (commit 83307b1)
+# The run passed but measured nothing: the host probe looked for --type= as a
+# NUL-separated argument, and Chromium rewrites its title as one space-joined
+# string, so no process was recognised as a renderer (verdict 0 of 0). The
+# in-app probe read /proc status with QFile::atEnd(), true at once on /proc
+# files, so it printed 'absent'. Both fixed in c07c9a4. Kept for the raw
+# observations: seccomp filter counts and namespaces.
+
+Linux runnervm8k3b6 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Flatpak 1.14.6
+qtwebengine application base	io.qt.qtwebengine.BaseApp		6.10	flathub
+Mesa	org.freedesktop.Platform.GL.default	26.2.4	25.08	flathub
+Mesa (Extra)	org.freedesktop.Platform.GL.default	26.2.4	25.08-extra	flathub
+Codecs Extra Extension	org.freedesktop.Platform.codecs-extra		25.08-extra	flathub
+Adwaita theme	org.kde.KStyle.Adwaita		6.10	flathub
+KDE Application Platform	org.kde.Platform		6.10	flathub
+KDE Software Development Kit	org.kde.Sdk		6.10	flathub
+QtProbe	org.simulationrift.QtProbe		master	qtprobe-origin
+
+## sandbox: app exit 0, host probe exit 2
+probe: qt 6.10.3, pid 2, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=40
+probe: inside sees pid 15 (QtWebEngineProc): Seccomp=absent NoNewPrivs=absent new_namespaces=
+probe: inside sees pid 19 (QtWebEngineProc): Seccomp=absent NoNewPrivs=absent new_namespaces=mnt,pid,ipc
+probe: inside sees pid 40 (QtWebEngineProc): Seccomp=absent NoNewPrivs=absent new_namespaces=mnt,pid,ipc
+probe: inside sees 3 engine processes
+probe: ready
+host sees pid 4427 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid new_vs_app=-
+host sees pid 4445 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid,ipc new_vs_app=mnt,pid,ipc
+host sees pid 4466 type=browser-or-launcher Seccomp=2 filters=2 NoNewPrivs=1 new_vs_host=user,mnt,pid,ipc new_vs_app=mnt,pid,ipc
+app main pid 4381: Seccomp=2 new_vs_host=user,mnt,pid
+verdict: 0 of 0 renderers confined
+
+## disabled: app exit 0, host probe exit 2
+probe: qt 6.10.3, pid 2, QTWEBENGINE_DISABLE_SANDBOX=1
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=35
+probe: inside sees pid 15 (QtWebEngineProc): Seccomp=absent NoNewPrivs=absent new_namespaces=
+probe: inside sees pid 16 (QtWebEngineProc): Seccomp=absent NoNewPrivs=absent new_namespaces=
+probe: inside sees pid 35 (QtWebEngineProc): Seccomp=absent NoNewPrivs=absent new_namespaces=
+probe: inside sees 3 engine processes
+probe: ready
+host sees pid 4513 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid new_vs_app=-
+host sees pid 4514 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid new_vs_app=-
+host sees pid 4533 type=browser-or-launcher Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid new_vs_app=-
+app main pid 4499: Seccomp=2 new_vs_host=user,mnt,pid
+verdict: 0 of 0 renderers confined
+

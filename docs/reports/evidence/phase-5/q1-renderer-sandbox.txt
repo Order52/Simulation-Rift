@@ -1,0 +1,54 @@
+# PoC Q1: Qt WebEngine's renderer sandbox in a Flatpak, probed from inside the app and from the host
+# linux-qt-poc run 39507119054 (commit c88381e), ubuntu-24.04 under Xvfb and dbus-run-session
+
+Linux runnervm8k3b6 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Flatpak 1.14.6
+qtwebengine application base	io.qt.qtwebengine.BaseApp		6.10	flathub
+Mesa	org.freedesktop.Platform.GL.default	26.2.4	25.08	flathub
+Mesa (Extra)	org.freedesktop.Platform.GL.default	26.2.4	25.08-extra	flathub
+Codecs Extra Extension	org.freedesktop.Platform.codecs-extra		25.08-extra	flathub
+Adwaita theme	org.kde.KStyle.Adwaita		6.10	flathub
+KDE Application Platform	org.kde.Platform		6.10	flathub
+KDE Software Development Kit	org.kde.Sdk		6.10	flathub
+QtProbe	org.simulationrift.QtProbe		master	qtprobe-origin
+
+## sandbox: app exit 0, host probe exit 0 (expected 0)
+probe: qt 6.10.3, pid 2, QTWEBENGINE_DISABLE_SANDBOX=unset
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=40
+probe: inside sees pid 15 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=
+probe: inside sees pid 19 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,ipc
+probe: inside sees pid 40 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,ipc
+probe: inside sees 3 engine processes
+probe: ready
+host sees pid 4429 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid new_vs_app=-
+host sees pid 4447 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid,ipc new_vs_app=mnt,pid,ipc
+host sees pid 4468 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 new_vs_host=user,mnt,pid,ipc new_vs_app=mnt,pid,ipc
+app main pid 4381: Seccomp=2 filters=1 new_vs_host=user,mnt,pid
+verdict: 1 of 1 renderers sandboxed by the engine; 0 of 1 with user and network namespaces of their own
+
+## disabled: app exit 0, host probe exit 1 (expected 1)
+probe: qt 6.10.3, pid 2, QTWEBENGINE_DISABLE_SANDBOX=1
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=35
+probe: inside sees pid 15 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=
+probe: inside sees pid 16 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=
+probe: inside sees pid 35 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=
+probe: inside sees 3 engine processes
+probe: ready
+host sees pid 4518 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid new_vs_app=-
+host sees pid 4519 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid new_vs_app=-
+host sees pid 4538 type=renderer Seccomp=2 filters=1 NoNewPrivs=1 new_vs_host=user,mnt,pid new_vs_app=-
+app main pid 4504: Seccomp=2 filters=1 new_vs_host=user,mnt,pid
+verdict: 0 of 1 renderers sandboxed by the engine; 0 of 1 with user and network namespaces of their own
+
+## sandbox case, the app's full output
+Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+probe: qt 6.10.3, pid 2, QTWEBENGINE_DISABLE_SANDBOX=unset
+[2:23:1020/222035.265404:ERROR:bus.cc(408)] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+Call for getting org.freedesktop.portal.FileChooser version failed QDBusError("org.freedesktop.DBus.Error.InvalidArgs", "No such interface “org.freedesktop.portal.FileChooser”")
+qt.dbus.integration: QDBusConnection: name 'org.freedesktop.portal.Desktop' had owner '' but we thought it was ':1.5'
+probe: loaded=yes title=rift-probe-page renderer pid (as the engine reports it)=40
+probe: inside sees pid 15 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=
+probe: inside sees pid 19 (QtWebEngineProc): Seccomp=2 filters=1 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,ipc
+probe: inside sees pid 40 (QtWebEngineProc): Seccomp=2 filters=2 (mine 1) NoNewPrivs=1 new_namespaces=mnt,pid,ipc
+probe: inside sees 3 engine processes
+probe: ready
