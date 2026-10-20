@@ -26,7 +26,8 @@ use std::path::{Path, PathBuf};
 pub use age::secrecy::{ExposeSecret, SecretString};
 
 use crate::vault::{
-    self, IndexEntry, KeptScan, ObjectId, VaultError, VaultIndex, VaultKey, read_index, write_index,
+    self, IndexEntry, KeptScan, ObjectId, VaultError, VaultIndex, VaultKey,
+    discard_interrupted_index, read_index, write_index,
 };
 
 const PASS_IDENTITY: &str = "identity.pass";
@@ -255,9 +256,11 @@ impl Vault {
 
     /// The index must authenticate under `key`; a wrong key or a forged
     /// index fails here, before anything is shown. Then objects the index
-    /// does not list (an interrupted save) are removed.
+    /// does not list (an interrupted save) are removed, and so is an
+    /// interrupted index write.
     fn unlock(&mut self, key: VaultKey) -> Result<(), LockerError> {
         let index = read_index(&self.dir, &key)?;
+        discard_interrupted_index(&self.dir)?;
         let listed: Vec<String> = index.entries.iter().map(|e| object_name(e.id)).collect();
         for entry in fs::read_dir(self.dir.join(OBJECTS)).map_err(VaultError::from)? {
             let entry = entry.map_err(VaultError::from)?;
@@ -691,6 +694,8 @@ mod tests {
         )
         .unwrap();
         fs::write(path.join(OBJECTS).join("x.age.tmp"), b"partial").unwrap();
+        // And as if it died while writing the index (found by F2 on API 33).
+        fs::write(path.join("index.age.tmp"), b"partial").unwrap();
         vault.lock();
         vault
             .unlock_with_passphrase(pass("correct horse battery"))
@@ -700,6 +705,7 @@ mod tests {
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         assert_eq!(names, [object_name(kept.id)]);
+        assert!(!path.join("index.age.tmp").exists());
     }
 
     #[test]

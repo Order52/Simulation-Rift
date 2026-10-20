@@ -362,6 +362,16 @@ pub fn write_index(dir: &Path, key: &VaultKey, index: &VaultIndex) -> Result<(),
     Ok(())
 }
 
+/// Removes an index write that was interrupted before its rename (a crash or
+/// a kill during [`write_index`]). It was never read: the current index, or
+/// the previous one when the current is absent, is what counts.
+pub fn discard_interrupted_index(dir: &Path) -> Result<(), VaultError> {
+    match fs::remove_file(dir.join(INDEX_TEMP)) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        other => other.map_err(VaultError::from),
+    }
+}
+
 /// Reads and authenticates the index. Falls back to the previous index only
 /// when the current one is *absent* (a crash between renames) — never when it
 /// is present but invalid, which would let an attacker force a rollback.
