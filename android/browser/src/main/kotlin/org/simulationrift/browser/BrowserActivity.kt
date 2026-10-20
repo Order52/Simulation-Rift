@@ -19,6 +19,7 @@ import android.os.SystemClock
 import android.os.RemoteException
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.webkit.CookieManager
@@ -299,6 +300,11 @@ class BrowserActivity : ComponentActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView(): WebView = PrivateWebView(this).apply {
+        // Without layout parameters AndroidView gives the view WRAP_CONTENT,
+        // and in that mode WebView lays pages out at zero height: every
+        // viewport unit (100vh) was 0 px, so pages sized by them collapsed
+        // (found by H1).
+        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         settings.apply {
             javaScriptEnabled = true // sites need it; no bridge is ever added (INV-6)
             domStorageEnabled = true

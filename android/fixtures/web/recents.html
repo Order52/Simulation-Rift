@@ -1,0 +1,13 @@
+<!doctype html><html data-test="h1"><meta charset="utf-8"><title>H1 recents</title>
+<meta name="viewport" content="width=device-width">
+<!-- H1: page content that a recents snapshot would show: black and white stripes over the whole page, 100vh tall (r1). -->
+<style>body{margin:0;display:flex;height:100vh}div{flex:1}div:nth-child(odd){background:#000}div:nth-child(even){background:#fff}</style>
+<body><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></body>
+<script src="/report.js"></script>
+<script>
+// r1: the height of 100vh against the window's; WebView once laid pages out at zero height.
+requestAnimationFrame(() => requestAnimationFrame(async () => {
+  await report("viewport", `${document.body.getBoundingClientRect().height} ${innerHeight}`);
+  await report("done", true);
+}));
+</script>

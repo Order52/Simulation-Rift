@@ -175,7 +175,7 @@ scroll_down() {
 # The same, retried while the screen settles (bounded).
 tap_when() { i=0; until tap "$1" "$2"; do i=$((i + 1)); [ $i -lt 10 ] || return 1; sleep 1; done; }
 
-# RIFT_FAULT_ONLY=1 skips S16d, S16f, S14 and S13 (to rerun the fault rounds alone).
+# RIFT_FAULT_ONLY=1 skips S16d, S16f, S14, S13 and H1 (to rerun the fault rounds alone).
 if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
   echo "== S16d: import through the system folder picker"
   # The user's path: the home screen's import button, Android's folder picker
@@ -319,6 +319,65 @@ if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
     fi
   else
     result S13 FAIL "could not find the Reset control or the main process"
+  fi
+fi
+
+# ---- Recents snapshot (Phase 7) -----------------------------------------------
+# H1: the snapshot Android stores for the browser's task when it leaves the
+# screen shows no page (setRecentsScreenshotEnabled(false), API 33+). Only
+# root can read it. The controller's test h1 opens a striped page and waits;
+# this takes a screenshot of the page (the control), presses Home, and hands
+# the test both images to decode.
+if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
+  echo "== H1: the browser's recents snapshot"
+  sdk="$("$adb" shell getprop ro.build.version.sdk | tr -d '\r')"
+  if [ "$sdk" -lt 33 ]; then
+    result H1 SKIPPED "API $sdk; the browser keeps recents snapshots out from API 33"
+  else
+    "$adb" logcat -c
+    "$adb" shell am instrument -w -r -e class "$pkg.SecurityTest#h1_theRecentsSnapshotShowsNoPage" -e host h1 \
+      $pkg.test/androidx.test.runner.AndroidJUnitRunner | tr -d '\r' > "$out/h1.txt" &
+    runner=$!
+    task="" why="the page was not shown"
+    if wait_log "result h1: page shown" 90; then
+      sleep 2
+      task="$("$adb" shell dumpsys activity recents | tr -d '\r' \
+        | sed -n "s/.*Recent #[0-9]*: Task{[0-9a-f]* #\([0-9]*\) type=standard A=[0-9]*:$browser}.*/\1/p" | head -1)"
+      why="the browser's task is not in recents"
+    fi
+    snaps=/data/system_ce/0/snapshots
+    if [ -n "$task" ]; then
+      # Any snapshot from before this run is removed, so the one read is new.
+      "$adb" shell rm -f "$snaps/$task.jpg" "$snaps/${task}_reduced.jpg" "$snaps/$task.proto"
+      "$adb" shell screencap -p /data/local/tmp/rift-h1-page.png
+      "$adb" shell input keyevent KEYCODE_HOME
+      i=0
+      until "$adb" shell test -s "$snaps/$task.jpg"; do
+        i=$((i + 1))
+        [ $i -lt 30 ] || break
+        sleep 0.5
+      done
+      why="no snapshot stored for the browser's task $task"
+    fi
+    if [ -n "$task" ] && "$adb" shell test -s "$snaps/$task.jpg"; then
+      why="the check failed"
+      mkdir -p "$out/screens"
+      "$adb" pull /data/local/tmp/rift-h1-page.png "$out/screens/h1-page-on-screen.png" >/dev/null
+      "$adb" pull "$snaps/$task.jpg" "$out/screens/h1-recents-snapshot.jpg" >/dev/null
+      owner="$("$adb" shell stat -c %u:%g /data/data/$pkg/files | tr -d '\r')"
+      h1=/data/data/$pkg/files/h1
+      # `ready` last: the test reads the images once it appears.
+      "$adb" shell "mkdir -p $h1 && cp /data/local/tmp/rift-h1-page.png $h1/page.png && cp $snaps/$task.jpg $h1/snapshot.jpg \
+        && rm /data/local/tmp/rift-h1-page.png && chown -R $owner $h1 && chmod -R go-rwx $h1 && restorecon -R $h1 >/dev/null \
+        && touch $h1/ready && chown $owner $h1/ready && restorecon $h1/ready"
+    fi
+    wait $runner || true
+    line="$("$adb" logcat -d -s Rift:I | tr -d '\r' | sed -n 's/.*result h1: //p' | tail -1)"
+    if grep -q "^OK (1 test)" "$out/h1.txt"; then
+      result H1 PASS "task $task: $line"
+    else
+      result H1 FAIL "${task:+task $task: }$why; $line; see h1.txt"
+    fi
   fi
 fi
 

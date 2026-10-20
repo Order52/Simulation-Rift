@@ -1117,6 +1117,73 @@ class SecurityTest {
         report("f4", "database after the kill: $status")
     }
 
+    /**
+     * r1: pages lay out at the window's height. A WebView left at
+     * WRAP_CONTENT lays pages out at zero height, so every viewport unit
+     * (100vh) was 0 px and pages sized by them collapsed (found by H1).
+     */
+    @Test
+    fun r1_pagesLayOutAtTheWindowsHeight() {
+        val (body, window) = visit("r1", "/recents.html?test=r1").getString("viewport").split(" ").map { it.toDouble() }
+        assertTrue("window $window px", window > 0)
+        assertEquals("100vh against the window's height", window, body, 1.0)
+    }
+
+    // ---- Host-captured checks (Phase 7) ----------------------------------------------
+    // run-tests.sh runs these with `-e host <step>`, captures what only root
+    // can read while they wait, and copies it into this app's files. Skipped
+    // otherwise.
+
+    /**
+     * h1: the recents snapshot Android stores for the browser's task shows no
+     * page. This opens recents.html (black and white stripes over the whole
+     * page) and waits; the host takes a screenshot while the page is shown
+     * (the control: the page was on screen, and this measure sees it),
+     * presses Home, copies the snapshot Android then stored for the browser's
+     * task, and writes `h1/ready`.
+     */
+    @Test
+    fun h1_theRecentsSnapshotShowsNoPage() {
+        org.junit.Assume.assumeTrue("a host-captured check, run by run-tests.sh", InstrumentationRegistry.getArguments().getString("host") == "h1")
+        val dir = File(context.filesDir, "h1")
+        try {
+            visit("h1", "/recents.html")
+            // The host starts at this line.
+            report("h1", "page shown")
+            awaitCondition("the host's capture", HOST_CAPTURE_MS) { File(dir, "ready").exists() }
+            val page = oneShadeRows(File(dir, "page.png"))
+            val snapshot = oneShadeRows(File(dir, "snapshot.jpg"))
+            report("h1", "rows of one shade: ${percent(page)} of the screenshot with the page shown, ${percent(snapshot)} of the stored snapshot")
+            assertTrue("${percent(page)} of the screenshot's rows are one shade, so the page was not on screen", page < 0.5)
+            assertTrue("only ${percent(snapshot)} of the stored snapshot's rows are one shade, so it may show the page", snapshot > 0.98)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    /**
+     * The share of an image's rows that are one shade: all but 2% of their
+     * pixels within a few grey levels of the row's commonest. The page's
+     * vertical stripes make every row they cross mixed.
+     */
+    private fun oneShadeRows(file: File): Double {
+        val bitmap = android.graphics.BitmapFactory.decodeFile(file.path) ?: throw AssertionError("cannot decode $file")
+        val row = IntArray(bitmap.width)
+        var uniform = 0
+        for (y in 0 until bitmap.height) {
+            bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+            val histogram = IntArray(256)
+            for (p in row) {
+                histogram[(android.graphics.Color.red(p) * 299 + android.graphics.Color.green(p) * 587 + android.graphics.Color.blue(p) * 114) / 1000]++
+            }
+            val mode = histogram.indices.maxBy { histogram[it] }
+            if ((maxOf(0, mode - 8)..minOf(255, mode + 8)).sumOf { histogram[it] } >= row.size * 0.98) uniform++
+        }
+        return uniform.toDouble() / bitmap.height
+    }
+
+    private fun percent(share: Double) = "%.1f%%".format(share * 100)
+
     // ---- Licences (§25) ---------------------------------------------------------------
 
     /**
@@ -1486,8 +1553,8 @@ class SecurityTest {
         throw AssertionError("no vault message after: $before")
     }
 
-    private fun awaitCondition(what: String, condition: () -> Boolean) {
-        val deadline = SystemClock.elapsedRealtime() + VAULT_TIMEOUT_MS
+    private fun awaitCondition(what: String, timeoutMs: Long = VAULT_TIMEOUT_MS, condition: () -> Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (!condition()) {
             if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("timed out waiting for: $what")
             SystemClock.sleep(50)
@@ -1813,6 +1880,7 @@ class SecurityTest {
         const val VAULT_TIMEOUT_MS = 20_000L
         /** How long f1 and f3 wait to be killed before they fail. */
         const val FAULT_WINDOW_MS = 60_000L
+        const val HOST_CAPTURE_MS = 60_000L
         const val PASSPHRASE = "correct horse battery"
         const val PIN = "1111"
         const val RECOVERY = "recovery passphrase of the test"
