@@ -10,7 +10,7 @@ use rift_core::pack::Pack;
 use rift_core::scan::{self, Evidence, RuleScan, Status};
 use rift_core::snapshot::{InstallCheck, SnapshotStore};
 use rift_pack::Release;
-use rift_update::UpdateError;
+use rift_update::{Refusal, UpdateError};
 use sha2::{Digest, Sha256};
 
 struct Accept;
@@ -123,7 +123,7 @@ fn s16_untrusted_signer_is_rejected() {
     let error = f.import(&foreign, &Accept).unwrap_err();
     println!("result s16 untrusted signer: {error}");
     assert!(
-        matches!(&error, UpdateError::Verify(m) if m.contains("ignature")),
+        matches!(&error, UpdateError::Verify { refusal: Refusal::Signature, detail } if detail.contains("ignature")),
         "{error}"
     );
     assert_eq!(f.current(), Some(good.digest.hex()));
@@ -151,7 +151,7 @@ fn s16_tampered_target_is_rejected() {
         std::fs::write(&rules, bytes).unwrap();
         let error = f.import(&repo, &Accept).unwrap_err();
         println!("result s16 tampered target ({tamper}): {error}");
-        assert!(matches!(error, UpdateError::Verify(_)), "{error}");
+        assert_eq!(error.refusal(), Refusal::Tampered, "{error}");
         assert_eq!(f.current(), Some(good.digest.hex()));
     }
 }
@@ -165,7 +165,7 @@ fn s16_rollback_to_an_older_version_is_rejected() {
     let error = f.import(&old, &Accept).unwrap_err();
     println!("result s16 rollback: {error}");
     assert!(
-        matches!(&error, UpdateError::Verify(m) if m.contains("version")),
+        matches!(&error, UpdateError::Verify { refusal: Refusal::Rollback, detail } if detail.contains("version")),
         "{error}"
     );
     assert_eq!(f.current(), Some(new.digest.hex()));
@@ -183,7 +183,7 @@ fn s16_expired_metadata_is_rejected() {
         .unwrap_err();
     println!("result s16 expired: {error}");
     assert!(
-        matches!(&error, UpdateError::Verify(m) if m.contains("expired")),
+        matches!(&error, UpdateError::Verify { refusal: Refusal::Expired, detail } if detail.contains("expired")),
         "{error}"
     );
     assert_eq!(f.current(), Some(good.digest.hex()));
@@ -196,6 +196,7 @@ fn signed_packs_still_need_the_install_check() {
     let error = f.import(&f.publish("keys", 2, None), &Refuse).unwrap_err();
     println!("result install check: {error}");
     assert!(matches!(error, UpdateError::Install(_)), "{error}");
+    assert_eq!(error.refusal(), Refusal::Damaged);
     assert_eq!(f.current(), Some(good.digest.hex()));
 }
 

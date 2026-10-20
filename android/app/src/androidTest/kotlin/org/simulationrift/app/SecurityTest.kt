@@ -420,7 +420,7 @@ class SecurityTest {
         Core.installIntel(root, File(copy, "repo"))
         val message = awaitIntelMessage()
         copy.deleteRecursively()
-        assertTrue(message, message.contains("refused") && message.contains("Hash mismatch"))
+        assertEquals("the update was refused: a file in it does not match its signature", message)
         assertTrue("${Core.intel.value}", Core.intel.value is IntelStatus.Missing)
         report("s16b", message)
     }

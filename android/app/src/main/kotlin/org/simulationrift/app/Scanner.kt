@@ -6,6 +6,7 @@ import org.simulationrift.core.IntelFailure
 import org.simulationrift.core.PendingIntel
 import org.simulationrift.core.ScanFailure
 import org.simulationrift.core.ScanJob
+import org.simulationrift.core.UpdateRefusal
 import org.simulationrift.core.Verdict
 
 /**
@@ -66,9 +67,22 @@ object Scanner {
         }
     }
 
+    /**
+     * One sentence for the UI. Storage and refusal details (tough's errors,
+     * with paths and digests) are for the log only: callers log [e].
+     */
     fun describe(e: IntelFailure): String = when (e) {
-        is IntelFailure.Storage -> "the threat database storage failed: ${e.detail}"
-        is IntelFailure.Refused -> "the update was refused: ${e.detail}"
+        is IntelFailure.Storage -> "the threat database storage failed"
+        is IntelFailure.Refused -> "the update was refused: " + when (e.reason) {
+            UpdateRefusal.SIGNATURE -> "it is not signed by the keys this app trusts"
+            UpdateRefusal.ROLLBACK -> "it is older than a database this device already trusted"
+            UpdateRefusal.EXPIRED -> "it has expired, or this device's clock is wrong"
+            UpdateRefusal.TAMPERED -> "a file in it does not match its signature"
+            UpdateRefusal.TOO_LARGE -> "it is larger than an update may be"
+            UpdateRefusal.DAMAGED -> "it is incomplete or damaged"
+            UpdateRefusal.UNREADABLE -> "it could not be read"
+            UpdateRefusal.RULES_REJECTED -> "its rules did not pass the check"
+        }
         is IntelFailure.Unconfined -> "the checking worker is not confined (${e.detail})"
         is IntelFailure.BadReply -> "the checking worker sent an invalid reply (${e.detail})"
         is IntelFailure.NotChecked -> "the update has not passed its rule check"

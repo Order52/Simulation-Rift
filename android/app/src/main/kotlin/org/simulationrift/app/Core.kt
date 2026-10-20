@@ -459,6 +459,7 @@ object Core {
                     "Installed ${pending.snapshot()}."
                 }
             } catch (e: IntelFailure) {
+                Log.w(TAG, "intel update not installed", e)
                 Scanner.describe(e)
             } catch (e: IsolatedWorker.Failed) {
                 "the update's rules could not be checked: ${e.message}"

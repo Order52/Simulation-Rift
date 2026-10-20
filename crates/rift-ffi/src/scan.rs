@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rift_core::pack::{Confidence, Pack};
+use rift_core::pack::{Confidence, Pack, PackError};
 use rift_core::scan::{self as verdicts, CacheKey, Check, Evidence, Gap, RuleScan, Status};
 use rift_core::snapshot::{InstallCheck, SnapshotStore};
 use rift_core::text::escape_for_display;
@@ -125,8 +125,13 @@ pub enum IntelFailure {
     #[error("the threat database storage failed: {detail}")]
     Storage { detail: String },
     /// Verification or validation refused the update; nothing changed.
-    #[error("the update was refused: {detail}")]
-    Refused { detail: String },
+    /// `reason` is for the user; `detail` (tough's error, with paths and
+    /// digests) is for the log.
+    #[error("the update was refused ({reason:?}): {detail}")]
+    Refused {
+        reason: UpdateRefusal,
+        detail: String,
+    },
     #[error("the checking worker is not confined: {detail}")]
     Unconfined { detail: String },
     #[error("the checking worker sent an invalid reply: {detail}")]
@@ -135,6 +140,42 @@ pub enum IntelFailure {
     NotChecked,
     #[error("threat database state is unusable after an internal error")]
     Poisoned,
+}
+
+/// Why an update was refused (rift-update's `Refusal`, plus the rule check).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum UpdateRefusal {
+    Signature,
+    Rollback,
+    Expired,
+    Tampered,
+    TooLarge,
+    Damaged,
+    Unreadable,
+    /// The checking worker did not compile exactly the rules the update describes.
+    RulesRejected,
+}
+
+impl From<rift_update::Refusal> for UpdateRefusal {
+    fn from(refusal: rift_update::Refusal) -> Self {
+        use rift_update::Refusal as R;
+        match refusal {
+            R::Signature => Self::Signature,
+            R::Rollback => Self::Rollback,
+            R::Expired => Self::Expired,
+            R::Tampered => Self::Tampered,
+            R::TooLarge => Self::TooLarge,
+            R::Damaged => Self::Damaged,
+            R::Unreadable => Self::Unreadable,
+        }
+    }
+}
+
+fn refused(reason: UpdateRefusal, error: &impl std::fmt::Display) -> IntelFailure {
+    IntelFailure::Refused {
+        reason,
+        detail: escape_for_display(&error.to_string()),
+    }
 }
 
 /// The installed intelligence snapshot (§13.1).
@@ -199,12 +240,14 @@ impl Intel {
     ) -> Result<Arc<PendingIntel>, IntelFailure> {
         let verified =
             rift_update::verify_offline(&trusted_root, Path::new(&repository), &self.datastore)
-                .map_err(|e| IntelFailure::Refused {
-                    detail: escape_for_display(&e.to_string()),
-                })?;
+                .map_err(|e| refused(e.refusal().into(), &e))?;
         let pack = Pack::validate(verified.files.iter().map(|(n, b)| (*n, b.as_slice()))).map_err(
-            |e| IntelFailure::Refused {
-                detail: escape_for_display(&e.to_string()),
+            |e| {
+                let reason = match e {
+                    PackError::TooLarge { .. } => UpdateRefusal::TooLarge,
+                    _ => UpdateRefusal::Damaged,
+                };
+                refused(reason, &e)
             },
         )?;
         let job = NEXT_INTEL_JOB.fetch_add(2, Ordering::SeqCst);
@@ -265,7 +308,10 @@ impl PendingIntel {
     pub fn accept_load(&self, reply: Vec<u8>) -> Result<(), IntelFailure> {
         self.rules.accept_load(&reply).map_err(|f| match f {
             StepFailure::Unconfined(detail) => IntelFailure::Unconfined { detail },
-            StepFailure::BadReply(detail) => IntelFailure::Refused { detail },
+            StepFailure::BadReply(detail) => IntelFailure::Refused {
+                reason: UpdateRefusal::RulesRejected,
+                detail,
+            },
         })?;
         *self.checked.lock().map_err(|_| IntelFailure::Poisoned)? = true;
         Ok(())
@@ -277,13 +323,10 @@ impl PendingIntel {
             return Err(IntelFailure::NotChecked);
         }
         let files = self.files.iter().map(|(n, b)| (*n, b.as_slice()));
-        let pack =
-            self.intel
-                .store
-                .install(files, &Checked)
-                .map_err(|e| IntelFailure::Refused {
-                    detail: escape_for_display(&e.to_string()),
-                })?;
+        let pack = self.intel.store.install(files, &Checked).map_err(|e| {
+            let e = rift_update::UpdateError::from(e);
+            refused(e.refusal().into(), &e)
+        })?;
         *self
             .intel
             .current
@@ -414,6 +457,7 @@ impl RulesStep {
     fn new(job: u64, generation: u64, pack: &Pack) -> Result<Self, IntelFailure> {
         let expected_rules =
             u32::try_from(pack.metadata.rules.len()).map_err(|_| IntelFailure::Refused {
+                reason: UpdateRefusal::TooLarge,
                 detail: "too many rules".into(),
             })?;
         Ok(Self {
