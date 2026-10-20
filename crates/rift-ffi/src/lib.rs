@@ -27,7 +27,8 @@ pub use scan::{
     ScanStatus, Verdict,
 };
 pub use vault::{
-    PlatformKey, VaultEntry, VaultFailure, VaultHandle, VaultProtection, vault_protection,
+    KeptVerdict, PlatformKey, VaultEntry, VaultFailure, VaultHandle, VaultProtection,
+    vault_has_recovery, vault_protection,
 };
 
 /// One explainable fact for the trusted UI: `code` is stable, `text` is a
@@ -1145,6 +1146,50 @@ mod tests {
     }
 
     #[test]
+    fn a_kept_file_keeps_the_verdict_it_had_as_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        let url = format!("http://localhost:{}/", serve(rift_pack::DEMO_FILE));
+        let demo = sessions.download(generation, info(url)).unwrap();
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
+        install(&intel, trusted_root, repo);
+        let Ok(ScanStart::Run { job }) = sessions.clone().scan(generation, demo.id.clone(), intel)
+        else {
+            panic!("expected a worker job");
+        };
+        let verdict = run_scan(&job);
+        let vault =
+            VaultHandle::create_with_passphrase(root(&dir) + "/vault", b"correct horse".to_vec())
+                .unwrap();
+        let kept = sessions
+            .save_to_vault(generation, demo.id, vault.clone(), 1_700_000_000)
+            .unwrap();
+        let scan = kept.scan.clone().expect("the verdict is kept");
+        assert_eq!(
+            (scan.status, scan.label.as_str(), scan.demo),
+            (ScanStatus::KnownMalicious, "Known malicious", true)
+        );
+        assert_eq!(scan.snapshot, verdict.snapshot);
+        assert_eq!(scan.engine, verdict.engine);
+        assert_eq!(scan.scanned_unix, 1_700_000_000);
+        assert!(
+            scan.findings.iter().any(|f| f.starts_with("file hash:")),
+            "{:?}",
+            scan.findings
+        );
+        // It survives the session and a new unlock, as recorded.
+        sessions.reset().unwrap();
+        vault.lock();
+        vault
+            .unlock_with_passphrase(b"correct horse".to_vec())
+            .unwrap();
+        assert_eq!(vault.entries().unwrap(), vec![kept]);
+    }
+
+    #[test]
     fn scans_combine_the_core_hash_check_with_a_validated_worker() {
         use rift_worker_ffi::WorkerEngine;
         let dir = tempfile::tempdir().unwrap();
@@ -1459,6 +1504,7 @@ mod tests {
             ("rfdp.exe", file.size, file.sha256.as_str())
         );
         assert_ne!(saved.id, file.id, "the vault names objects itself");
+        assert_eq!(saved.scan, None, "never scanned, so no verdict is kept");
         assert!(matches!(
             sessions.save_to_vault(generation, "00".repeat(16), vault.clone(), 0),
             Err(VaultFailure::NotFound)
@@ -1555,7 +1601,10 @@ mod tests {
         );
 
         let reopened = VaultHandle::open(vault_dir.clone()).unwrap();
-        assert_eq!(vault_protection(vault_dir), Some(VaultProtection::Platform));
+        assert_eq!(
+            vault_protection(vault_dir.clone()),
+            Some(VaultProtection::Platform)
+        );
         assert!(matches!(
             reopened.unlock_with_passphrase(b"any passphrase".to_vec()),
             Err(VaultFailure::WrongProtection)
@@ -1568,6 +1617,37 @@ mod tests {
         secret.reverse();
         reopened.unlock_with_secret(secret).unwrap();
         assert!(reopened.entries().unwrap().is_empty());
+
+        // A recovery passphrase, and a new platform key after the old one is lost.
+        assert!(!vault_has_recovery(vault_dir.clone()));
+        reopened
+            .set_recovery_passphrase(b"recovery passphrase".to_vec())
+            .unwrap();
+        assert!(vault_has_recovery(vault_dir.clone()));
+        reopened.lock();
+        assert!(matches!(
+            reopened.unlock_with_recovery(b"wrong passphrase".to_vec()),
+            Err(VaultFailure::WrongSecret)
+        ));
+        reopened
+            .unlock_with_recovery(b"recovery passphrase".to_vec())
+            .unwrap();
+        let refusing = Arc::new(FakeKey {
+            refuse: true,
+            calls: AtomicU64::new(0),
+        });
+        let before = reopened.platform_wrapped().unwrap();
+        assert!(matches!(
+            reopened.rewrap_for_platform(refusing),
+            Err(VaultFailure::Platform { .. })
+        ));
+        assert_eq!(
+            reopened.platform_wrapped().unwrap(),
+            before,
+            "unchanged after a refusal"
+        );
+        reopened.rewrap_for_platform(key.clone()).unwrap();
+        assert_eq!(key.calls.load(Ordering::SeqCst), 2);
     }
 
     /// 1x1 RGBA PNG.

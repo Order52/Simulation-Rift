@@ -394,7 +394,8 @@ class MainActivity : ComponentActivity() {
                             }
                             Text(
                                 "The key stays in this device's keystore. If the screen lock is removed or new fingerprints " +
-                                    "or faces are enrolled, Android deletes the key and the vault cannot be opened again.",
+                                    "or faces are enrolled, Android deletes the key, and only a recovery passphrase (set after " +
+                                    "creating the vault) can open it again.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Text("Or protect it with a passphrase:", style = MaterialTheme.typography.bodySmall)
@@ -416,6 +417,12 @@ class MainActivity : ComponentActivity() {
                             Button(onClick = { Locker.unlockWithDeviceLock(this@MainActivity) }, modifier = Modifier.testTag("vault-unlock-device")) {
                                 Text("Unlock")
                             }
+                            if (s.recovery) {
+                                PassphraseField("Recovery passphrase")
+                                OutlinedButton(onClick = { Locker.unlockWithRecovery(takePassphrase()) }, modifier = Modifier.testTag("vault-unlock-recovery")) {
+                                    Text("Unlock with the recovery passphrase")
+                                }
+                            }
                         } else {
                             PassphraseField("Passphrase")
                             Button(onClick = { Locker.unlockWithPassphrase(takePassphrase()) }, modifier = Modifier.testTag("vault-unlock-passphrase")) {
@@ -428,6 +435,7 @@ class MainActivity : ComponentActivity() {
                             "Unlocked" + (s.keyLevel?.let { " · key in $it" } ?: "") + ". Locks when Rift goes to the background, or after 5 minutes without use.",
                             modifier = Modifier.testTag("vault-unlocked"),
                         )
+                        if (s.protection == VaultProtection.PLATFORM) RecoveryArea(s, { PassphraseField(it) }, { takePassphrase() })
                         if (s.entries.isEmpty()) Text("Nothing kept yet.")
                         s.entries.forEach { VaultItem(it) }
                         OutlinedButton(onClick = { Locker.lock() }, modifier = Modifier.testTag("vault-lock")) { Text("Lock now") }
@@ -455,6 +463,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** The recovery passphrase of a platform vault, and protecting it again after the key was lost (§8.7). */
+    @Composable
+    private fun RecoveryArea(s: Locker.State.Unlocked, field: @Composable (String) -> Unit, take: () -> ByteArray) {
+        if (s.keyLevel == null) {
+            Text(
+                "This device's key for the vault is gone, so it was opened with the recovery passphrase.",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("vault-key-gone"),
+            )
+            if (VaultKeystore.deviceSecure(this)) {
+                Button(onClick = { Locker.protectAgain(this@MainActivity) }, modifier = Modifier.testTag("vault-protect-again")) {
+                    Text("Protect with the screen lock again")
+                }
+            }
+        }
+        if (s.recovery) {
+            Text("A recovery passphrase is set.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("vault-recovery-set"))
+        } else {
+            Text(
+                "No recovery passphrase: if this device's key is lost, so is everything in the vault.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            field("Recovery passphrase (at least 10 characters)")
+            OutlinedButton(onClick = { Locker.setRecoveryPassphrase(take()) }, modifier = Modifier.testTag("vault-set-recovery")) {
+                Text("Set a recovery passphrase")
+            }
+        }
+    }
+
     @Composable
     private fun VaultItem(entry: VaultEntry) {
         var warning by remember { mutableStateOf(false) }
@@ -465,6 +502,23 @@ class MainActivity : ComponentActivity() {
                     (entry.sourceUrl?.let { "\nfrom $it" } ?: "") +
                     "\nkept ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(entry.createdUnix.toLong() * 1000))}",
                 style = MaterialTheme.typography.bodySmall,
+            )
+            val scan = entry.scan
+            Text(
+                if (scan == null) {
+                    "It had not been scanned when it was kept."
+                } else {
+                    "When kept: ${scan.label}" + (scan.findings.takeIf { it.isNotEmpty() }?.joinToString(prefix = " (", postfix = ")") ?: "") +
+                        " · ${scan.snapshot?.let { "database $it" } ?: "no threat database"} · ${scan.engine}" +
+                        (if (scan.demo) " · DEMO database, not real coverage" else "") +
+                        ". A past result, not a current scan."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = when (scan?.status) {
+                    ScanStatus.KNOWN_MALICIOUS, ScanStatus.SUSPICIOUS -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.testTag("vault-scan-${entry.id}"),
             )
             if (warning) {
                 Text(

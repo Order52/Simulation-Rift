@@ -7,6 +7,8 @@
 //!   the MAC is what makes the index trustworthy. It is verified before parsing.
 //! * Each object's plaintext SHA-256 and size live in the authenticated index
 //!   and are checked after decryption, so swapped or substituted objects fail.
+//! * Index format 2 adds the scan verdict a file had when it was kept
+//!   ([`KeptScan`]); format 1 indexes are still read, without one.
 
 use std::fmt;
 use std::fs::{self, File};
@@ -21,7 +23,7 @@ use sha2::{Digest, Sha256};
 
 use crate::transfer::SealingWriter;
 
-pub const INDEX_FORMAT_VERSION: u32 = 1;
+pub const INDEX_FORMAT_VERSION: u32 = 2;
 /// The index is small metadata; anything larger is refused before decryption.
 pub const MAX_INDEX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const INDEX_FILE: &str = "index.age";
@@ -225,6 +227,69 @@ pub struct IndexEntry {
     pub media_type: String,
     pub source_url: Option<String>,
     pub created_unix: u64,
+    /// The verdict when the file was kept, if it had been scanned (format 2).
+    pub scan: Option<KeptScan>,
+}
+
+/// The scan verdict a file had when it was kept. It is history: it was
+/// bound to the database and engine named here, and is never shown as
+/// current (§12.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeptScan {
+    pub status: KeptStatus,
+    pub snapshot: Option<String>,
+    pub engine: String,
+    /// The database was a demo with no real coverage.
+    pub demo: bool,
+    /// `check:id` of each finding.
+    pub findings: Vec<String>,
+    pub scanned_unix: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeptStatus {
+    KnownMalicious,
+    Suspicious,
+    NotFlagged,
+    NotFullyScanned,
+}
+
+/// An entry of format 1, which had no scan field.
+#[derive(Deserialize)]
+struct IndexEntryV1 {
+    id: ObjectId,
+    sealed: Sealed,
+    display_name: String,
+    media_type: String,
+    source_url: Option<String>,
+    created_unix: u64,
+}
+
+#[derive(Deserialize)]
+struct VaultIndexV1 {
+    generation: u64,
+    entries: Vec<IndexEntryV1>,
+}
+
+impl From<VaultIndexV1> for VaultIndex {
+    fn from(v1: VaultIndexV1) -> Self {
+        Self {
+            generation: v1.generation,
+            entries: v1
+                .entries
+                .into_iter()
+                .map(|e| IndexEntry {
+                    id: e.id,
+                    sealed: e.sealed,
+                    display_name: e.display_name,
+                    media_type: e.media_type,
+                    source_url: e.source_url,
+                    created_unix: e.created_unix,
+                    scan: None,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -306,20 +371,27 @@ pub fn read_index(dir: &Path, key: &VaultKey) -> Result<VaultIndex, VaultError> 
     mac.verify_slice(tag)
         .map_err(|_| VaultError::IndexNotAuthentic)?;
 
-    let parsed: IndexFile =
-        postcard::from_bytes(payload).map_err(|e| VaultError::IndexMalformed(e.to_string()))?;
-    if parsed.format_version != INDEX_FORMAT_VERSION {
-        return Err(VaultError::IndexMalformed(format!(
-            "unsupported version {}",
-            parsed.format_version
-        )));
-    }
-    let mut ids: Vec<ObjectId> = parsed.index.entries.iter().map(|e| e.id).collect();
+    // The version comes first, as `IndexFile` writes it; the rest is the
+    // index of that version.
+    let malformed = |e: postcard::Error| VaultError::IndexMalformed(e.to_string());
+    let (version, rest): (u32, &[u8]) = postcard::take_from_bytes(payload).map_err(malformed)?;
+    let index: VaultIndex = match version {
+        1 => postcard::from_bytes::<VaultIndexV1>(rest)
+            .map_err(malformed)?
+            .into(),
+        INDEX_FORMAT_VERSION => postcard::from_bytes(rest).map_err(malformed)?,
+        other => {
+            return Err(VaultError::IndexMalformed(format!(
+                "unsupported version {other}"
+            )));
+        }
+    };
+    let mut ids: Vec<ObjectId> = index.entries.iter().map(|e| e.id).collect();
     ids.sort_unstable();
     if ids.windows(2).any(|w| matches!(w, [a, b] if a == b)) {
         return Err(VaultError::IndexMalformed("duplicate object id".into()));
     }
-    Ok(parsed.index)
+    Ok(index)
 }
 
 #[cfg(test)]
@@ -453,6 +525,14 @@ mod tests {
                     media_type: "application/pdf".into(),
                     source_url: Some("https://example.org/a.pdf".into()),
                     created_unix: 1_760_000_000,
+                    scan: (i % 2 == 1).then(|| KeptScan {
+                        status: KeptStatus::NotFlagged,
+                        snapshot: Some("demo-1".into()),
+                        engine: "yara-x 1.21.0".into(),
+                        demo: true,
+                        findings: vec![],
+                        scanned_unix: 1_760_000_000,
+                    }),
                 })
                 .collect(),
         }
@@ -470,6 +550,62 @@ mod tests {
         assert_eq!(read_index(dir.path(), &key).ok(), Some(second));
         assert!(dir.path().join(INDEX_PREVIOUS).exists());
         assert!(!dir.path().join(INDEX_TEMP).exists());
+    }
+
+    /// A format 1 index, as Phase 4's first build wrote it, still opens.
+    #[test]
+    fn a_format_1_index_is_read_without_scans() {
+        #[derive(Serialize)]
+        struct EntryV1 {
+            id: ObjectId,
+            sealed: Sealed,
+            display_name: String,
+            media_type: String,
+            source_url: Option<String>,
+            created_unix: u64,
+        }
+        #[derive(Serialize)]
+        struct FileV1 {
+            format_version: u32,
+            generation: u64,
+            entries: Vec<EntryV1>,
+        }
+        let dir = tempfile::tempdir().expect("temp dir");
+        let key = VaultKey::generate();
+        let current = index_with(2);
+        let old = FileV1 {
+            format_version: 1,
+            generation: current.generation,
+            entries: current
+                .entries
+                .iter()
+                .map(|e| EntryV1 {
+                    id: e.id,
+                    sealed: e.sealed,
+                    display_name: e.display_name.clone(),
+                    media_type: e.media_type.clone(),
+                    source_url: e.source_url.clone(),
+                    created_unix: e.created_unix,
+                })
+                .collect(),
+        };
+        let mut payload = postcard::to_allocvec(&old).unwrap_or_default();
+        let mut mac = key.index_mac().expect("mac");
+        mac.update(&payload);
+        payload.extend_from_slice(&mac.finalize().into_bytes());
+        let mut file = File::create(dir.path().join(INDEX_FILE)).expect("create index");
+        assert!(seal(&key.recipient(), payload.as_slice(), &mut file, LIMIT).is_ok());
+
+        let read = read_index(dir.path(), &key).expect("format 1 reads");
+        let mut expected = current;
+        for e in &mut expected.entries {
+            e.scan = None;
+        }
+        assert_eq!(read, expected);
+        // Written back as format 2, with scans from then on.
+        let next = index_with(2);
+        assert!(write_index(dir.path(), &key, &next).is_ok());
+        assert_eq!(read_index(dir.path(), &key).ok(), Some(next));
     }
 
     #[test]

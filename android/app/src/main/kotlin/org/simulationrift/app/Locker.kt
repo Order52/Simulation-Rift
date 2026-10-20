@@ -20,6 +20,7 @@ import org.simulationrift.core.VaultEntry
 import org.simulationrift.core.VaultFailure
 import org.simulationrift.core.VaultHandle
 import org.simulationrift.core.VaultProtection
+import org.simulationrift.core.vaultHasRecovery
 import org.simulationrift.core.vaultProtection
 
 /**
@@ -40,9 +41,19 @@ object Locker {
         /** No vault yet; `deviceSecure`: the Keystore key is possible (a secure lock screen is set). */
         data class Absent(val deviceSecure: Boolean) : State
 
-        data class Locked(val protection: VaultProtection) : State
+        /** `recovery`: a platform vault that also opens with its recovery passphrase. */
+        data class Locked(val protection: VaultProtection, val recovery: Boolean) : State
 
-        data class Unlocked(val protection: VaultProtection, val entries: List<VaultEntry>, val keyLevel: String?) : State
+        /**
+         * `keyLevel`: where the platform key lives, or null if it is gone (the
+         * vault was opened with the recovery passphrase).
+         */
+        data class Unlocked(
+            val protection: VaultProtection,
+            val entries: List<VaultEntry>,
+            val keyLevel: String?,
+            val recovery: Boolean,
+        ) : State
 
         data class Failed(val message: String) : State
     }
@@ -126,7 +137,7 @@ object Locker {
                 val level = VaultKeystore.securityLevel()
                 Log.i(TAG, "vault created (platform, $level)")
                 "Vault created. Its key is in this device's keystore ($level). If the lock screen is removed or new " +
-                    "fingerprints or faces are enrolled, Android deletes the key and the vault cannot be opened."
+                    "fingerprints or faces are enrolled, Android deletes the key; only a recovery passphrase opens the vault then."
             }
         }
     }
@@ -152,7 +163,8 @@ object Locker {
             _message.value = "The vault was not unlocked: ${describe(e)}"
             return@execute
         } catch (e: VaultKeystore.Unavailable) {
-            _message.value = e.message
+            val recoverable = e.message == VaultKeystore.INVALIDATED && vaultHasRecovery(dir.path)
+            _message.value = if (recoverable) VaultKeystore.INVALIDATED_RECOVERABLE else e.message
             return@execute
         } catch (e: java.security.GeneralSecurityException) {
             Log.w(TAG, "vault key unusable", e)
@@ -169,6 +181,55 @@ object Locker {
                 }
                 Log.i(TAG, "vault unlocked (platform)")
                 null
+            }
+        }
+    }
+
+    /** Adds a second copy of a platform vault's identity under a passphrase (§8.7). */
+    fun setRecoveryPassphrase(passphrase: ByteArray) = vaulting.execute {
+        act("The recovery passphrase was not set") {
+            try {
+                unlocked().setRecoveryPassphrase(passphrase)
+            } finally {
+                passphrase.fill(0)
+            }
+            Log.i(TAG, "vault: recovery passphrase set")
+            "Recovery passphrase set. If this device's key is lost, it opens the vault; keep it somewhere safe."
+        }
+    }
+
+    fun unlockWithRecovery(passphrase: ByteArray) = vaulting.execute {
+        act("The vault was not unlocked") {
+            try {
+                opened().unlockWithRecovery(passphrase)
+            } finally {
+                passphrase.fill(0)
+            }
+            Log.i(TAG, "vault unlocked (recovery)")
+            null
+        }
+    }
+
+    /**
+     * After recovery: a new Keystore key wraps the identity again. Only when
+     * the old key is gone, since a new key replaces it and would make the
+     * stored wrapped identity unreadable if this did not complete.
+     */
+    fun protectAgain(activity: Activity) = vaulting.execute {
+        val vault = handle?.takeIf { it.isUnlocked() } ?: return@execute
+        if (VaultKeystore.securityLevel() != null) return@execute
+        val cipher = try {
+            VaultKeystore.newEncryptCipher()
+        } catch (e: Exception) {
+            Log.w(TAG, "vault key not created", e)
+            _message.value = "The vault was not protected again: the device's keystore refused a new key (${e.javaClass.simpleName})."
+            return@execute
+        }
+        authenticate(activity, cipher, "Protect the Rift vault") { authorized ->
+            act("The vault was not protected again") {
+                vault.rewrapForPlatform(sealer(authorized))
+                Log.i(TAG, "vault: identity wrapped by a new key (${VaultKeystore.securityLevel()})")
+                "The vault is protected by this device's screen lock again."
             }
         }
     }
@@ -266,8 +327,9 @@ object Locker {
         val vault = handle
         _state.value = try {
             when {
-                vault != null && vault.isUnlocked() -> State.Unlocked(protection(), vault.entries(), keyLevel())
-                else -> vaultProtection(dir.path)?.let { State.Locked(it) } ?: State.Absent(VaultKeystore.deviceSecure(app))
+                vault != null && vault.isUnlocked() -> State.Unlocked(protection(), vault.entries(), keyLevel(), vaultHasRecovery(dir.path))
+                else -> vaultProtection(dir.path)?.let { State.Locked(it, vaultHasRecovery(dir.path)) }
+                    ?: State.Absent(VaultKeystore.deviceSecure(app))
             }
         } catch (e: VaultFailure) {
             State.Failed(describe(e))
@@ -373,6 +435,7 @@ object Locker {
         is VaultFailure.WrongSecret -> "the passphrase or key does not open this vault"
         is VaultFailure.WrongProtection -> "the vault is protected another way"
         is VaultFailure.UnknownObject -> "the vault has no such file"
+        is VaultFailure.NoRecovery -> "the vault has no recovery passphrase"
         is VaultFailure.TooLarge -> "files larger than ${e.limit} bytes are not kept"
         is VaultFailure.Damaged -> "the vault's data failed its check (${e.detail})"
         is VaultFailure.Storage -> "the vault's storage failed (${e.detail})"

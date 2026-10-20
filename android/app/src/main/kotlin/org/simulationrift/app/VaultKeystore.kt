@@ -97,6 +97,10 @@ internal object VaultKeystore {
     const val INVALIDATED = "The vault's key is gone from this device's keystore: Android removes it when the screen " +
         "lock is removed or new fingerprints or faces are enrolled. This vault can no longer be opened; delete it to start a new one."
 
+    /** [INVALIDATED], for a vault that has a recovery passphrase. */
+    const val INVALIDATED_RECOVERABLE = "The vault's key is gone from this device's keystore: Android removes it when the " +
+        "screen lock is removed or new fingerprints or faces are enrolled. Unlock with the recovery passphrase instead."
+
     private fun generate(strongBox: Boolean): SecretKey {
         val spec = KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)

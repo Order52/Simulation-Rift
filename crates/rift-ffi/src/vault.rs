@@ -13,12 +13,13 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use rift_core::locker::{
     self, ExposeSecret, LockerError, NewObject, Protection, SecretString, Vault,
 };
+use rift_core::scan::Status;
 use rift_core::text::escape_for_display;
-use rift_core::vault::{IndexEntry, VaultError};
+use rift_core::vault::{IndexEntry, KeptScan, KeptStatus, VaultError};
 
 use crate::{
-    Content, MAX_PREVIEW_INPUT, Preview, PreviewFailure, PreviewOwner, ReadFailure, Sessions,
-    prepare_preview,
+    Content, MAX_PREVIEW_INPUT, Preview, PreviewFailure, PreviewOwner, ReadFailure, ScanStatus,
+    Sessions, Verdict, prepare_preview,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -39,6 +40,23 @@ pub struct VaultEntry {
     pub sha256: String,
     pub source_url: Option<String>,
     pub created_unix: u64,
+    /// The verdict when it was kept, if it had been scanned.
+    pub scan: Option<KeptVerdict>,
+}
+
+/// The scan verdict a kept file had when it was kept: history, bound to the
+/// database and engine it names, never a current verdict (§12.3).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct KeptVerdict {
+    pub status: ScanStatus,
+    /// "Known malicious", "Suspicious", "Not flagged" or "Not fully scanned".
+    pub label: String,
+    pub snapshot: Option<String>,
+    pub engine: String,
+    pub demo: bool,
+    /// `check:id` of each finding.
+    pub findings: Vec<String>,
+    pub scanned_unix: u64,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -58,6 +76,8 @@ pub enum VaultFailure {
     WrongProtection,
     #[error("the vault has no such object")]
     UnknownObject,
+    #[error("the vault has no recovery passphrase")]
+    NoRecovery,
     #[error("the file is larger than the vault's {limit}-byte limit")]
     TooLarge { limit: u64 },
     /// Stored data failed its check (a swapped object, a malformed index).
@@ -87,6 +107,7 @@ impl From<LockerError> for VaultFailure {
             },
             LockerError::WrongProtection(_) => Self::WrongProtection,
             LockerError::UnknownObject(_) => Self::UnknownObject,
+            LockerError::NoRecovery => Self::NoRecovery,
             LockerError::Vault(e) => match e {
                 // A wrong key cannot decrypt or authenticate the index.
                 VaultError::Decrypt(_) | VaultError::IndexNotAuthentic | VaultError::InvalidKey => {
@@ -121,6 +142,12 @@ pub fn vault_protection(dir: String) -> Option<VaultProtection> {
         Protection::Passphrase => VaultProtection::Passphrase,
         Protection::Platform => VaultProtection::Platform,
     })
+}
+
+/// Whether the platform vault in `dir` also has a recovery passphrase (§8.7).
+#[uniffi::export]
+pub fn vault_has_recovery(dir: String) -> bool {
+    Vault::has_recovery(std::path::Path::new(&dir))
 }
 
 #[derive(Debug, uniffi::Object)]
@@ -187,6 +214,37 @@ impl VaultHandle {
     pub fn unlock_with_passphrase(&self, passphrase: Vec<u8>) -> Result<(), VaultFailure> {
         let passphrase = secret_from(passphrase)?;
         Ok(self.lock_state()?.unlock_with_passphrase(passphrase)?)
+    }
+
+    /// Sets the recovery passphrase of an unlocked platform vault.
+    pub fn set_recovery_passphrase(&self, passphrase: Vec<u8>) -> Result<(), VaultFailure> {
+        let passphrase = secret_from(passphrase)?;
+        Ok(self.lock_state()?.set_recovery_passphrase(passphrase)?)
+    }
+
+    /// Unlocks a platform vault whose platform key is lost.
+    pub fn unlock_with_recovery(&self, passphrase: Vec<u8>) -> Result<(), VaultFailure> {
+        let passphrase = secret_from(passphrase)?;
+        Ok(self.lock_state()?.unlock_with_recovery(passphrase)?)
+    }
+
+    /// Protects the unlocked platform vault's identity with a new platform
+    /// key (after recovery), replacing the stored wrapped identity.
+    pub fn rewrap_for_platform(&self, key: Arc<dyn PlatformKey>) -> Result<(), VaultFailure> {
+        let mut failure = None;
+        let rewrapped = self.lock_state()?.rewrap_for_platform(|secret| {
+            key.wrap(secret.expose_secret().as_bytes().to_vec())
+                .map_err(|e| {
+                    failure = Some(e);
+                    // Mapped back below; the stored identity is unchanged.
+                    LockerError::Missing
+                })
+        });
+        match (rewrapped, failure) {
+            (Ok(()), _) => Ok(()),
+            (Err(_), Some(platform)) => Err(platform),
+            (Err(e), None) => Err(e.into()),
+        }
     }
 
     /// The stored wrapped identity, for the platform to unwrap.
@@ -311,6 +369,9 @@ impl Sessions {
                 limit: locker::MAX_OBJECT_BYTES,
             });
         };
+        let scan = self
+            .verdict(generation, file_id)
+            .map(|v| kept_scan(&v, now_unix));
         // The quarantine keeps only the display-safe forms; escaping them
         // again when shown changes nothing, as escapes contain no characters
         // that are escaped.
@@ -323,9 +384,48 @@ impl Sessions {
                     .unwrap_or_else(|| "application/octet-stream".into()),
                 source_url: Some(file.source),
                 created_unix: now_unix,
+                scan,
             },
         )?;
         Ok(entry(&saved))
+    }
+}
+
+fn kept_scan(v: &Verdict, now_unix: u64) -> KeptScan {
+    KeptScan {
+        status: match v.status {
+            ScanStatus::KnownMalicious => KeptStatus::KnownMalicious,
+            ScanStatus::Suspicious => KeptStatus::Suspicious,
+            ScanStatus::NotFlagged => KeptStatus::NotFlagged,
+            ScanStatus::NotFullyScanned => KeptStatus::NotFullyScanned,
+        },
+        snapshot: v.snapshot.clone(),
+        engine: v.engine.clone(),
+        demo: v.demo,
+        findings: v
+            .findings
+            .iter()
+            .map(|f| format!("{}:{}", f.check, f.id))
+            .collect(),
+        scanned_unix: now_unix,
+    }
+}
+
+fn kept_verdict(k: &KeptScan) -> KeptVerdict {
+    let (status, core) = match k.status {
+        KeptStatus::KnownMalicious => (ScanStatus::KnownMalicious, Status::KnownMalicious),
+        KeptStatus::Suspicious => (ScanStatus::Suspicious, Status::Suspicious),
+        KeptStatus::NotFlagged => (ScanStatus::NotFlagged, Status::NotFlagged),
+        KeptStatus::NotFullyScanned => (ScanStatus::NotFullyScanned, Status::NotFullyScanned),
+    };
+    KeptVerdict {
+        status,
+        label: core.label().to_owned(),
+        snapshot: k.snapshot.as_deref().map(escape_for_display),
+        engine: escape_for_display(&k.engine),
+        demo: k.demo,
+        findings: k.findings.iter().map(|f| escape_for_display(f)).collect(),
+        scanned_unix: k.scanned_unix,
     }
 }
 
@@ -338,6 +438,7 @@ fn entry(e: &IndexEntry) -> VaultEntry {
         sha256: hex::encode(e.sealed.sha256),
         source_url: e.source_url.as_deref().map(escape_for_display),
         created_unix: e.created_unix,
+        scan: e.scan.as_ref().map(kept_verdict),
     }
 }
 

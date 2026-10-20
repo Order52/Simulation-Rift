@@ -8,6 +8,8 @@
 //! * `identity.platform`: the identity wrapped by a platform key (Android
 //!   Keystore). The platform does the wrapping; this module stores and
 //!   returns the opaque blob and never sees the platform key.
+//! * `identity.recovery` (optional, platform vaults only): the same identity,
+//!   age passphrase-encrypted, for when the platform key is lost (§8.7).
 //! * `index.age` (+ `.prev`): the authenticated index.
 //! * `objects/<ObjectId>.age`: one age file per saved object.
 //!
@@ -24,11 +26,12 @@ use std::path::{Path, PathBuf};
 pub use age::secrecy::{ExposeSecret, SecretString};
 
 use crate::vault::{
-    self, IndexEntry, ObjectId, VaultError, VaultIndex, VaultKey, read_index, write_index,
+    self, IndexEntry, KeptScan, ObjectId, VaultError, VaultIndex, VaultKey, read_index, write_index,
 };
 
 const PASS_IDENTITY: &str = "identity.pass";
 const PLATFORM_IDENTITY: &str = "identity.platform";
+const RECOVERY_IDENTITY: &str = "identity.recovery";
 const OBJECTS: &str = "objects";
 /// A wrapped identity is a few hundred bytes; anything larger is not one.
 const MAX_IDENTITY_BYTES: u64 = 64 * 1024;
@@ -60,6 +63,8 @@ pub enum LockerError {
     WrongProtection(Protection),
     #[error("the vault has no object {0}")]
     UnknownObject(String),
+    #[error("the vault has no recovery passphrase")]
+    NoRecovery,
 }
 
 /// What a new object is, as the user will see it in the vault.
@@ -69,6 +74,8 @@ pub struct NewObject {
     pub media_type: String,
     pub source_url: Option<String>,
     pub created_unix: u64,
+    /// The verdict it had when it was kept, if it was scanned.
+    pub scan: Option<KeptScan>,
 }
 
 /// An opened vault directory, locked or unlocked.
@@ -126,6 +133,14 @@ impl Vault {
             return Err(LockerError::Exists);
         }
         fs::create_dir_all(dir.join(OBJECTS)).map_err(VaultError::from)?;
+        // A recovery copy without its vault (left by an interrupted delete)
+        // holds another identity; it must not pass for this vault's.
+        match fs::remove_file(dir.join(RECOVERY_IDENTITY)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(VaultError::from(e).into());
+            }
+            _ => {}
+        }
         let index = VaultIndex::default();
         write_index(dir, &key, &index)?;
         // The identity last: until it exists, there is no vault to open.
@@ -162,22 +177,70 @@ impl Vault {
 
     /// Unlocks with the identity secret the platform unwrapped from [`Self::platform_wrapped`].
     pub fn unlock_with_secret(&mut self, secret: &SecretString) -> Result<(), LockerError> {
-        let actual = Self::protection(&self.dir).ok_or(LockerError::Missing)?;
-        if actual != Protection::Platform {
-            return Err(LockerError::WrongProtection(actual));
-        }
+        self.expect_protection(Protection::Platform)?;
         self.unlock(VaultKey::import_secret(secret)?)
     }
 
-    fn wrapped(&self, expected: Protection) -> Result<Vec<u8>, LockerError> {
+    /// Whether the platform vault in `dir` also has a recovery passphrase.
+    pub fn has_recovery(dir: &Path) -> bool {
+        Self::protection(dir) == Some(Protection::Platform) && dir.join(RECOVERY_IDENTITY).is_file()
+    }
+
+    /// Sets (or replaces) the recovery passphrase of an unlocked platform
+    /// vault: a second copy of the identity, age scrypt-encrypted, which
+    /// opens the vault if the platform key is lost (§8.7).
+    pub fn set_recovery_passphrase(&self, passphrase: SecretString) -> Result<(), LockerError> {
+        self.expect_protection(Protection::Platform)?;
+        if passphrase.expose_secret().chars().count() < MIN_PASSPHRASE_CHARS {
+            return Err(LockerError::WeakPassphrase);
+        }
+        let wrapped = self.state()?.key.wrap_with_passphrase(passphrase)?;
+        write_atomically(&self.dir, RECOVERY_IDENTITY, &wrapped)?;
+        Ok(())
+    }
+
+    /// Unlocks a platform vault with its recovery passphrase.
+    pub fn unlock_with_recovery(&mut self, passphrase: SecretString) -> Result<(), LockerError> {
+        self.expect_protection(Protection::Platform)?;
+        if !self.dir.join(RECOVERY_IDENTITY).is_file() {
+            return Err(LockerError::NoRecovery);
+        }
+        let wrapped = self.read_identity(RECOVERY_IDENTITY)?;
+        let key = VaultKey::unwrap_with_passphrase(&wrapped, passphrase)?;
+        self.unlock(key)
+    }
+
+    /// Replaces the stored platform-wrapped identity of an unlocked platform
+    /// vault, after its platform key was lost and it was opened with the
+    /// recovery passphrase: `wrap` wraps the identity with the new key.
+    pub fn rewrap_for_platform(
+        &self,
+        wrap: impl FnOnce(&SecretString) -> Result<Vec<u8>, LockerError>,
+    ) -> Result<(), LockerError> {
+        self.expect_protection(Protection::Platform)?;
+        let wrapped = wrap(&self.state()?.key.export_secret())?;
+        write_atomically(&self.dir, PLATFORM_IDENTITY, &wrapped)?;
+        Ok(())
+    }
+
+    fn expect_protection(&self, expected: Protection) -> Result<(), LockerError> {
         let actual = Self::protection(&self.dir).ok_or(LockerError::Missing)?;
         if actual != expected {
             return Err(LockerError::WrongProtection(actual));
         }
-        let name = match actual {
+        Ok(())
+    }
+
+    fn wrapped(&self, expected: Protection) -> Result<Vec<u8>, LockerError> {
+        self.expect_protection(expected)?;
+        self.read_identity(match expected {
             Protection::Passphrase => PASS_IDENTITY,
             Protection::Platform => PLATFORM_IDENTITY,
-        };
+        })
+    }
+
+    /// One identity file, bounded: a wrapped identity is a few hundred bytes.
+    fn read_identity(&self, name: &str) -> Result<Vec<u8>, LockerError> {
         let mut bytes = Vec::new();
         File::open(self.dir.join(name))
             .map_err(VaultError::from)?
@@ -256,6 +319,7 @@ impl Vault {
             media_type: object.media_type,
             source_url: object.source_url,
             created_unix: object.created_unix,
+            scan: object.scan,
         };
         let mut next = state.index.clone();
         next.generation = next.generation.saturating_add(1);
@@ -336,6 +400,7 @@ mod tests {
             media_type: "text/plain".into(),
             source_url: Some("https://example.org/report.txt".into()),
             created_unix: 1_000,
+            scan: None,
         }
     }
 
@@ -464,6 +529,91 @@ mod tests {
             .unlock_with_secret(&SecretString::from(unwrapped))
             .unwrap();
         assert_eq!(read(&reopened, &entry.id.to_hex()).unwrap(), MARKER);
+    }
+
+    #[test]
+    fn the_recovery_passphrase_opens_a_vault_whose_platform_key_is_lost() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault");
+        let reverse = |s: &SecretString| Ok(s.expose_secret().bytes().rev().collect());
+        let mut vault = Vault::create_for_platform(&path, reverse).unwrap();
+        let entry = vault.add(MARKER, object("kept.txt")).unwrap();
+        assert!(!Vault::has_recovery(&path));
+        assert!(matches!(
+            vault.set_recovery_passphrase(pass("too short")),
+            Err(LockerError::WeakPassphrase)
+        ));
+        vault
+            .set_recovery_passphrase(pass("recovery passphrase"))
+            .unwrap();
+        assert!(Vault::has_recovery(&path));
+        vault.lock();
+        assert!(matches!(
+            vault.set_recovery_passphrase(pass("another passphrase")),
+            Err(LockerError::Locked)
+        ));
+
+        // The platform key is gone: only the recovery passphrase opens it.
+        let mut lost = Vault::open(&path).unwrap();
+        assert!(
+            lost.unlock_with_recovery(pass("not the passphrase"))
+                .is_err()
+        );
+        assert!(!lost.is_unlocked());
+        lost.unlock_with_recovery(pass("recovery passphrase"))
+            .unwrap();
+        assert_eq!(read(&lost, &entry.id.to_hex()).unwrap(), MARKER);
+        // Protected by a new platform key; the old blob is replaced.
+        let rotate = |s: &SecretString| {
+            let mut bytes: Vec<u8> = s.expose_secret().bytes().collect();
+            bytes.rotate_left(1);
+            Ok(bytes)
+        };
+        lost.rewrap_for_platform(rotate).unwrap();
+        let mut renewed = Vault::open(&path).unwrap();
+        let mut secret = renewed.platform_wrapped().unwrap();
+        secret.rotate_right(1);
+        renewed
+            .unlock_with_secret(&SecretString::from(String::from_utf8(secret).unwrap()))
+            .unwrap();
+        assert_eq!(renewed.entries().unwrap(), [entry]);
+        assert!(!disk(&path).windows(MARKER.len()).any(|w| w == MARKER));
+
+        // Passphrase vaults have no recovery copy; a vault without one says so.
+        let other = dir.path().join("other");
+        let mut plain = Vault::create_with_passphrase(&other, pass("correct horse")).unwrap();
+        assert!(matches!(
+            plain.set_recovery_passphrase(pass("recovery passphrase")),
+            Err(LockerError::WrongProtection(Protection::Passphrase))
+        ));
+        assert!(matches!(
+            plain.unlock_with_recovery(pass("recovery passphrase")),
+            Err(LockerError::WrongProtection(Protection::Passphrase))
+        ));
+        let bare = dir.path().join("bare");
+        Vault::create_for_platform(&bare, reverse).unwrap();
+        assert!(matches!(
+            Vault::open(&bare)
+                .unwrap()
+                .unlock_with_recovery(pass("recovery passphrase")),
+            Err(LockerError::NoRecovery)
+        ));
+    }
+
+    #[test]
+    fn a_stale_recovery_copy_does_not_survive_into_a_new_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault");
+        let reverse = |s: &SecretString| Ok(s.expose_secret().bytes().rev().collect());
+        let vault = Vault::create_for_platform(&path, reverse).unwrap();
+        vault
+            .set_recovery_passphrase(pass("recovery passphrase"))
+            .unwrap();
+        // As if a delete stopped after removing the platform identity.
+        fs::remove_file(path.join(PLATFORM_IDENTITY)).unwrap();
+        drop(vault);
+        Vault::create_for_platform(&path, reverse).unwrap();
+        assert!(!Vault::has_recovery(&path));
     }
 
     #[test]

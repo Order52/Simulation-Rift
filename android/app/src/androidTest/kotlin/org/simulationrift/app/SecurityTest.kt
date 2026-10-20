@@ -795,10 +795,11 @@ class SecurityTest {
     /**
      * The Keystore key (§8.7) through the real BiometricPrompt: a PIN set by
      * the shell, typed into the system's credential screen. Removing the PIN
-     * invalidates the key, and the vault says so instead of opening.
+     * deletes the key, and the vault says so instead of opening; the recovery
+     * passphrase opens it, and a new PIN's key protects it again.
      */
     @Test
-    fun v3_keystoreVaultNeedsTheScreenLockAndDiesWithIt() {
+    fun v3_keystoreVaultNeedsTheScreenLockAndRecoversWithItsPassphrase() {
         destroyVault()
         device.executeShellCommand("locksettings set-pin $PIN")
         try {
@@ -810,8 +811,11 @@ class SecurityTest {
             enterPin()
             val created = awaitVault<Locker.State.Unlocked>()
             assertNotNull(created.keyLevel)
+            assertFalse(created.recovery)
             val wrapped = File(context.filesDir, "rift/vault/identity.platform").readBytes()
             assertFalse(contains(wrapped, "AGE-SECRET-KEY-".toByteArray()))
+            Locker.setRecoveryPassphrase(RECOVERY.toByteArray())
+            awaitCondition("recovery set") { (Locker.state.value as? Locker.State.Unlocked)?.recovery == true }
 
             Locker.lock()
             awaitVault<Locker.State.Locked>()
@@ -826,9 +830,30 @@ class SecurityTest {
             awaitCondition("lock screen removed") { !VaultKeystore.deviceSecure(context) }
             val again = openHome()
             val invalidated = vaultMessageOf { Locker.unlockWithDeviceLock(again) }
-            assertEquals(VaultKeystore.INVALIDATED, invalidated)
+            assertEquals(VaultKeystore.INVALIDATED_RECOVERABLE, invalidated)
+            val wrong = vaultMessageOf { Locker.unlockWithRecovery("not the recovery passphrase".toByteArray()) }
+            assertEquals("The vault was not unlocked: the passphrase or key does not open this vault", wrong)
+            Locker.unlockWithRecovery(RECOVERY.toByteArray())
+            val recovered = awaitVault<Locker.State.Unlocked>()
+            assertNull("the old key is gone", recovered.keyLevel)
+
+            // A new screen lock, a new key: the same vault opens through the prompt again.
+            device.executeShellCommand("locksettings set-pin $PIN")
+            awaitCondition("secure lock screen again") { VaultKeystore.deviceSecure(context) }
+            Locker.protectAgain(again)
+            enterPin()
+            awaitCondition("protected again") { (Locker.state.value as? Locker.State.Unlocked)?.keyLevel != null }
+            Locker.lock()
+            awaitVault<Locker.State.Locked>()
+            Locker.unlockWithDeviceLock(again)
+            enterPin()
+            awaitVault<Locker.State.Unlocked>()
             again.finish()
-            report("v3", "key in ${created.keyLevel}; ${wrapped.size}-byte wrapped identity; after the PIN was removed: $invalidated")
+            report(
+                "v3",
+                "key in ${created.keyLevel}; ${wrapped.size}-byte wrapped identity; after the PIN was removed: $invalidated; " +
+                    "recovered with the recovery passphrase, protected by a new key and unlocked through the prompt again",
+            )
         } finally {
             device.executeShellCommand("locksettings clear --old $PIN")
             destroyVault()
@@ -864,6 +889,31 @@ class SecurityTest {
         awaitVault<Locker.State.Locked>()
         assertTrue(Locker.previews.value.isEmpty())
         report("v4", "vault preview ${bitmap!!.width}x${bitmap.height} after the session ended; cleared on lock")
+        destroyVault()
+    }
+
+    @Test
+    fun v5_keptFilesKeepTheVerdictTheyHadAsHistory() {
+        destroyVault()
+        Core.installDemoIntel()
+        assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
+        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+        awaitVault<Locker.State.Unlocked>()
+        allowFixtureHost()
+        val file = submit(activeGeneration(), fixture("/files/demo-file.txt")).file!!
+        val verdict = verdictOf(file.id)
+        assertEquals(ScanStatus.KNOWN_MALICIOUS, verdict.status)
+        Core.keep(file.id)
+        awaitCondition("kept") { file.id in Locker.kept.value }
+        resetAndAwait(activeGeneration())
+
+        val scan = (Locker.state.value as Locker.State.Unlocked).entries.single().scan
+        assertNotNull("no verdict kept", scan)
+        assertEquals("Known malicious", scan!!.label)
+        assertEquals(verdict.snapshot, scan.snapshot)
+        assertTrue(scan.demo)
+        assertEquals(verdict.findings.map { "${it.check}:${it.id}" }, scan.findings)
+        report("v5", "kept with: ${scan.label} ${scan.findings} database ${scan.snapshot}")
         destroyVault()
     }
 
@@ -1220,6 +1270,7 @@ class SecurityTest {
         const val VAULT_TIMEOUT_MS = 20_000L
         const val PASSPHRASE = "correct horse battery"
         const val PIN = "1111"
+        const val RECOVERY = "recovery passphrase of the test"
         val MARKER = "RIFT-PREVIEW-PLAINTEXT-MARKER".toByteArray()
         val STORES = listOf("cookie", "server_cookie", "localStorage", "indexedDB", "cacheStorage", "serviceWorker")
     }
