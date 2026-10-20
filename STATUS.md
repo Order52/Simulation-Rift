@@ -1,10 +1,10 @@
 # Simulation-Rift: current status
 
-**As of 20 Oct 2026** (`main` at the commit that last changed this file). Simulation-Rift is in development, in Phase 3 of the roadmap (Phases 0–7, [architecture §22](docs/architecture.md)). It is **not** a usable or audited security product. Every claim below means "tested in the stated environment", nothing more. The full history, all findings and the per-phase evidence are in [`docs/reports/project-status.md`](docs/reports/project-status.md) and the reports next to it.
+**As of 20 Oct 2026** (`main` at the commit that last changed this file). Simulation-Rift is in development: Phases 3 and 4 of the roadmap are built and tested on emulators (Phases 0–7, [architecture §22](docs/architecture.md)). It is **not** a usable or audited security product. Every claim below means "tested in the stated environment", nothing more. The full history, all findings and the per-phase evidence are in [`docs/reports/project-status.md`](docs/reports/project-status.md) and the reports next to it.
 
 ## In one paragraph
 
-The Android debug build works end to end on emulators, and its browser is now isolated by the operating system rather than by "deleting cookies". The browser is a **separate app with its own Linux user ID**, so code that escapes the web engine cannot see Rift's files, keys or quarantine. A **network lock** gives it no route to any network except Rift's own checking proxy: a VPN that applies only to the browser and drops every packet, plus a loopback proxy that needs a per-session token and refuses local and private addresses. At every reset **Android itself wipes the browser app** (all its processes are killed and all its data deleted), and Rift checks that a fresh instance holds no file at all. Downloads are re-fetched into encrypted per-session quarantine, previewed and scanned in isolated worker processes. The only threat database is a harmless demo one. Nothing has run on a physical phone, and the Linux app, the vault and the hardening phase have not started.
+The Android debug build works end to end on emulators, and its browser is now isolated by the operating system rather than by "deleting cookies". The browser is a **separate app with its own Linux user ID**, so code that escapes the web engine cannot see Rift's files, keys or quarantine. A **network lock** gives it no route to any network except Rift's own checking proxy: a VPN that applies only to the browser and drops every packet, plus a loopback proxy that needs a per-session token and refuses local and private addresses. At every reset **Android itself wipes the browser app** (all its processes are killed and all its data deleted), and Rift checks that a fresh instance holds no file at all. Downloads are re-fetched into encrypted per-session quarantine, previewed and scanned in isolated worker processes. Files you choose to keep go into an **encrypted vault** whose key is held by Android's keystore behind your screen lock or fingerprint (or by a passphrase), and which locks when Rift leaves the screen. The only threat database is a harmless demo one. Nothing has run on a physical phone, and the hardening phase and the Linux app have not started. Linux comes last and will use Qt.
 
 ## Phases
 
@@ -13,11 +13,11 @@ The Android debug build works end to end on emulators, and its browser is now is
 | 0: Feasibility (14 proofs of concept) | **Mostly done.** All pass in at least one environment, including A8 (the browser split and the network lock). Open: the lookup benchmark on a phone, the Linux checks inside Flatpak, and L4 (the Linux network lock). |
 | 1: Foundations (Rust core, protocol, formats) | **Done.** Unit, property and fuzz tests, strict lints, dependency policy. |
 | 2: Android vertical slice | **Done on emulators** (API 33–36, both ABIs, 16 KB pages), now on architecture 2.1 (browser app and network lock, [report](docs/reports/browser-isolation.md)). Gate still open: a physical phone. |
-| 3: Scanner and signed intelligence | **Mostly done.** Scanning (two isolated workers at a time) and offline signed updates work on the host and on Android emulators; refused updates say why in one sentence. Open: the import screen (being built), online updates, the production key policy and the items in "What is left". |
-| 4: Vault | Format done and tested; key providers, lock/unlock and UI not started. |
-| 5: Linux app | Not started (the worker lockdown and the WebKitGTK sandbox check are proven in PoCs; the network-lock design is written, PoC L4 pending). |
+| 3: Scanner and signed intelligence | **Done on emulators**, except the production key policy and real feeds. Scanning (two isolated workers at a time); signed updates imported from a folder you choose or fetched online through the core's own checked fetcher; refusals in one sentence; a warning when the clock is behind the database. |
+| 4: Vault | **Done on the API 35 emulator** ([report](docs/reports/phase-4.md)). Keystore key behind BiometricPrompt, or a passphrase; keep, export (warned), remove; locks on request, in the background and after 5 minutes. Open: a physical phone (the emulator's keystore is software only), a recovery passphrase, vault previews. |
 | 6: AI experiment | Not started; optional and gated by design. |
-| 7: Hardening and release | Not started. |
+| 7: Hardening and release | Not started. Next after Phase 4, for Android. |
+| 5: Linux app | Not started. **Last**, after all Android work, and **with Qt instead of GTK4** (decided 20 Oct 2026). The worker lockdown is proven in PoCs; the browser design will be revised for Qt before any code. |
 
 ## How the browser is isolated (Android)
 
@@ -43,35 +43,34 @@ The Android debug build works end to end on emulators, and its browser is now is
 | Download capture | Downloads are re-fetched by the Rust core (destination checks on every redirect, size limit, cookies only to their origin) into encrypted quarantine. Hostile names are display-only. | S8–S10 |
 | Previews | Images and PDFs render in an isolated worker (no files, no network, seccomp on the parser thread, deadlines, unbound after each job). Text is shown as escaped plain text. | P1, P2, S3–S7, S19 |
 | Scanning | Each download is checked by file hash and type in the core, then by YARA-X rules in a fresh isolated worker, two at a time, so a hung worker does not hold the queue. A scan keeps the database snapshot it started with. The best status is "Not flagged", never "safe". | S16a, S21a, S21b |
-| Signed threat database | Offline TUF install. Tampered, rolled-back, expired or wrongly signed updates are refused with a one-sentence reason (the full error goes to the log) and the old database stays. Debug builds embed a signed demo database. | S16, S17, S21, S22 |
+| Signed threat database | TUF updates from a folder you choose (system picker) or online through the core's checked fetcher. Tampered, rolled-back, expired or wrongly signed updates are refused with a one-sentence reason (the full error goes to the log) and the old database stays. Debug builds embed a signed demo database. | S16, S17, S21, S22 |
+| Vault | "Keep in the vault" copies a quarantined file, sealed with age to an identity wrapped by an Android Keystore key (per-use authentication through the system prompt, device must be unlocked) or a passphrase. Nothing readable is written to disk. Locks on request, when Rift goes to the background, and after 5 minutes. Export only after a warning, to a place you choose. | S18, v1–v3 |
 | Reset and recovery | Reset stops the proxy, crypto-shreds quarantine, has Android wipe the browser app and verifies the result. A kill in the middle of a reset is recovered on the next start; the browser is also wiped at every launch. | S12, S13, S14, S27 |
 
 ## Where it has been tested
 
 | Environment | Result |
 |---|---|
-| Host: macOS arm64, and CI on Ubuntu and macOS | 144 Rust tests, `clippy -D warnings`, `fmt`, `cargo deny`, 7 fuzz targets (short runs) and the Linux worker lockdown pass. |
-| Android API 36, arm64 (local emulator, WebView 133) | **Full suite on architecture 2.1: 31 instrumented tests plus S13/S14 pass** ([evidence](docs/reports/evidence/phase3-android-split-api36/)). |
-| Android API 35, 16 KB pages, arm64 (local emulator, WebView 124) | **Full suite on architecture 2.1: 31 instrumented tests plus S13/S14 pass** ([evidence](docs/reports/evidence/phase3-android-split-api35-16k/)). |
-| Android API 33 and 34, x86_64 (CI emulators, WebView 109 and 113) | **Full suite on architecture 2.1 passes** (CI run 39363201440; [33](docs/reports/evidence/phase3-android-split-api33-x86_64/), [34](docs/reports/evidence/phase3-android-split-api34-x86_64/)), after the fixes for the first 2.1 run ([report](docs/reports/browser-isolation.md), findings 7–8). |
+| Host: macOS arm64, and CI on Ubuntu and macOS | 155 Rust tests, `clippy -D warnings`, `fmt`, `cargo deny`, 7 fuzz targets (short runs) and the Linux worker lockdown pass. |
+| Android API 36, arm64 (local emulator, WebView 133) | **Full suite on architecture 2.1 (before the Phase 3 import and online tests and the vault): 31 instrumented tests plus S13/S14 pass** ([evidence](docs/reports/evidence/phase3-android-split-api36/)). |
+| Android API 35, 16 KB pages, arm64 (local emulator, WebView 124) | **Full suite with the vault: 36 instrumented tests plus S16d, S16f, S13 and S14 pass** ([evidence](docs/reports/evidence/phase4-vault-api35-16k/)). |
+| Android API 33 and 34, x86_64 (CI emulators, WebView 109 and 113) | **Full suite on architecture 2.1 passes** (CI run 39363201440, before the import, online and vault tests; [33](docs/reports/evidence/phase3-android-split-api33-x86_64/), [34](docs/reports/evidence/phase3-android-split-api34-x86_64/)), after the fixes for the first 2.1 run ([report](docs/reports/browser-isolation.md), findings 7–8). |
 | Android API 30 | Browsing is refused as designed (WebView 91 is below the minimum); the browser split and the lock were measured there in PoC A8. |
 | Physical Android phone | **Not tested.** |
-| Linux desktop app, Flatpak | **Not built.** |
+| Linux desktop app | **Not built** (last; Qt). |
 
 ## What is left
 
 In order of priority:
 
-1. **Finish Phase 3**
-   1. ~~Short refusal messages~~, ~~a bounded pool of scan workers~~ and ~~scans pinned to their starting snapshot~~: done.
-   2. An import screen for a user-chosen update, and a production root in release builds (they have none today). Being built.
-   3. Online updates over the core's own fetcher, without adding a second TLS stack (size budget).
-   4. Show clock problems in the UI, the production key policy (offline keys, thresholds, rotation), and licensed real feeds.
-2. **Close Phases 0 and 2:** physical phones (every emulator level has passed on 2.1); the lookup benchmark on a phone; the Linux checks inside Flatpak.
-3. **Phase 4, vault:** Keystore and passphrase key providers, lock/unlock, save and export with warnings, a test that no plaintext is left on disk.
-4. **Phase 5, Linux:** PoC L4 (the browser in a Flatpak sub-sandbox with no network, reaching only Rift's proxy over a socket), then the GTK4 + WebKitGTK Flatpak app on the same Rust core.
+Android first; Linux is the last step.
+
+1. **Phase 3 leftovers:** ~~import screen~~, ~~online updates~~ and ~~clock warning~~ are done; open are the production key policy (offline keys, thresholds, rotation) and licensed real feeds.
+2. **Phase 4 leftovers:** ~~key providers, lock/unlock, keep and warned export, plaintext inventory~~ are done; open are a recovery passphrase, previews of kept files, scan summaries in the vault index, and settings for the lock policy.
+3. **Phase 7, hardening (Android):** long fuzz campaigns, fault injection, privacy network captures, a dependency review, release gates, and an external security review before any release claim.
+4. **Phones:** physical devices (every emulator level has passed on 2.1), which also settle the keystore's hardware backing and the lookup benchmark.
 5. **Phase 6 (optional):** the AI experiment, only if it adds measured value.
-6. **Phase 7, hardening:** long fuzz campaigns, fault injection, privacy network captures, a dependency review, release gates, and an external security review before any release claim.
+6. **Phase 5, Linux (last, Qt):** revise the §9 design for Qt and its web engine, redo the Linux PoCs (sandbox check, network lock L4) against it, then build the app on the same Rust core.
 
 ## Main limitations
 
@@ -85,8 +84,10 @@ In order of priority:
 | Sites that use HTTP authentication cannot be signed in to. | Only the proxy's own challenge is answered, so the token never reaches a site. |
 | `blob:`, `data:` and POST downloads cannot be captured. | Stated as unsupported. |
 | The Android worker is weaker than the Linux one (Android allows exec memory and `AF_UNIX`). | A seccomp filter on the parser thread; defence in depth, not a boundary. |
-| The native code budget is tight: 19.3 MB (arm64) and 24.0 MB (x86_64) per ABI, against 25 MB. | No second TLS stack for online updates; measure every native addition. |
-| Update expiry trusts the device clock; demo signing keys are one per role on one machine. | Clock problems in the UI and the production key policy are on the list. |
+| The native code budget is tight: 19.6 MB (arm64) and 24.3 MB (x86_64) per ABI, against 25 MB. | Online updates reuse the core's TLS stack; measure every native addition. |
+| Update expiry trusts the device clock; demo signing keys are one per role on one machine. | The clock is checked against the database's creation time (a fast clock cannot be detected offline); the production key policy is on the list. |
+| The vault key's hardware backing is unverified (the emulator's keystore is software only). | The vault card shows the key's security level; a phone test settles it. |
+| A lost key or passphrase loses the vault (no recovery passphrase yet). | Stated when the vault is created; removing the screen lock deletes the key. |
 | Wasmtime advisories, pulled in through YARA-X. | Scoped exceptions in `cargo deny`, removed once YARA-X depends on Wasmtime ≥ 48.0.6. |
 | Dev machine: Docker cannot build the Linux-only tests (out of memory); Apple silicon cannot run x86_64 emulators. | CI runs both. |
 
@@ -99,4 +100,4 @@ In order of priority:
 | Android suite on one attached emulator | `sh android/run-tests.sh <evidence-dir>` (installs all three apps and grants the VPN consent a user would give) |
 | Install only | `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` and `adb install -r android/browser/build/outputs/apk/debug/browser-debug.apk`, then open Rift and allow the network lock |
 
-Further reading: [architecture](docs/architecture.md); the detailed status and history in [project-status.md](docs/reports/project-status.md); the reports for phases [0](docs/reports/phase-0.md), [1](docs/reports/phase-1.md), [2](docs/reports/phase-2.md), [3](docs/reports/phase-3.md) and the [browser isolation](docs/reports/browser-isolation.md) report; the raw evidence in [`docs/reports/evidence/`](docs/reports/evidence/).
+Further reading: [architecture](docs/architecture.md); the detailed status and history in [project-status.md](docs/reports/project-status.md); the reports for phases [0](docs/reports/phase-0.md), [1](docs/reports/phase-1.md), [2](docs/reports/phase-2.md), [3](docs/reports/phase-3.md), [4](docs/reports/phase-4.md) and the [browser isolation](docs/reports/browser-isolation.md) report; the raw evidence in [`docs/reports/evidence/`](docs/reports/evidence/).

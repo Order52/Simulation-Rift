@@ -1,6 +1,6 @@
 # Project status: Simulation-Rift
 
-**As of 20 Oct 2026.** For a short current snapshot, see [`../../STATUS.md`](../../STATUS.md). This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`browser-isolation.md`](browser-isolation.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
+**As of 20 Oct 2026.** For a short current snapshot, see [`../../STATUS.md`](../../STATUS.md). This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`phase-4.md`](phase-4.md), [`browser-isolation.md`](browser-isolation.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
 
 ## 1. Where the project stands
 
@@ -9,9 +9,9 @@
 | 0: Feasibility | **Mostly done.** All 13 PoCs pass or are measured in at least one environment. Open: X3 on a phone, L1 and L2 inside Flatpak, and A1–A7 on API 33/34 and a physical phone (the Phase 2 suite, which builds on them, passes on API 33/34). A1–A7 now also pass on a 16 KB page-size emulator (API 35). |
 | 1: Foundations | **Gate met, with stated limits** ([report](phase-1.md)): unit, property and fuzz tests (6 targets, run in CI), `cargo deny` and `clippy` clean. Fuzzing found and fixed two bugs. Fuzz runs are minutes long, not a release-grade campaign. |
 | 2: Android vertical slice | **Built; tested on emulators** ([report](phase-2.md)), and since 20 Oct on architecture 2.1: the browser is a separate app with its own UID behind a network lock, wiped by Android at every reset ([report](browser-isolation.md); S23–S28 and the whole earlier suite pass on API 36). Shell, browser sessions, captured downloads, isolated preview, reset and recovery. S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on API 36 and on API 35 with 16 KB pages (arm64), and on API 33 and 34 (x86_64, in CI). API 30 refuses browsing as designed. The R8 release build passes a smoke test. **Gate open:** a physical phone. |
-| 3: Scanner and signed intel | **In progress; built and tested on the host and on Android emulators** ([report](phase-3.md)). Pack validation, verdicts with a versioned cache, an atomic snapshot store, offline TUF import, and `rift-pack` with a harmless demo pack. On Android every download is scanned (core hash and type checks, then the rules in a fresh isolated worker) and the verdict is shown. S11, S16, S17, S21 and S22 pass on the host; S16, S21 and a hung scan worker pass on API 33 and 34 (CI) and on API 35 with 16 KB pages. **Not built:** an import screen with a production root, and online updates. |
-| 4: Vault | Format done (Phase 1); key providers and UI not started. |
-| 5: Linux app | Not started (worker lockdown and WebKit check proven in PoCs). |
+| 3: Scanner and signed intel | **Built and tested on the host and on Android emulators** ([report](phase-3.md)). Pack validation, verdicts with a versioned cache, an atomic snapshot store, TUF updates (offline import of a user-chosen folder through the system picker, and online updates through the core's own checked fetcher), a clock warning, and `rift-pack` with a harmless demo pack. On Android every download is scanned (core hash and type checks, then the rules in a fresh isolated worker, two at a time) and the verdict is shown. Release builds verify against a production root given at build time (`RIFT_INTEL_ROOT`). **Open:** the production key policy (offline keys, thresholds, rotation) and licensed real feeds. |
+| 4: Vault | **Built and tested on the host and the API 35 emulator** ([report](phase-4.md)): a Keystore key behind BiometricPrompt (or a passphrase), keep from quarantine, warned export, lock on request, in the background and when idle, and a no-plaintext-on-disk inventory. **Open:** a physical phone (the emulator's Keystore is software only), the recovery passphrase, vault previews. |
+| 5: Linux app | Not started. **Moved to the last step** and **to Qt instead of GTK4** (decided 20 Oct 2026); the design will be revised before any code. |
 | 6: AI experiment | Not started; deferred and gated by design. |
 | 7: Hardening | Not started. |
 
@@ -122,6 +122,19 @@ Phase 2 findings, added to the list above: 15–26.
 39. (Phase 3) tough reports a target's hash or length mismatch as the cause of a transport error. Rift's refusal reason therefore comes from the innermost tough error in the chain.
 40. (Phase 3) `run-tests.sh`'s worker summary still matched process names from before workers were named `worker_N`, so `workers.txt` stayed empty. It is fixed, and API 35's summary was regenerated from its process samples.
 
+41. (Phase 4) On the API 35 emulator, removing the screen lock deleted the vault's Keystore key outright instead of leaving an invalidated key; both cases now give the same message and the offer to delete the vault.
+42. (Phase 4) A new Keystore key under the same alias replaces the old one, so creating a vault while one exists would destroy it. Creation refuses first, and the core asks the platform for nothing when a vault exists.
+43. (Phase 4) Locking on `onStop` also locked the vault behind the export picker and the authentication prompt. While a system screen that Rift opened for the vault is in front, the background lock waits; the inactivity lock still applies.
+44. (Phase 4) The emulator's Keystore reports "software only". The vault card shows the security level, and hardware backing stays unverified until a phone is tested.
+
+### 2.8 Phase 4 code (vault)
+
+| Part | What it does |
+|---|---|
+| `rift-core::locker` | The vault directory: a wrapped identity (passphrase or platform), the authenticated index, sealed objects; unlock sweeps unlisted files; saves are crash-safe. |
+| `rift-ffi::vault` | `VaultHandle`, the `PlatformKey` foreign trait, and `Sessions::save_to_vault` (quarantine to vault without plaintext on disk). |
+| Android `VaultKeystore`, `Locker` | The AES-GCM Keystore key (StrongBox, else TEE; unlocked device; per-use authentication), BiometricPrompt with a CryptoObject, the lock policy, keep, export and delete; the vault card and "Keep in the vault". |
+
 ### 2.7 Architecture 2.1 code (browser app and network lock)
 
 | Part | What it does |
@@ -198,10 +211,12 @@ Phase 2 findings, added to the list above: 15–26.
 | The WebView version on a device is outside Rift's control | Updated by Google Play, or not at all on some devices | Minimum-version precondition before browsing (§8.4); the version is recorded in compatibility reports. |
 | URL heuristics and YARA rules are not a malware verdict | Offline indicators have limited coverage | Results always state coverage; never "100% safe". |
 | The only threat database is the demo one | Real feeds need licensing review (§13.3); no real malware is kept in the repository | Every verdict and the database card carry the demo label. Real coverage needs licensed feeds and a production root in release builds. |
-| Update expiry trusts the device clock | TUF checks expiry against the system time | A wrong clock shows as "expired", or as current when it is not. Surfacing clock problems in the UI (§13.2) is not built. |
+| Update expiry trusts the device clock | TUF checks expiry against the system time | A wrong clock shows as "expired", or as current when it is not. The database card warns when the clock reads more than an hour before the database was made (S16f); a clock that is merely fast cannot be detected offline. |
 | Demo signing keys are one key per role on one machine | `rift-pack` is a development tool | The §13.2 policy (offline root and targets keys, thresholds, rotation) is needed before any real release. |
 | Two scan workers at a time | Each holds its file (≤ 32 MiB) and the rules in memory | A hung worker costs only its own file (S21b: the next file finished at 1.5 s). Two hung workers at once still hold the queue for up to 17 s. |
-| WebKitGTK network process unsandboxed in native packages | Upstream design | Ship Flatpak first; native packages only with a stated reduced boundary. |
+| WebKitGTK network process unsandboxed in native packages | Upstream design | Ship Flatpak first. The Linux app is moving to Qt (§22), so this is reviewed again for Qt's web engine. |
+| The vault key may be software-backed | Devices without a TEE (emulators) have only a software Keystore | The vault card shows the key's security level. On a device with only a software Keystore, the passphrase gives the same protection with no hardware claim. |
+| A lost key or passphrase is a lost vault | No recovery passphrase yet | Stated when the vault is created; the card offers to delete a vault that can no longer be opened. |
 | Quarantine does not survive a process kill | Keys are ephemeral by design (crypto-shredding) | Intended. Users save to the vault to keep files. |
 | Upstream dependencies carry advisories (Wasmtime via YARA-X) | Rift cannot patch them | Scoped `cargo deny` exceptions with an exit condition: remove when YARA-X depends on Wasmtime ≥ 48.0.6. |
 
@@ -222,14 +237,14 @@ Phase 2 findings, added to the list above: 15–26.
 8. ~~TUF offline import; a demo intel pack; `tools/` pack builder.~~ Done (host and Android API 33–35: S16, S21). Open: the Android import screen with a production root, online updates, the production key policy. No real malware samples are in the repository.
 
 **Phase 4: Vault**
-9. Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.
+9. ~~Keystore and passphrase key providers, lock/unlock, save and export with warnings; plaintext-on-disk inventory test.~~ Done on the API 35 emulator (v1–v3). Open: a phone, the recovery passphrase, vault previews, scan summaries in the index.
 
-**Phase 5: Linux**
-10. GTK4 + WebKitGTK Flatpak app on the shared core, with the worker lockdown and the fail-closed sandbox check.
+**Phase 6 and 7 (Android)**
+10. Optional AI experiment, shipped only if it adds measured value.
+11. Hardening: fuzz campaigns, fault injection, privacy network captures, dependency review, release gates (§24), and an external security review before any release claim.
 
-**Phase 6 and 7**
-11. Optional AI experiment, shipped only if it adds measured value.
-12. Hardening: fuzz campaigns, fault injection, privacy network captures, dependency review, release gates (§24), and an external security review before any release claim.
+**Phase 5: Linux (last, decided 20 Oct 2026)**
+12. A Qt desktop app on the shared core (not GTK4), with the worker lockdown and a fail-closed engine-sandbox check. The §9 design is revised for Qt and its PoCs redone first.
 
 ## 6. Reproducing the evidence
 

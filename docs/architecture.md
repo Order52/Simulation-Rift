@@ -284,7 +284,7 @@ Everything else is a concrete type.
 
 ### 8.2 Manifest
 
-- Permissions: `INTERNET` only, plus `POST_NOTIFICATIONS` if transfer progress notifications are adopted. The browser APK also requests `ACCESS_NETWORK_STATE` (a normal permission), so that it can confirm its default network is the lock before it loads a page (§8.8). **No** camera, microphone, location, contacts, SMS, storage, accessibility, device-admin, or install-packages permissions. Because the permissions are absent, the OS denies them regardless of WebView callbacks (B4).
+- Permissions: `INTERNET`, and `USE_BIOMETRIC` for the vault's unlock prompt (§8.7; a normal permission that only lets the app ask the system to authenticate the user), plus `POST_NOTIFICATIONS` if transfer progress notifications are adopted. The browser APK also requests `ACCESS_NETWORK_STATE` (a normal permission), so that it can confirm its default network is the lock before it loads a page (§8.8). **No** camera, microphone, location, contacts, SMS, storage, accessibility, device-admin, or install-packages permissions. Because the permissions are absent, the OS denies them regardless of WebView callbacks (B4).
 - `android:allowBackup="false"` and `dataExtractionRules` that exclude everything (INV-12).
 - `usesCleartextTraffic` is set only as required for user-initiated HTTP browsing. Rift's own traffic is HTTPS-only.
 - Intent filters: `ACTION_VIEW` for http/https (Rift appears as a browser choice) and `ACTION_SEND` with `text/plain` (URLs) and `*/*` (file import).
@@ -385,6 +385,7 @@ PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and coo
   - By default `setUserAuthenticationParameters(0, BIOMETRIC_STRONG | DEVICE_CREDENTIAL)`, so every unwrap needs authentication through BiometricPrompt with a CryptoObject.
 - Without a secure lock screen, auth-bound keys are impossible. The user must then choose a vault passphrase (age scrypt). Rift never silently stores an unprotected key.
 - Key invalidation (for example, new biometrics enrolled) makes the vault unrecoverable without the optional recovery passphrase. This is stated when the vault is created.
+- **As built (Phase 4).** `VaultKeystore` creates the key only for a new vault (never while one exists, since a new key replaces the old one), StrongBox first and the TEE otherwise, and authorizes each wrap and unwrap through the platform `android.hardware.biometrics.BiometricPrompt` with a `CryptoObject` (no AndroidX dependency; minSdk 30). The wrapped identity is `[format 1][12-byte IV][ciphertext and GCM tag]`. On the API 35 emulator, removing the PIN **deleted the key entry outright** rather than leaving an invalidated key, so both cases are reported with the same sentence and the user is offered deletion of the vault. The emulator's Keystore reports `software only` (it has no TEE); hardware backing is unverified until a physical phone is tested. The recovery passphrase is not built.
 
 ### 8.8 Network lock **[PoC A8]**
 
@@ -400,6 +401,8 @@ Without the VPN a proxy is not a boundary (A8 finding 15): WebRTC sends UDP arou
 **What it does not do.** It does not filter content or hide traffic from the network (the update host and sites see the device's address as usual). It does not see inside HTTPS. It does not stop a page from reaching public addresses: that is browsing.
 
 ## 9. Linux platform
+
+> **Superseded in part (20 Oct 2026).** The Linux app will use Qt, not GTK4, and is built last, after Android (§22). This section is the reviewed v2.0 GTK4/WebKitGTK design, kept until the Qt design replaces it. The parts that do not depend on the toolkit (Flatpak, worker lockdown, the network-namespace lock) are expected to carry over.
 
 ### 9.1 Distribution
 
@@ -589,6 +592,7 @@ No shared upstream API secret ships in the app. Scraped data is never substitute
 - **Linux:** the identity is stored as an age **passphrase-encrypted** (scrypt) identity file. A Secret Service adapter is post-V1.
 - The identity exists in memory only while unlocked. It is zeroized on lock on a best-effort basis; Rift does not claim every runtime copy is erased.
 - Lock happens on user request, after an inactivity timeout (default 5 min), and when the app is backgrounded (configurable). On lock, preview jobs are stopped, fds are closed, displayed plaintext is cleared, and the identity is dropped.
+- **As built (Phase 4, Android).** `Locker` keeps one `VaultHandle` (rift-ffi over `rift-core::locker`) in `files/rift/vault`, on its own executor. It locks on request, on `onStop` (except while a system screen Rift opened for the vault is in front: the export picker or the authentication prompt), and 5 minutes after the last vault action. The UI shows no vault plaintext and vault objects are not previewed yet, so there is no displayed plaintext or preview job to stop. Secrets cross the FFI as byte arrays, which both sides overwrite after use; UniFFI's own buffer copies and Compose's immutable `String` for the passphrase field are not erased. "Keep in the vault" copies a quarantined file (decrypted with the session key in memory, verified, sealed to the vault identity); the quarantined copy still ends with the session. Export goes through `CreateDocument` after a warning that the copy leaves Rift's protection and was not made safe.
 
 ### 14.3 Leakage and limits
 
@@ -675,7 +679,7 @@ Versions are as of 17 Oct 2026 and are locked by `Cargo.lock` and Gradle catalog
 | Shared logic | Rust stable (pinned by `rust-toolchain.toml`) | — |
 | Rust↔Kotlin | UniFFI | 0.32 |
 | Android UI | Kotlin, Jetpack Compose, AndroidX WebKit; compileSdk 37 (required by Compose BOM 2026.09), targetSdk 36 | latest stable |
-| Linux UI | gtk4-rs, libadwaita, webkit6 (GNOME runtime) | runtime-provided |
+| Linux UI | Qt (decided 20 Oct 2026, to be reviewed before Phase 5; §22). Previously gtk4-rs, libadwaita, webkit6 | to be decided |
 | Rule engine | `yara-x` with the `pulley` feature (no JIT) | 1.21 |
 | PDF | Android `PdfRenderer` (PoC-gated); Linux PDFium via `pdfium-render` | 0.9 |
 | Images | `image` (`png`, `zune-jpeg`, `image-webp`) | 0.25 |
@@ -721,7 +725,7 @@ Simulation-Rift/
     rift-worker/     parsers + Linux lockdown (unsafe confined, reviewed)
     rift-ffi/        UniFFI bindings: controller (Phase 2)
     rift-worker-ffi/ UniFFI bindings: Android worker (Phase 2)
-    rift-linux/      GTK4 application           (Phase 5)
+    rift-linux/      Qt application             (Phase 5, last)
   android/           Gradle project             (Phase 2)
   tools/             maintainer pack builder    (Phase 3)
   ml/                offline training           (Phase 6)
@@ -751,9 +755,11 @@ Simulation-Rift/
 | **2: Android vertical slice** | Compose shell, `:browser` session, captured download, isolated preview, reset and recovery | Security tests S1–S12 pass on the device matrix; report. |
 | **3: Scanner and signed intel** | YARA-X job, verdict cache, TUF update and import, demo pack, `tools/` pack builder | Update-failure suite; offline operation; report. |
 | **4: Vault** | Keystore and passphrase key providers, lock/unlock, save and export UI | Crypto and lifecycle tests; plaintext-on-disk inventory clean; report. |
-| **5: Linux** | GTK4 + WebKitGTK Flatpak, worker lockdown, shared core | Same functional contract plus Linux confinement tests; report. |
+| **5: Linux** | Qt desktop app (decided 20 Oct 2026; it replaces the GTK4 + WebKitGTK plan), Flatpak, worker lockdown, shared core | Same functional contract plus Linux confinement tests; report. |
 | **6: AI experiment** | Training notebook, model card, Rust inference | Ships only if it adds measured value within budget. |
 | **7: Hardening** | Fuzz campaigns, fault injection, privacy captures, ProxyController study, dependency review | Release gates (§24). |
+
+**Order (decided 20 Oct 2026).** Android comes first: Phases 4, 6 and 7 are completed for Android before Phase 5 starts, so Linux is the last step. The Linux app will use **Qt** instead of GTK4. §9, ADR-10 and the stack table still describe the GTK4/WebKitGTK design that was reviewed in v2.0. Before any Linux code is written, they will be revised and reviewed for Qt: the choice of web engine (Qt WebEngine is Chromium-based, so its sandbox is Chromium's and must be confirmed active inside Flatpak), the PoCs L1–L4 redone against it, and the Rust↔Qt binding (for example cxx-qt).
 
 **Phase 0 proofs of concept:**
 
