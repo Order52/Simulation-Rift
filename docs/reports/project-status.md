@@ -144,6 +144,7 @@ Phase 2 findings, added to the list above: 15–26.
 60. (Phase 7) On CI's 320x640 screens w1 and l1 failed: they did not scroll to the home screen's watch card, and a tap came while the column still moved. Test fault only; both scroll until the object has stopped moving. On API 34 w1 still missed the card once, most likely flung past it; the search now swipes slowly and comes back up.
 61. (Phase 7) Two certificate advisories of 20 Oct 2026 reached the core's TLS (downloads and online updates): `rustls-webpki` 0.103.15 could accept paths through distrusted emSign intermediates (RUSTSEC-2026-0382), and `webpki-roots` 1.0.9 still listed them (RUSTSEC-2026-0381). Updated to 0.103.16 and 1.0.10; the live TLS test (example.com verified, a wrong-host certificate refused) passes. Two others are ignored with reasons in `deny.toml`: a Cranelift aarch64 bug Rift's Pulley execution cannot reach (RUSTSEC-2026-0379), and `basic-toml` being unmaintained, used only at build time (RUSTSEC-2026-0374).
 62. (Phase 7) On a full disk the demo-database install said "not available in this build": `mkdirs` failed unchecked and the copy then hit "no such file" (F5). The install now says the copy failed, checks each directory, and removes the partial copy. F5/F6 also showed that on a full disk keeps, downloads and installs fail with messages, a reset fails closed, Retry recovers once space is back, and the vault and database are left whole.
+63. (Phase 7) Trusted text escaped controls and a hand-made list of bidi and zero-width characters, which missed U+061C (a bidi control), the word joiner, invisible operators and the tag characters. It now escapes Unicode's whole format category (Cf). Found while writing the `trusted_text` fuzz property, confirmed by a unit test.
 
 ### 2.8 Phase 4 code (vault)
 
@@ -259,7 +260,7 @@ Phase 2 findings, added to the list above: 15–26.
 
 **Phase 6 and 7 (Android)**
 10. Optional AI experiment, shipped only if it adds measured value.
-11. Hardening: ~~privacy network checks~~ (x1, x2 on API 35; [phase-7.md](phase-7.md)) , ~~the dependency and licence inventory~~ ([dependencies.md](dependencies.md)) , ~~the in-app licence notices~~ (l1) and ~~an Android advisory check~~ and ~~kill-fault rounds~~ (F1–F4) and ~~a full disk~~ (F5/F6); open: fuzz campaigns, more fault injection (power loss), release gates (§24), and an external security review before any release claim.
+11. Hardening: ~~privacy network checks~~ (x1, x2 on API 35; [phase-7.md](phase-7.md)) , ~~the dependency and licence inventory~~ ([dependencies.md](dependencies.md)) , ~~the in-app licence notices~~ (l1) and ~~an Android advisory check~~ and ~~kill-fault rounds~~ (F1–F4), ~~a full disk~~ (F5/F6) and ~~power cuts~~ (P1–P4, emulator); open: fuzz campaigns, the fault rounds on a phone's storage, release gates (§24), and an external security review before any release claim.
 
 **Phase 5: Linux (last, decided 20 Oct 2026)**
 12. A Qt desktop app on the shared core (not GTK4), with the worker lockdown and a fail-closed engine-sandbox check. The §9 design is revised for Qt and its PoCs redone first.

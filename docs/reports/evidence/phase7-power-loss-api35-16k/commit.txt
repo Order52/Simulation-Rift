@@ -1,0 +1,4 @@
+android/power-loss.sh on the API 35 emulator (rift-api35-16k), with the code of 23d4629 plus the power-loss script and its f2/f4 arguments (committed together with this directory). Each round kills the emulator's qemu (SIGKILL) and cold-boots it.
+This directory: P2 (4 cuts while keeping) and P4 (4 cuts while installing, the first right after the install reported success) passed. power.log has each round and the f2/f4 results; p-check-*.txt are the check steps' instrumentation output.
+run-2/: the run before, with the same P2 result (4 of 4) and P4 cut only during installs: every database was still missing after the cut, so it did not test a finished install. That led to the first round being cut right after success.
+A first run (not kept) lost the test packages: Android had not yet written its package list when the power was cut, a few seconds after installing. The script now reboots cleanly after its setup.

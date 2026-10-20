@@ -1,0 +1,2 @@
+P2 PASS (4 power cuts while keeping; 1:cut-1.872s,kept-41 2:cut-0.571s,kept-54 3:cut-0.357s,kept-63 4:cut-2.874s,kept-113)
+P4 PASS (4 power cuts while installing; 1:cut-0.305s 2:cut-0.217s 3:cut-0.651s 4:cut-0.262s)

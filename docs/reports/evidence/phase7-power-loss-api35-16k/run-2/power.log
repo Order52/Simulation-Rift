@@ -1,0 +1,16 @@
+round 1: cut 1.872s in, 41 keeps seen
+10-21 00:09:04.263  2299  2551 I Rift    : result f2: 41 entries after 41 completed keeps; stored 44 files; every entry decrypted to its recorded hash
+round 2: cut 0.571s in, 54 keeps seen
+10-21 00:09:44.330  2125  2431 I Rift    : result f2: 55 entries after 54 completed keeps; stored 58 files; every entry decrypted to its recorded hash
+round 3: cut 0.357s in, 63 keeps seen
+10-21 00:10:53.927  2341  2474 I Rift    : result f2: 64 entries after 63 completed keeps; stored 67 files; every entry decrypted to its recorded hash
+round 4: cut 2.874s in, 113 keeps seen
+10-21 00:13:01.304  2471  2685 I Rift    : result f2: 113 entries after 113 completed keeps; stored 116 files; every entry decrypted to its recorded hash
+round 1: cut 0.305s into the install
+10-21 00:14:45.315  2444  2617 I Rift    : result f4: database after the kill: org.simulationrift.core.IntelStatus$Missing@91db130
+round 2: cut 0.217s into the install
+10-21 00:16:09.365  2215  2494 I Rift    : result f4: database after the kill: org.simulationrift.core.IntelStatus$Missing@a4d78d5
+round 3: cut 0.651s into the install
+10-21 00:16:56.490  2285  2422 I Rift    : result f4: database after the kill: org.simulationrift.core.IntelStatus$Missing@5ae39f9
+round 4: cut 0.262s into the install
+10-21 00:17:44.281  2297  2584 I Rift    : result f4: database after the kill: org.simulationrift.core.IntelStatus$Missing@8e825d1

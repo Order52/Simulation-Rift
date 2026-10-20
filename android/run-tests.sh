@@ -424,18 +424,19 @@ while [ $round -le $rounds ]; do
   runner=$!
   if [ $round -eq 1 ]; then
     started=0
-    if wait_log "result f3: outcome after" 120; then
+    # Killed once the install reported success, so F4 requires it installed.
+    if wait_log "result f3: outcome after [0-9]* ms: Installed" 120; then
       install_ms="$("$adb" logcat -d -s Rift:I | tr -d '\r' | sed -n 's/.*result f3: outcome after \([0-9]*\) ms.*/\1/p' | tail -1)"
-      delay=after-install
+      delay=after-install expect=installed
       "$adb" shell kill -9 "$(pid_of $pkg)" && started=1
     fi
   else
-    started=0
+    started=0 expect=either
     kill_after "result f3: installing" 120 "$install_ms" && started=1
   fi
   wait $runner || true
   if [ $started -eq 1 ]; then
-    fault_step f4_theDatabaseIsWholeAfterTheKill check-intel > "$out/f-check-intel-$round.txt"
+    fault_step f4_theDatabaseIsWholeAfterTheKill check-intel expect "$expect" > "$out/f-check-intel-$round.txt"
     save_fault_log
     if passed "$out/f-check-intel-$round.txt"; then
       summary="$summary $round:killed-$delay"

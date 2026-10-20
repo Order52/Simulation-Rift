@@ -1067,7 +1067,7 @@ class SecurityTest {
 
     /**
      * f2, after a kill during f1: the vault opens, holds every keep that
-     * completed (`-e kept N`, from f1's log) and at most the one in flight,
+     * completed (`-e kept N`, from f1's log) and at most `-e unseen` more,
      * stores nothing but its own files, and every entry decrypts to the
      * bytes its index recorded; no plaintext is on disk.
      */
@@ -1075,9 +1075,12 @@ class SecurityTest {
     fun f2_theVaultIsWholeAfterTheKill() {
         faultStep("check-vault")
         val completed = InstrumentationRegistry.getArguments().getString("kept")!!.toInt()
+        // Keeps that may have finished unseen: the one in flight, and after a
+        // power cut (power-loss.sh) also one whose log line was lost with it.
+        val unseen = InstrumentationRegistry.getArguments().getString("unseen")?.toInt() ?: 1
         Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
         val entries = awaitVault<Locker.State.Unlocked>().entries
-        assertTrue("${entries.size} entries after $completed completed keeps", entries.size in completed..completed + 1)
+        assertTrue("${entries.size} entries after $completed completed keeps", entries.size in completed..completed + unseen)
         val stored = assertVaultWhole(entries)
         assertEquals(emptyList<String>(), filesContaining(MARKER))
         Locker.lock()
@@ -1126,13 +1129,17 @@ class SecurityTest {
     /**
      * f4, after a kill during f3: the threat database is the old one or the
      * new one, never damaged, and still finds the demo file; the install's
-     * working copy is gone.
+     * working copy is gone. With `-e expect installed` (the kill came after
+     * the install reported success) it must be the new one.
      */
     @Test
     fun f4_theDatabaseIsWholeAfterTheKill() {
         faultStep("check-intel")
         val status = awaitIntel { it != null }
         assertTrue("$status", status is IntelStatus.Installed || status is IntelStatus.Missing)
+        if (InstrumentationRegistry.getArguments().getString("expect") == "installed") {
+            assertTrue("an install reported done is gone: $status", status is IntelStatus.Installed)
+        }
         if (status is IntelStatus.Installed) {
             activeGeneration()
             allowFixtureHost()

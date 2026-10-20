@@ -1,0 +1,16 @@
+round 1: cut 2.873s in, 58 keeps seen
+10-21 00:22:20.976  2256  2436 I Rift    : result f2: 59 entries after 58 completed keeps; stored 62 files; every entry decrypted to its recorded hash
+round 2: cut 2.364s in, 109 keeps seen
+10-21 00:23:14.383  2306  2439 I Rift    : result f2: 110 entries after 109 completed keeps; stored 113 files; every entry decrypted to its recorded hash
+round 3: cut 2.174s in, 154 keeps seen
+10-21 00:24:02.580  2305  2525 I Rift    : result f2: 155 entries after 154 completed keeps; stored 158 files; every entry decrypted to its recorded hash
+round 4: cut 1.703s in, 190 keeps seen
+10-21 00:24:57.810  2335  2625 I Rift    : result f2: 191 entries after 190 completed keeps; stored 194 files; every entry decrypted to its recorded hash
+round 1: cut after-installs into the install
+10-21 00:25:38.315  2249  2469 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T212022Z, digest=57b46a2d043e3bc11857c4ddad8f827cf356c7db00678ea7aa54adcd265040cc, demo=true, stale=false, clockBehind=false, createdUnix=1792531222, refreshAfterUnix=1793136022, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+round 2: cut 0.315s into the install
+10-21 00:26:16.948  2297  2475 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T212022Z, digest=57b46a2d043e3bc11857c4ddad8f827cf356c7db00678ea7aa54adcd265040cc, demo=true, stale=false, clockBehind=false, createdUnix=1792531222, refreshAfterUnix=1793136022, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+round 3: cut 0.718s into the install
+10-21 00:26:57.526  2117  2290 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T212022Z, digest=57b46a2d043e3bc11857c4ddad8f827cf356c7db00678ea7aa54adcd265040cc, demo=true, stale=false, clockBehind=false, createdUnix=1792531222, refreshAfterUnix=1793136022, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+round 4: cut 0.955s into the install
+10-21 00:27:33.514  2331  2481 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T212022Z, digest=57b46a2d043e3bc11857c4ddad8f827cf356c7db00678ea7aa54adcd265040cc, demo=true, stale=false, clockBehind=false, createdUnix=1792531222, refreshAfterUnix=1793136022, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
