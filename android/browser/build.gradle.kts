@@ -35,7 +35,15 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    sourceSets {
+        // Third-party notices (§25): the Apache License text (build.sh,
+        // notices.py) and this APK's Android libraries (notices.gradle.kts).
+        getByName("main").assets.directories += listOf("../build/generated-notices/common", "build/generated-notices/android")
+    }
 }
+
+apply(from = rootProject.file("notices.gradle.kts"))
 
 dependencies {
     implementation(project(":bridge"))

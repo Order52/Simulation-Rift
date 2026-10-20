@@ -50,6 +50,11 @@ android {
         getByName("debug").assets.directories += "build/generated-intel"
         // The production root for updates, when the build is given one (build.sh, RIFT_INTEL_ROOT).
         getByName("main").assets.directories += "build/generated-intel-root"
+        // Third-party notices (§25): the Rust crates and the Apache License text
+        // (build.sh, notices.py), and this APK's Android libraries (notices.gradle.kts).
+        getByName("main").assets.directories += listOf(
+            "../build/generated-notices/rust", "../build/generated-notices/common", "build/generated-notices/android",
+        )
     }
 
     packaging {
@@ -57,6 +62,8 @@ android {
         jniLibs.useLegacyPackaging = false
     }
 }
+
+apply(from = rootProject.file("notices.gradle.kts"))
 
 dependencies {
     testImplementation("junit:junit:4.13.2")

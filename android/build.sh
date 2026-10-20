@@ -61,6 +61,11 @@ if [ -n "${RIFT_INTEL_ROOT:-}" ]; then
   fi
 fi
 
+# Third-party notices (§25) for both APKs' assets; the Android libraries'
+# list is written by Gradle (notices.gradle.kts).
+rm -rf "$here/build/generated-notices"
+python3 -I "$here/notices.py" "$here/build/generated-notices"
+
 cd "$here"
 # The controller never uses WebView (§8.4): only the browser app, under its
 # own UID, may. A static check of the sources, then of the built code below.

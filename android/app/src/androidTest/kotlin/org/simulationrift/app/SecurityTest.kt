@@ -999,6 +999,60 @@ class SecurityTest {
         }
     }
 
+    // ---- Licences (§25) ---------------------------------------------------------------
+
+    /**
+     * Both APKs carry their third-party notices (written by notices.py and
+     * notices.gradle.kts at build time), and the home screen shows them.
+     */
+    @Test
+    fun l1_thirdPartyNoticesShipAndAreShown() {
+        val own = listOf("android-libraries.txt", "rust-crates.txt", "apache-2.0.txt")
+            .associateWith { context.assets.open("notices/$it").bufferedReader().use { r -> r.readText() } }
+        val android = own.getValue("android-libraries.txt")
+        assertTrue("JNA listed", android.contains("net.java.dev.jna:jna:"))
+        assertTrue("libffi's notice, which JNA's native code needs", android.contains("libffi - Copyright"))
+        val rust = own.getValue("rust-crates.txt")
+        for (crate in listOf("yara-x ", "age ", "aws-lc-rs ", "uniffi ", "wasmtime ")) {
+            assertTrue("$crate listed", rust.contains("\n$crate"))
+        }
+        assertTrue("YARA-X's copyright, from its repository", rust.contains("The YARA-X Authors"))
+        assertTrue("MPL-2.0 text for uniffi", rust.contains("Mozilla Public License Version 2.0"))
+        assertTrue(own.getValue("apache-2.0.txt").contains("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"))
+        val browser = context.createPackageContext(Rift.BROWSER_PACKAGE, 0).assets
+        // The browser app's own list: its web engine library, and no JNA (it loads no Rust).
+        val browserLibraries = browser.open("notices/android-libraries.txt").bufferedReader().use { it.readText() }
+        assertTrue(Regex(""":webkit:\d""").containsMatchIn(browserLibraries))
+        assertFalse(browserLibraries.contains("net.java.dev.jna"))
+        browser.open("notices/apache-2.0.txt").close()
+
+        val home = openHome()
+        try {
+            // The button is at the end of the home screen. Swiped in bounded steps
+            // along the right-hand margin, which scrolls the column but holds no
+            // text field to focus (a focused field's keyboard covers the screen).
+            assertNotNull(device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS))
+            val x = device.displayWidth - 12
+            var open = device.findObject(By.res("notices-open"))
+            repeat(20) {
+                if (open == null) {
+                    device.swipe(x, device.displayHeight * 3 / 4, x, device.displayHeight / 4, 30)
+                    open = device.wait(Until.findObject(By.res("notices-open")), 500)
+                }
+            }
+            assertNotNull("the licences button", open)
+            open!!.click()
+            assertNotNull(device.wait(Until.findObject(By.res("notices")), UI_TIMEOUT_MS))
+            assertNotNull(device.wait(Until.findObject(By.textStartsWith("Android libraries in this app")), UI_TIMEOUT_MS))
+            device.pressBack()
+            assertTrue("Back returns to the home screen", device.wait(Until.gone(By.res("notices")), UI_TIMEOUT_MS))
+            assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
+        } finally {
+            home.finish()
+        }
+        report("l1", "notices: Android ${android.lines().size} lines, Rust ${rust.lines().size} lines; screen opened and closed")
+    }
+
     // ---- Privacy (§17, §18): what Rift sends by itself ------------------------------
 
     /**

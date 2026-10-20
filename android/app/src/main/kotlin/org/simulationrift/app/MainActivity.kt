@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -34,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,6 +76,9 @@ class MainActivity : ComponentActivity() {
     private val chooseUpdate = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         if (tree != null) Core.importIntel(IntelImport.DocumentTree(applicationContext, tree))
     }
+
+    /** Whether the third-party notices (§25) are shown instead of the home screen. */
+    private var showingNotices by mutableStateOf(false)
 
     /** The vault object being exported, while the user chooses where (§11.4). */
     private var exporting: String? = null
@@ -141,6 +148,10 @@ class MainActivity : ComponentActivity() {
         }
         // Test tags double as resource ids so UI tests can find trusted controls.
         Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
+            if (showingNotices) {
+                NoticesScreen()
+                return@Surface
+            }
             Column(
                 Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -740,7 +751,50 @@ class MainActivity : ComponentActivity() {
                 Text("All of those still go through Rift's proxy, which refuses local and private addresses.")
                 Text("Address checks use a built-in list; the threat database is used for downloaded files.")
                 Text("Safe Browsing is off, so no addresses or hashes are sent to Google.")
+                TextButton(onClick = { showingNotices = true }, modifier = Modifier.testTag("notices-open")) {
+                    Text("Open-source licences")
+                }
+            }
+        }
+    }
+
+    /**
+     * The third-party notices (§25): this APK's Android libraries, the Rust
+     * crates in its native libraries, and the Apache License, as build.sh and
+     * notices.gradle.kts wrote them into the assets. One item per line, so
+     * the long texts are laid out only as they scroll into view.
+     */
+    @Composable
+    private fun NoticesScreen() {
+        BackHandler { showingNotices = false }
+        val lines by produceState<List<String>?>(null) {
+            value = withContext(Dispatchers.IO) {
+                NOTICE_FILES.flatMap { name ->
+                    val text = runCatching { assets.open("notices/$name").bufferedReader().use { it.readLines() } }
+                    text.getOrElse { listOf("($name is missing from this build: build it with android/build.sh.)") } + listOf("", "")
+                }
+            }
+        }
+        LazyColumn(
+            Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp).testTag("notices"),
+            contentPadding = PaddingValues(vertical = 16.dp),
+        ) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { showingNotices = false }, modifier = Modifier.testTag("notices-close")) { Text("Back") }
+                    Text("Open-source licences", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "Simulation-Rift is licensed under MIT OR Apache-2.0. It includes the third-party software below, " +
+                            "under the licences shown.",
+                    )
+                }
+            }
+            items(lines ?: listOf("Loading…")) { line ->
+                Text(line, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
 }
+
+/** The notice assets, in the order shown. */
+private val NOTICE_FILES = listOf("android-libraries.txt", "rust-crates.txt", "apache-2.0.txt")
