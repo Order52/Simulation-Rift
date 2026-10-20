@@ -1,0 +1,23 @@
+# PoC Q3 (Phase 5): a QML app over the Rust core through cxx-qt, built with
+# Cargo alone. Its own workspace: it needs Qt at build time, which the other
+# PoCs and the product workspace do not.
+[package]
+name = "rift-qt-core-probe"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+[dependencies]
+cxx = "1.0.205"
+cxx-qt = "0.10.0"
+cxx-qt-lib = { version = "0.10.0", features = ["qt_gui", "qt_qml"] }
+rift-core = { path = "../../../crates/rift-core" }
+
+[build-dependencies]
+cxx-qt-build = { version = "0.10.0", features = ["link_qt_object_files"] }
+
+[profile.release]
+strip = "symbols"

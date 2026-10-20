@@ -90,3 +90,44 @@ jobs:
           name: linux-qt-q4
           path: out/
           if-no-files-found: ignore
+
+  q3-cxx-qt:
+    name: Q3 cxx-qt QML app over rift-core in the KDE SDK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Build the probe Flatpak
+        run: |
+          mkdir -p out
+          start=$(date +%s)
+          flatpak-builder --user --install-deps-from=flathub --install --force-clean \
+            --disable-rofiles-fuse build-q3 poc/linux-qt/q3-cxx-qt/org.simulationrift.QtCoreProbe.yml \
+            > out/build.log 2>&1 || { tail -60 out/build.log; exit 1; }
+          echo "flatpak-builder seconds (SDK download included): $(( $(date +%s) - start ))" | tee out/size.txt
+          grep -E "^(cargo |    Finished|   Compiling rift-core)" out/build.log | tee -a out/size.txt
+          ls -l build-q3/files/bin/rift-qt-core-probe | tee -a out/size.txt
+          flatpak run --user --command=sh org.simulationrift.QtCoreProbe -c \
+            'ldd /app/bin/rift-qt-core-probe | grep -i qt' | tee -a out/size.txt
+      - name: Run the self-test
+        run: |
+          s=0
+          flatpak run --user --env=QT_QPA_PLATFORM=offscreen org.simulationrift.QtCoreProbe \
+            > out/run.txt 2>&1 || s=$?
+          cat out/run.txt
+          echo "exit status $s"
+          grep -o "q3: .*" out/run.txt > out/answers.txt || true
+          diff -u poc/linux-qt/q3-cxx-qt/expected.txt out/answers.txt
+          [ $s -eq 0 ]
+          { cat out/size.txt; cat out/answers.txt; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: linux-qt-q3
+          path: out/
+          if-no-files-found: ignore

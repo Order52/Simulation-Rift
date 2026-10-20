@@ -1,0 +1,3 @@
+q3: HTTP://Example.COM/a/../b?x#frag -> http://example.com/b?x
+q3: http://раypal.com/ -> http://xn--ypal-43d9g.com/
+q3: http://[::1 -> refused: URL host is not valid

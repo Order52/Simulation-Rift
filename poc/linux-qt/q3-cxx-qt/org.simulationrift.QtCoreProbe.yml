@@ -1,0 +1,41 @@
+# PoC Q3 (Phase 5): the cxx-qt QML probe, built by Cargo inside the KDE SDK
+# with the Freedesktop Rust extension, as the Linux app would be.
+# PoC only: the build fetches crates from crates.io (--share=network). A
+# release build would vendor them (flatpak-cargo-generator) and build offline.
+app-id: org.simulationrift.QtCoreProbe
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: rift-qt-core-probe
+finish-args:
+  - --socket=x11
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  build-args:
+    - --share=network
+  env:
+    CARGO_HOME: /run/build/rift-qt-core-probe/cargo
+modules:
+  - name: rift-qt-core-probe
+    buildsystem: simple
+    build-commands:
+      - cargo --version
+      - cargo build --release --locked --manifest-path poc/linux-qt/q3-cxx-qt/Cargo.toml
+      - install -Dm755 poc/linux-qt/q3-cxx-qt/target/release/rift-qt-core-probe /app/bin/rift-qt-core-probe
+    sources:
+      # The repository root: rift-core is a path dependency.
+      - type: dir
+        path: ../../..
+        skip:
+          - .git
+          - .flatpak-builder
+          - build
+          - build-q3
+          - target
+          - android
+          - fuzz
+          - docs
+          - poc/target
+          - poc/linux-qt/q3-cxx-qt/target
