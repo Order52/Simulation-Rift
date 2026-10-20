@@ -70,7 +70,9 @@ jobs:
           mkdir -p out
           { uname -a; flatpak --version; flatpak list --user; } > out/environment.txt
           s=0
-          dbus-run-session -- xvfb-run -a sh poc/linux-qt/q2-netlock/run-ci.sh out || s=$?
+          # Xvfb first: the session bus, and the Flatpak portal it starts, must
+          # know DISPLAY, or the portal gives the sub-sandbox no X socket.
+          xvfb-run -a dbus-run-session -- sh poc/linux-qt/q2-netlock/run-ci.sh out || s=$?
           cat out/summary.txt >> "$GITHUB_STEP_SUMMARY"
           exit $s
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

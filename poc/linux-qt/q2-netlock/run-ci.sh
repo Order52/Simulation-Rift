@@ -7,7 +7,8 @@
 #   proxy-offscreen  the same with Qt's offscreen platform
 #   direct  without the proxy the engine must fail to load the page (exit 3)
 # Exits nonzero unless both cases give the expected result.
-# Usage (inside dbus-run-session and xvfb-run): sh run-ci.sh <out-dir>
+# Usage: xvfb-run -a dbus-run-session -- sh run-ci.sh <out-dir> (the bus
+# must start inside the display, so that the portal it activates knows it)
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 out=$1
