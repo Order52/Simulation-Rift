@@ -1103,6 +1103,14 @@ class SecurityTest {
             "on real networks; proxy requests allowed +$allowed")
         assertTrue("the page did not go through the proxy", allowed > 0u && after.first > before.first)
         assertEquals("browser bytes on real networks", before.second, after.second)
+
+        // The core's own TLS (downloads and updates): verified against the
+        // bundled roots on this device, and refused for another host's certificate.
+        val page = submit(generation, "https://example.org/")
+        assertNotNull("${page.failure}", page.file)
+        val wrong = submit(generation, "https://wrong.host.badssl.com/")
+        assertNull("a certificate for another name was accepted", wrong.file)
+        report("x2", "core HTTPS: example.org stored ${page.file!!.size} bytes; wrong host: ${wrong.failure}")
     }
 
     /**
