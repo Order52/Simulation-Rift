@@ -38,7 +38,10 @@ fuzz_target!(|data: &[u8]| {
     };
     match plain_text(raw, usize::from(limit) * 16) {
         Some(shown) => assert_shown_safely(&shown.text, true),
-        None => assert!(raw.iter().take(8 * 1024).any(|&b| b == 0), "text refused as binary"),
+        None => assert!(
+            raw.iter().take(8 * 1024).any(|&b| b == 0),
+            "text refused as binary"
+        ),
     }
     assert_shown_safely(&escape_for_display(&String::from_utf8_lossy(raw)), false);
     if let Ok(url) = canonicalize(raw) {

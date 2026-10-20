@@ -34,7 +34,10 @@ const FORMAT: &[(char, char)] = &[
 
 /// A control character (Cc) or a format character (Cf).
 pub(crate) fn is_hidden_or_control(c: char) -> bool {
-    c.is_control() || FORMAT.iter().any(|&(first, last)| (first..=last).contains(&c))
+    c.is_control()
+        || FORMAT
+            .iter()
+            .any(|&(first, last)| (first..=last).contains(&c))
 }
 
 /// Makes web-derived text safe to embed in a trusted sentence: control,
@@ -145,12 +148,28 @@ mod tests {
         // Arabic letter mark (a bidi control), word joiner, soft hyphen,
         // a tag character (invisible, used to smuggle text) and the
         // deprecated shaping controls: all category Cf, none in the first list.
-        for c in ['\u{61c}', '\u{2060}', '\u{ad}', '\u{e0041}', '\u{206a}', '\u{fff9}'] {
+        for c in [
+            '\u{61c}',
+            '\u{2060}',
+            '\u{ad}',
+            '\u{e0041}',
+            '\u{206a}',
+            '\u{fff9}',
+        ] {
             let text = format!("a{c}b");
-            assert_eq!(escape_for_display(&text), format!("a\\u{{{:x}}}b", u32::from(c)));
-            assert_eq!(plain_text(text.as_bytes(), 64).unwrap().text, format!("a\\u{{{:x}}}b", u32::from(c)));
+            assert_eq!(
+                escape_for_display(&text),
+                format!("a\\u{{{:x}}}b", u32::from(c))
+            );
+            assert_eq!(
+                plain_text(text.as_bytes(), 64).unwrap().text,
+                format!("a\\u{{{:x}}}b", u32::from(c))
+            );
         }
         // Letters around the ranges stay as they are.
-        assert_eq!(escape_for_display("\u{5ff}\u{606}\u{2065}\u{e0080}"), "\u{5ff}\u{606}\u{2065}\u{e0080}");
+        assert_eq!(
+            escape_for_display("\u{5ff}\u{606}\u{2065}\u{e0080}"),
+            "\u{5ff}\u{606}\u{2065}\u{e0080}"
+        );
     }
 }

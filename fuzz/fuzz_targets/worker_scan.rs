@@ -105,8 +105,9 @@ fuzz_target!(|data: &[u8]| {
         });
         let outcome = worker.handle(&request, Some(&mut content));
         let encoded = encode(&outcome.response).expect("the worker's answer encodes");
-        let accepted = decode_response(&encoded, &request)
-            .unwrap_or_else(|e| panic!("the controller refused {:?}: {e:?}", outcome.response.body));
+        let accepted = decode_response(&encoded, &request).unwrap_or_else(|e| {
+            panic!("the controller refused {:?}: {e:?}", outcome.response.body)
+        });
         match accepted.get() {
             Response::ScanResult { matches, .. } => {
                 assert!(matches.len() <= usize::from(max_matches));
