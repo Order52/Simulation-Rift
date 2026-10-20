@@ -626,6 +626,10 @@ object Core {
 
     fun installDemoIntel(service: Class<out Service> = PreviewService::class.java) {
         updating.execute {
+            if (!demoIntelAvailable()) {
+                _intelMessage.value = "the demo database is not available in this build"
+                return@execute
+            }
             // Rift's own state (files/rift), so a reset meanwhile finds no stray file.
             val copy = File(app.filesDir, "rift/import")
             try {
@@ -636,7 +640,10 @@ object Core {
                 // Runs after the install on the same executor; the copy is not needed after.
                 updating.execute { copy.deleteRecursively() }
             } catch (e: java.io.IOException) {
-                _intelMessage.value = "the demo database is not available in this build: ${e.message}"
+                // A full disk, for one (F6); what was copied is not left behind.
+                Log.w(TAG, "demo database not copied", e)
+                copy.deleteRecursively()
+                _intelMessage.value = "the demo database could not be copied, so nothing was installed: ${e.message}"
             }
         }
     }
@@ -644,12 +651,17 @@ object Core {
     private fun copyAssets(path: String, target: File) {
         val children = app.assets.list(path).orEmpty()
         if (children.isEmpty()) {
-            target.parentFile?.mkdirs()
+            makeDirectory(target.parentFile!!)
             app.assets.open(path).use { input -> target.outputStream().use { input.copyTo(it) } }
         } else {
-            target.mkdirs()
+            makeDirectory(target)
             for (child in children) copyAssets("$path/$child", File(target, child))
         }
+    }
+
+    /** mkdirs reports failure (on a full disk, for one) only by returning false. */
+    private fun makeDirectory(dir: File) {
+        if (!dir.isDirectory && !dir.mkdirs()) throw java.io.IOException("could not create ${dir.name}")
     }
 
     private const val INTEL_OPEN_TIMEOUT_S = 30L

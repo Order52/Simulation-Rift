@@ -48,6 +48,7 @@ import org.simulationrift.bridge.Rift
 import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
+import org.simulationrift.core.VaultEntry
 import org.simulationrift.core.Verdict
 
 /**
@@ -730,6 +731,21 @@ class SecurityTest {
         throw AssertionError("no install outcome: ${Core.intelMessage.value}")
     }
 
+    /** The outcome of the install `start` begins: a new message, or the same text after a progress message. */
+    private fun intelMessageOf(start: () -> Unit): String {
+        val before = Core.intelMessage.value
+        var progressed = false
+        start()
+        val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val message = Core.intelMessage.value
+            if (message in PROGRESS) progressed = true
+            else if (message != null && (progressed || message != before)) return message
+            SystemClock.sleep(20)
+        }
+        throw AssertionError("no install outcome: ${Core.intelMessage.value}")
+    }
+
     // ---- Phase 4: the Rift Vault (§14, S18 on the device) ---------------------------
 
     @Test
@@ -1062,10 +1078,23 @@ class SecurityTest {
         Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
         val entries = awaitVault<Locker.State.Unlocked>().entries
         assertTrue("${entries.size} entries after $completed completed keeps", entries.size in completed..completed + 1)
+        val stored = assertVaultWhole(entries)
+        assertEquals(emptyList<String>(), filesContaining(MARKER))
+        Locker.lock()
+        awaitVault<Locker.State.Locked>()
+        report("f2", "${entries.size} entries after $completed completed keeps; stored $stored files; every entry decrypted to its recorded hash")
+    }
+
+    /**
+     * The unlocked vault stores nothing but its own files for `entries`, and
+     * every entry decrypts to the bytes its index recorded. Returns the
+     * number of files stored.
+     */
+    private fun assertVaultWhole(entries: List<VaultEntry>): Int {
         val vault = File(context.filesDir, "rift/vault")
         val stored = vault.walkTopDown().filter { it.isFile }.map { it.relativeTo(vault).path }.toSet()
         assertEquals(setOf("identity.pass", "index.age") + entries.map { "objects/${it.id}.age" }, stored - "index.age.prev")
-        val exported = File(context.cacheDir, "f2-export")
+        val exported = File(context.cacheDir, "vault-export")
         for (entry in entries) {
             exported.delete()
             // Each export shows the same message, so its file is what is awaited.
@@ -1075,10 +1104,7 @@ class SecurityTest {
             assertEquals(entry.sha256, digest.joinToString("") { "%02x".format(it) })
         }
         exported.delete()
-        assertEquals(emptyList<String>(), filesContaining(MARKER))
-        Locker.lock()
-        awaitVault<Locker.State.Locked>()
-        report("f2", "${entries.size} entries after $completed completed keeps; stored ${stored.size} files; every entry decrypted to its recorded hash")
+        return stored.size
     }
 
     /** f3: installs the demo database, then waits for the host to kill this process. */
@@ -1115,6 +1141,101 @@ class SecurityTest {
         val leftovers = File(context.filesDir, "rift/import").walkTopDown().filter { it.isFile }.map { it.path }.toList()
         assertEquals(emptyList<String>(), leftovers)
         report("f4", "database after the kill: $status")
+    }
+
+    /**
+     * f5: what Rift does when the disk fills. Prepares a vault holding one
+     * file, the demo database and a quarantined download, then waits while
+     * the host fills /data up to what apps may use. A keep, a database
+     * install and a download must then each fail with a message, and a
+     * reset must end in a new session or a stated failure, not hang. Once
+     * the host frees the space, "Retry cleanup" starts a session in the same
+     * process; f6 then checks what is left after a restart.
+     */
+    @Test
+    fun f5_aFullDiskFailsCleanly() {
+        faultStep("full")
+        destroyVault()
+        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+        awaitVault<Locker.State.Unlocked>()
+        val installed = intelMessageOf { Core.installDemoIntel() }
+        assertTrue(installed, installed.startsWith("Installed"))
+        val generation = activeGeneration()
+        allowFixtureHost()
+        val file = submit(generation, fixture("/files/picture.png")).file!!
+        assertTrue("${file.size} bytes, which would fit", file.size.toLong() > FULL_BYTES)
+        val first = vaultMessageOf { Core.keep(file.id) }
+        assertTrue(first, first.startsWith("Kept"))
+        // The host starts filling at this line.
+        report("f5", "ready")
+        awaitCondition("the host's fill", HOST_CAPTURE_MS) { context.filesDir.usableSpace < FULL_BYTES }
+        report("f5", "full: ${context.filesDir.usableSpace} bytes usable")
+
+        val keep = vaultMessageOf { Core.keep(file.id) }
+        report("f5", "keep: $keep")
+        val entries = keptEntries().size
+        val install = intelMessageOf { Core.installDemoIntel() }
+        report("f5", "install: $install; database ${Core.intel.value}")
+        val download = submit(generation, fixture("/files/picture.png"))
+        report("f5", "download: ${download.file ?: download.failure}")
+        Core.reset(generation)
+        val deadline = SystemClock.elapsedRealtime() + SESSION_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val state = Core.state.value
+            if (state is Core.State.Failed || (state is Core.State.Active && state.generation != generation)) break
+            SystemClock.sleep(20)
+        }
+        val reset = Core.state.value
+        report("f5", "reset: $reset")
+
+        // The user frees space and taps "Retry cleanup", without restarting Rift.
+        // The host frees it at this line.
+        report("f5", "free the space")
+        awaitCondition("the host's cleanup", HOST_CAPTURE_MS) { context.filesDir.usableSpace > FULL_BYTES * 16 }
+        if (reset is Core.State.Failed) {
+            Core.retry()
+            // The retry runs on the core's worker; until then the old failure stands.
+            awaitCondition("the retry to start") { Core.state.value !== reset }
+        }
+        val retried = activeGenerationAfter(generation)
+        report("f5", "after freeing the space: session $retried")
+
+        assertTrue(keep, keep.startsWith("The file was not kept"))
+        assertEquals("entries after the failed keep", 1, entries)
+        // Said as it is: the copy failed, not that the build has no database.
+        assertTrue(install, install.startsWith("the demo database could not be copied"))
+        assertTrue("database ${Core.intel.value}", Core.intel.value is IntelStatus.Installed)
+        assertNull("stored on a full disk", download.file)
+        assertNotNull(download.failure)
+        assertTrue("the reset neither finished nor failed: $reset", reset is Core.State.Failed || (reset is Core.State.Active && reset.generation != generation))
+    }
+
+    /**
+     * f6, after f5 with the space freed: a session starts, the database
+     * installed before the disk filled is still there and finds the demo
+     * file, the failed install left no copy, the vault holds exactly the
+     * one file kept before and it decrypts to its recorded hash, and
+     * keeping works again.
+     */
+    @Test
+    fun f6_wholeAfterTheFullDisk() {
+        faultStep("check-full")
+        val generation = activeGeneration()
+        val leftovers = File(context.filesDir, "rift/import").walkTopDown().filter { it.isFile }.map { it.path }.toList()
+        assertEquals(emptyList<String>(), leftovers)
+        val status = awaitIntel { it != null }
+        assertTrue("$status", status is IntelStatus.Installed)
+        allowFixtureHost()
+        assertEquals(ScanStatus.KNOWN_MALICIOUS, verdictOf(submit(generation, fixture("/files/demo-file.txt")).file!!.id).status)
+        Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
+        val entries = awaitVault<Locker.State.Unlocked>().entries
+        assertEquals(1, entries.size)
+        val stored = assertVaultWhole(entries)
+        val file = submit(generation, fixture("/files/picture.png")).file!!
+        val kept = vaultMessageOf { Core.keep(file.id) }
+        assertTrue(kept, kept.startsWith("Kept"))
+        destroyVault()
+        report("f6", "session $generation; database $status; ${entries.size} entry, $stored files, decrypted to its recorded hash; keeping works again")
     }
 
     /**
@@ -1916,6 +2037,9 @@ class SecurityTest {
         /** How long f1 and f3 wait to be killed before they fail. */
         const val FAULT_WINDOW_MS = 60_000L
         const val HOST_CAPTURE_MS = 60_000L
+
+        /** Below this many usable bytes the disk counts as full; f5's files are larger. */
+        const val FULL_BYTES = 64L * 1024
         const val PASSPHRASE = "correct horse battery"
         const val PIN = "1111"
         const val RECOVERY = "recovery passphrase of the test"

@@ -19,6 +19,8 @@ outsider=org.simulationrift.outsider
 port=8766
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
+# wait_log, result, close_dialogs, fault_step, passed, random_delay.
+. "$here/test-lib.sh"
 
 python3 -I "$here/fixtures/server.py" "$port" > "$out/fixture.log" 2>&1 &
 server=$!
@@ -43,16 +45,8 @@ cat "$out/device.txt"
 "$adb" shell pm clear $browser >/dev/null
 for p in $pkg $outsider; do "$adb" shell appops set $p ACTIVATE_VPN allow; done
 
-# A slow emulator can show "System UI isn't responding" at boot, which covers
-# every window the tests look at. Close such dialogs (SecurityTest does too,
-# before each test) and keep a record of every ANR and crash in the run.
-# The screen-reading steps below need the screen awake and open; the vault
-# test (v3) sets and clears a screen-lock PIN, so dismiss any keyguard too.
-close_dialogs() {
-  "$adb" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
-  "$adb" shell wm dismiss-keyguard >/dev/null 2>&1 || true
-  "$adb" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
-}
+# Close dialogs a slow boot left (SecurityTest does too, before each test),
+# and keep a record of every ANR and crash in the run.
 "$adb" logcat -b events -d | tr -d '\r' | grep -E " am_(anr|crash) " > "$out/anr.txt" || true
 "$adb" logcat -b events -c
 close_dialogs
@@ -128,21 +122,10 @@ renderer_pid() {
     | sed -n "s/.*ProcessRecord{[0-9a-f]* \([0-9]*\):com\.google\.android\.webview:sandboxed_process[^/]*\/${app_user}i[0-9]*}.*/\1/p" | head -1
 }
 
-wait_log() { # pattern timeout_s
-  i=0
-  while [ $i -lt $(($2 * 4)) ]; do
-    "$adb" logcat -d -s Rift:I | tr -d '\r' | grep -qE "$1" && return 0
-    sleep 0.25
-    i=$((i + 1))
-  done
-  return 1
-}
-
 open_link() {
   "$adb" shell am start -a android.intent.action.VIEW -d "$1" -n $pkg/.MainActivity >/dev/null
 }
 
-result() { echo "$1 $2${3:+ ($3)}" | tee -a "$out/host-results.txt"; }
 : > "$out/host-results.txt"
 
 # Taps the first node whose text (case-insensitive) or resource id is $2.
@@ -387,18 +370,6 @@ fi
 # database (f3); after each kill, f2 or f4 checks what is left. RIFT_FAULT_ROUNDS
 # rounds of each (default 8); f-<step>-<round>.txt holds each step's output.
 
-# Runs fault step $2 (test method $1) in the controller; extra `-e` pairs follow.
-fault_step() { # method step [key value]…
-  method=$1 step=$2
-  shift 2
-  extra=""
-  while [ $# -ge 2 ]; do extra="$extra -e $1 $2"; shift 2; done
-  "$adb" shell am instrument -w -r -e class "$pkg.SecurityTest#$method" -e fault "$step" $extra \
-    $pkg.test/androidx.test.runner.AndroidJUnitRunner | tr -d '\r'
-}
-passed() { grep -q "^OK (1 test)" "$1"; }
-# A uniformly random delay in [0, $1) milliseconds, as seconds for sleep.
-random_delay() { od -An -N2 -tu2 /dev/urandom | awk -v max="$1" 'NR == 1 { printf "%.3f", ($1 % max) / 1000 }'; }
 # Kills the controller once the step logged $1 (within $2 s), after a random delay below $3 ms.
 kill_after() { # pattern timeout_s max_delay_ms
   wait_log "$1" "$2" || return 1
@@ -477,6 +448,49 @@ while [ $round -le $rounds ]; do
   round=$((round + 1))
 done
 if [ $failures -eq 0 ]; then result F4 PASS "$rounds kills while installing (one install: ${install_ms} ms);$summary"; else result F4 FAIL "$failures of $rounds rounds;$summary"; fi
+
+echo "== F5/F6: a full disk"
+# f5 prepares a vault, the database and a download, then logs "result f5:
+# ready"; root fills /data up to what apps may use (df's Available). The
+# blocks ext4 reserves for the system (resgid 1065) stay free, so Android
+# itself keeps working. f5 tries Rift's writes on the full disk, then logs
+# "free the space"; the filler is removed, f5 retries the cleanup, and f6
+# checks what is left after a restart.
+fill=/data/local/tmp/rift-fill
+trap 'kill $server 2>/dev/null || true; "$adb" shell rm -f "$fill"-* >/dev/null 2>&1 || true' EXIT
+# Kilobytes on /data that df counts as available to apps.
+app_free_k() { "$adb" shell df -k /data | tr -d '\r' | awk 'NR == 2 { print $4 }'; }
+"$adb" logcat -c
+fault_step f5_aFullDiskFailsCleanly full > "$out/f-full.txt" &
+runner=$!
+filled=""
+if wait_log "result f5: ready" 180; then
+  # Others write meanwhile, so what is left is filled again (bounded). ext4
+  # keeps a pool (16 MiB on the emulator) that df counts but no allocation
+  # gets, so the disk is full once fallocate reports no space.
+  n=1
+  while [ $n -le 5 ] && "$adb" shell fallocate -l $(($(app_free_k) * 1024)) "$fill-$n" 2>> "$out/f-fill.txt"; do
+    n=$((n + 1))
+  done
+  filled="df shows $(app_free_k) KiB available"
+  wait_log "result f5: free the space" 120 || true
+fi
+"$adb" shell rm -f "$fill"-*
+wait $runner || true
+trap 'kill $server 2>/dev/null || true' EXIT
+save_fault_log
+outcomes="$(grep -E "result f5: (full|keep|install|download|reset|after freeing)" "$out/fault.log" | sed 's/.*result f5: //' | tr '\n' ';')"
+if [ -z "$filled" ]; then
+  result F6 FAIL "f5 did not get ready; see f-full.txt"
+else
+  fault_step f6_wholeAfterTheFullDisk check-full > "$out/f-check-full.txt"
+  save_fault_log
+  if passed "$out/f-full.txt" && passed "$out/f-check-full.txt"; then
+    result F6 PASS "filled, $filled; $outcomes"
+  else
+    result F6 FAIL "on the full disk: $(passed "$out/f-full.txt" && echo passed || echo FAILED); after: $(passed "$out/f-check-full.txt" && echo passed || echo FAILED); $outcomes"
+  fi
+fi
 
 echo "== inventory"
 "$adb" logcat -b events -d | tr -d '\r' | grep -E " am_(anr|crash) " >> "$out/anr.txt" || true

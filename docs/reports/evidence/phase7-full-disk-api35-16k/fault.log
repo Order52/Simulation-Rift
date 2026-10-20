@@ -1,0 +1,199 @@
+10-20 23:56:14.216 19370 19386 I Rift    : result f1: keeping from 0
+10-20 23:56:14.267 19370 19386 I Rift    : result f1: kept 1
+10-20 23:56:14.318 19370 19386 I Rift    : result f1: kept 2
+10-20 23:56:14.369 19370 19386 I Rift    : result f1: kept 3
+10-20 23:56:14.420 19370 19386 I Rift    : result f1: kept 4
+10-20 23:56:14.471 19370 19386 I Rift    : result f1: kept 5
+10-20 23:56:14.523 19370 19386 I Rift    : result f1: kept 6
+10-20 23:56:14.574 19370 19386 I Rift    : result f1: kept 7
+10-20 23:56:14.627 19370 19386 I Rift    : result f1: kept 8
+10-20 23:56:14.682 19370 19386 I Rift    : result f1: kept 9
+10-20 23:56:14.737 19370 19386 I Rift    : result f1: kept 10
+10-20 23:56:14.789 19370 19386 I Rift    : result f1: kept 11
+10-20 23:56:14.841 19370 19386 I Rift    : result f1: kept 12
+10-20 23:56:14.892 19370 19386 I Rift    : result f1: kept 13
+10-20 23:56:14.944 19370 19386 I Rift    : result f1: kept 14
+10-20 23:56:14.997 19370 19386 I Rift    : result f1: kept 15
+10-20 23:56:15.049 19370 19386 I Rift    : result f1: kept 16
+10-20 23:56:15.099 19370 19386 I Rift    : result f1: kept 17
+10-20 23:56:15.153 19370 19386 I Rift    : result f1: kept 18
+10-20 23:56:15.205 19370 19386 I Rift    : result f1: kept 19
+10-20 23:56:15.256 19370 19386 I Rift    : result f1: kept 20
+10-20 23:56:15.307 19370 19386 I Rift    : result f1: kept 21
+10-20 23:56:15.358 19370 19386 I Rift    : result f1: kept 22
+10-20 23:56:15.410 19370 19386 I Rift    : result f1: kept 23
+10-20 23:56:15.465 19370 19386 I Rift    : result f1: kept 24
+10-20 23:56:15.517 19370 19386 I Rift    : result f1: kept 25
+10-20 23:56:15.570 19370 19386 I Rift    : result f1: kept 26
+10-20 23:56:15.621 19370 19386 I Rift    : result f1: kept 27
+10-20 23:56:15.672 19370 19386 I Rift    : result f1: kept 28
+10-20 23:56:15.725 19370 19386 I Rift    : result f1: kept 29
+10-20 23:56:15.778 19370 19386 I Rift    : result f1: kept 30
+10-20 23:56:15.828 19370 19386 I Rift    : result f1: kept 31
+10-20 23:56:15.880 19370 19386 I Rift    : result f1: kept 32
+10-20 23:56:15.932 19370 19386 I Rift    : result f1: kept 33
+10-20 23:56:15.984 19370 19386 I Rift    : result f1: kept 34
+10-20 23:56:16.035 19370 19386 I Rift    : result f1: kept 35
+10-20 23:56:18.843 19495 19508 I Rift    : result f2: 36 entries after 35 completed keeps; stored 39 files; every entry decrypted to its recorded hash
+10-20 23:56:19.921 19570 19583 I Rift    : result f1: keeping from 36
+10-20 23:56:19.971 19570 19583 I Rift    : result f1: kept 37
+10-20 23:56:20.022 19570 19583 I Rift    : result f1: kept 38
+10-20 23:56:20.074 19570 19583 I Rift    : result f1: kept 39
+10-20 23:56:20.124 19570 19583 I Rift    : result f1: kept 40
+10-20 23:56:20.176 19570 19583 I Rift    : result f1: kept 41
+10-20 23:56:20.229 19570 19583 I Rift    : result f1: kept 42
+10-20 23:56:20.281 19570 19583 I Rift    : result f1: kept 43
+10-20 23:56:20.331 19570 19583 I Rift    : result f1: kept 44
+10-20 23:56:20.381 19570 19583 I Rift    : result f1: kept 45
+10-20 23:56:23.762 19696 19709 I Rift    : result f2: 46 entries after 45 completed keeps; stored 49 files; every entry decrypted to its recorded hash
+10-20 23:56:24.871 19771 19785 I Rift    : result f1: keeping from 46
+10-20 23:56:24.921 19771 19785 I Rift    : result f1: kept 47
+10-20 23:56:24.972 19771 19785 I Rift    : result f1: kept 48
+10-20 23:56:25.022 19771 19785 I Rift    : result f1: kept 49
+10-20 23:56:25.074 19771 19785 I Rift    : result f1: kept 50
+10-20 23:56:25.128 19771 19785 I Rift    : result f1: kept 51
+10-20 23:56:25.180 19771 19785 I Rift    : result f1: kept 52
+10-20 23:56:25.230 19771 19785 I Rift    : result f1: kept 53
+10-20 23:56:25.281 19771 19785 I Rift    : result f1: kept 54
+10-20 23:56:25.334 19771 19785 I Rift    : result f1: kept 55
+10-20 23:56:25.384 19771 19785 I Rift    : result f1: kept 56
+10-20 23:56:25.435 19771 19785 I Rift    : result f1: kept 57
+10-20 23:56:25.486 19771 19785 I Rift    : result f1: kept 58
+10-20 23:56:29.509 19894 19908 I Rift    : result f2: 58 entries after 58 completed keeps; stored 61 files; every entry decrypted to its recorded hash
+10-20 23:56:30.605 19975 19988 I Rift    : result f1: keeping from 58
+10-20 23:56:30.655 19975 19988 I Rift    : result f1: kept 59
+10-20 23:56:30.705 19975 19988 I Rift    : result f1: kept 60
+10-20 23:56:30.756 19975 19988 I Rift    : result f1: kept 61
+10-20 23:56:30.806 19975 19988 I Rift    : result f1: kept 62
+10-20 23:56:30.859 19975 19988 I Rift    : result f1: kept 63
+10-20 23:56:30.914 19975 19988 I Rift    : result f1: kept 64
+10-20 23:56:35.275 20096 20109 I Rift    : result f2: 65 entries after 64 completed keeps; stored 68 files; every entry decrypted to its recorded hash
+10-20 23:56:36.233 20173 20186 I Rift    : result f1: keeping from 65
+10-20 23:56:36.284 20173 20186 I Rift    : result f1: kept 66
+10-20 23:56:36.334 20173 20186 I Rift    : result f1: kept 67
+10-20 23:56:40.902 20292 20305 I Rift    : result f2: 68 entries after 67 completed keeps; stored 71 files; every entry decrypted to its recorded hash
+10-20 23:56:41.897 20369 20382 I Rift    : result f1: keeping from 68
+10-20 23:56:41.947 20369 20382 I Rift    : result f1: kept 69
+10-20 23:56:41.998 20369 20382 I Rift    : result f1: kept 70
+10-20 23:56:42.048 20369 20382 I Rift    : result f1: kept 71
+10-20 23:56:42.100 20369 20382 I Rift    : result f1: kept 72
+10-20 23:56:42.150 20369 20382 I Rift    : result f1: kept 73
+10-20 23:56:42.202 20369 20382 I Rift    : result f1: kept 74
+10-20 23:56:42.254 20369 20382 I Rift    : result f1: kept 75
+10-20 23:56:42.305 20369 20382 I Rift    : result f1: kept 76
+10-20 23:56:42.355 20369 20382 I Rift    : result f1: kept 77
+10-20 23:56:42.406 20369 20382 I Rift    : result f1: kept 78
+10-20 23:56:42.457 20369 20382 I Rift    : result f1: kept 79
+10-20 23:56:42.508 20369 20382 I Rift    : result f1: kept 80
+10-20 23:56:42.559 20369 20382 I Rift    : result f1: kept 81
+10-20 23:56:42.609 20369 20382 I Rift    : result f1: kept 82
+10-20 23:56:42.663 20369 20382 I Rift    : result f1: kept 83
+10-20 23:56:42.714 20369 20382 I Rift    : result f1: kept 84
+10-20 23:56:42.766 20369 20382 I Rift    : result f1: kept 85
+10-20 23:56:42.817 20369 20382 I Rift    : result f1: kept 86
+10-20 23:56:42.867 20369 20382 I Rift    : result f1: kept 87
+10-20 23:56:42.919 20369 20382 I Rift    : result f1: kept 88
+10-20 23:56:42.970 20369 20382 I Rift    : result f1: kept 89
+10-20 23:56:48.695 20488 20502 I Rift    : result f2: 90 entries after 89 completed keeps; stored 93 files; every entry decrypted to its recorded hash
+10-20 23:56:49.754 20566 20579 I Rift    : result f1: keeping from 90
+10-20 23:56:49.804 20566 20579 I Rift    : result f1: kept 91
+10-20 23:56:49.855 20566 20579 I Rift    : result f1: kept 92
+10-20 23:56:49.909 20566 20579 I Rift    : result f1: kept 93
+10-20 23:56:49.961 20566 20579 I Rift    : result f1: kept 94
+10-20 23:56:50.011 20566 20579 I Rift    : result f1: kept 95
+10-20 23:56:50.063 20566 20579 I Rift    : result f1: kept 96
+10-20 23:56:50.114 20566 20579 I Rift    : result f1: kept 97
+10-20 23:56:50.164 20566 20579 I Rift    : result f1: kept 98
+10-20 23:56:50.214 20566 20579 I Rift    : result f1: kept 99
+10-20 23:56:50.265 20566 20579 I Rift    : result f1: kept 100
+10-20 23:56:50.315 20566 20579 I Rift    : result f1: kept 101
+10-20 23:56:50.366 20566 20579 I Rift    : result f1: kept 102
+10-20 23:56:50.416 20566 20579 I Rift    : result f1: kept 103
+10-20 23:56:50.466 20566 20579 I Rift    : result f1: kept 104
+10-20 23:56:50.517 20566 20579 I Rift    : result f1: kept 105
+10-20 23:56:50.568 20566 20579 I Rift    : result f1: kept 106
+10-20 23:56:50.620 20566 20579 I Rift    : result f1: kept 107
+10-20 23:56:50.671 20566 20579 I Rift    : result f1: kept 108
+10-20 23:56:50.724 20566 20579 I Rift    : result f1: kept 109
+10-20 23:56:50.775 20566 20579 I Rift    : result f1: kept 110
+10-20 23:56:50.826 20566 20579 I Rift    : result f1: kept 111
+10-20 23:56:50.877 20566 20579 I Rift    : result f1: kept 112
+10-20 23:56:50.931 20566 20579 I Rift    : result f1: kept 113
+10-20 23:56:50.982 20566 20579 I Rift    : result f1: kept 114
+10-20 23:56:51.032 20566 20579 I Rift    : result f1: kept 115
+10-20 23:56:51.083 20566 20579 I Rift    : result f1: kept 116
+10-20 23:56:51.134 20566 20579 I Rift    : result f1: kept 117
+10-20 23:56:51.187 20566 20579 I Rift    : result f1: kept 118
+10-20 23:56:51.241 20566 20579 I Rift    : result f1: kept 119
+10-20 23:56:51.293 20566 20579 I Rift    : result f1: kept 120
+10-20 23:56:51.347 20566 20579 I Rift    : result f1: kept 121
+10-20 23:56:58.961 20702 20715 I Rift    : result f2: 122 entries after 121 completed keeps; stored 125 files; every entry decrypted to its recorded hash
+10-20 23:57:02.380 20788 20804 I Rift    : result f1: keeping from 122
+10-20 23:57:02.430 20788 20804 I Rift    : result f1: kept 123
+10-20 23:57:02.481 20788 20804 I Rift    : result f1: kept 124
+10-20 23:57:02.535 20788 20804 I Rift    : result f1: kept 125
+10-20 23:57:02.588 20788 20804 I Rift    : result f1: kept 126
+10-20 23:57:02.638 20788 20804 I Rift    : result f1: kept 127
+10-20 23:57:02.689 20788 20804 I Rift    : result f1: kept 128
+10-20 23:57:02.740 20788 20804 I Rift    : result f1: kept 129
+10-20 23:57:02.795 20788 20804 I Rift    : result f1: kept 130
+10-20 23:57:02.845 20788 20804 I Rift    : result f1: kept 131
+10-20 23:57:02.897 20788 20804 I Rift    : result f1: kept 132
+10-20 23:57:02.949 20788 20804 I Rift    : result f1: kept 133
+10-20 23:57:03.000 20788 20804 I Rift    : result f1: kept 134
+10-20 23:57:03.051 20788 20804 I Rift    : result f1: kept 135
+10-20 23:57:03.102 20788 20804 I Rift    : result f1: kept 136
+10-20 23:57:03.156 20788 20804 I Rift    : result f1: kept 137
+10-20 23:57:03.209 20788 20804 I Rift    : result f1: kept 138
+10-20 23:57:03.260 20788 20804 I Rift    : result f1: kept 139
+10-20 23:57:03.311 20788 20804 I Rift    : result f1: kept 140
+10-20 23:57:03.363 20788 20804 I Rift    : result f1: kept 141
+10-20 23:57:03.414 20788 20804 I Rift    : result f1: kept 142
+10-20 23:57:03.465 20788 20804 I Rift    : result f1: kept 143
+10-20 23:57:03.515 20788 20804 I Rift    : result f1: kept 144
+10-20 23:57:03.566 20788 20804 I Rift    : result f1: kept 145
+10-20 23:57:03.617 20788 20804 I Rift    : result f1: kept 146
+10-20 23:57:03.668 20788 20804 I Rift    : result f1: kept 147
+10-20 23:57:03.720 20788 20804 I Rift    : result f1: kept 148
+10-20 23:57:12.775 20923 20936 I Rift    : result f2: 149 entries after 148 completed keeps; stored 152 files; every entry decrypted to its recorded hash
+10-20 23:57:13.347 21002 21015 I Rift    : result f3: installing
+10-20 23:57:13.651 21002 21015 I Rift    : result f3: outcome after 304 ms: Installed demo-20261020T204836Z.
+10-20 23:57:15.894 21125 21138 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:16.663 21310 21326 I Rift    : result f3: installing
+10-20 23:57:16.982 21310 21326 I Rift    : result f3: outcome after 319 ms: Installed demo-20261020T204836Z.
+10-20 23:57:19.065 21424 21437 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:19.847 21602 21618 I Rift    : result f3: installing
+10-20 23:57:20.150 21602 21618 I Rift    : result f3: outcome after 303 ms: Installed demo-20261020T204836Z.
+10-20 23:57:22.362 21718 21731 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:23.108 21898 21915 I Rift    : result f3: installing
+10-20 23:57:23.412 21898 21915 I Rift    : result f3: outcome after 304 ms: Installed demo-20261020T204836Z.
+10-20 23:57:25.629 22011 22025 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:26.386 22189 22205 I Rift    : result f3: installing
+10-20 23:57:26.693 22189 22205 I Rift    : result f3: outcome after 307 ms: Installed demo-20261020T204836Z.
+10-20 23:57:28.877 22297 22309 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:29.662 22474 22490 I Rift    : result f3: installing
+10-20 23:57:29.965 22474 22490 I Rift    : result f3: outcome after 302 ms: Installed demo-20261020T204836Z.
+10-20 23:57:32.513 22588 22601 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:33.386 22764 22780 I Rift    : result f3: installing
+10-20 23:57:33.646 22764 22780 I Rift    : result f3: outcome after 260 ms: Installed demo-20261020T204836Z.
+10-20 23:57:35.845 22886 22899 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:36.630 23065 23081 I Rift    : result f3: installing
+10-20 23:57:36.990 23065 23081 I Rift    : result f3: outcome after 359 ms: Installed demo-20261020T204836Z.
+10-20 23:57:39.333 23179 23192 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:41.072 23358 23374 I Rift    : result f5: ready
+10-20 23:57:41.331 23358 23374 I Rift    : result f5: full: 0 bytes usable
+10-20 23:57:41.382 23358 23374 I Rift    : result f5: keep: The file was not kept: the vault's storage failed (encryption failed: failed to write header: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" }))
+10-20 23:57:41.403 23358 23374 I Rift    : result f5: install: the demo database could not be copied, so nothing was installed: could not create repo; database Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:41.506 23358 23374 I Rift    : result f5: download: storage error: encryption failed: failed to write header: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" })
+10-20 23:57:41.527 23358 23374 I Rift    : result f5: reset: Failed(message=Session storage failed: storage error: No space left on device (os error 28))
+10-20 23:57:41.527 23358 23374 I Rift    : result f5: free the space
+10-20 23:57:41.872 23358 23374 I Rift    : result f5: after freeing the space: session 58
+10-20 23:57:41.072 23358 23374 I Rift    : result f5: ready
+10-20 23:57:41.331 23358 23374 I Rift    : result f5: full: 0 bytes usable
+10-20 23:57:41.382 23358 23374 I Rift    : result f5: keep: The file was not kept: the vault's storage failed (encryption failed: failed to write header: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" }))
+10-20 23:57:41.403 23358 23374 I Rift    : result f5: install: the demo database could not be copied, so nothing was installed: could not create repo; database Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+10-20 23:57:41.506 23358 23374 I Rift    : result f5: download: storage error: encryption failed: failed to write header: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" })
+10-20 23:57:41.527 23358 23374 I Rift    : result f5: reset: Failed(message=Session storage failed: storage error: No space left on device (os error 28))
+10-20 23:57:41.527 23358 23374 I Rift    : result f5: free the space
+10-20 23:57:41.872 23358 23374 I Rift    : result f5: after freeing the space: session 58
+10-20 23:57:43.601 23540 23553 I Rift    : result f6: session 59; database Installed(snapshot=demo-20261020T204836Z, digest=ec74b297270f843f9c4632252217a0ca5691c46da6d26101fed0cdf14b42026d, demo=true, stale=false, clockBehind=false, createdUnix=1792529316, refreshAfterUnix=1793134116, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.]); 1 entry, 4 files, decrypted to its recorded hash; keeping works again
