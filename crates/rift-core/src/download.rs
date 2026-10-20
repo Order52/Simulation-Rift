@@ -128,14 +128,8 @@ pub fn download(
     let agent = agent(policy);
     let first = hop_url(request.url)?;
     let cookie_origin = first.origin();
-    let mut url = first;
-    for redirects in 0..=policy.max_redirects {
-        if cancel.load(Ordering::SeqCst) {
-            return Err(DownloadError::Cancelled);
-        }
-        let mut call = agent
-            .get(url.as_str())
-            .header("User-Agent", request.user_agent);
+    let (response, url, redirects) = follow(&agent, first, policy, cancel, |call, url| {
+        let mut call = call.header("User-Agent", request.user_agent);
         if let Some(cookie) = request.cookie
             && url.origin() == cookie_origin
         {
@@ -144,7 +138,112 @@ pub fn download(
         if let Some(referer) = request.referer {
             call = call.header("Referer", referer);
         }
-        let response = call.call().map_err(network_error)?;
+        call
+    })?;
+    // Servers put raw UTF-8 (not only visible ASCII) in filenames, so
+    // header values are decoded lossily rather than dropped.
+    let header = |name: &str| {
+        response
+            .headers()
+            .get(name)
+            .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
+    };
+    let supplied_name = header("content-disposition")
+        .as_deref()
+        .or(request.engine_disposition)
+        .and_then(filename_from_disposition)
+        .or_else(|| filename_from_url(&url))
+        .unwrap_or_default();
+    let content_type =
+        header("content-type").map(|t| t.chars().take(MAX_CONTENT_TYPE_CHARS).collect::<String>());
+
+    let mut pending = store.begin(recipient, policy.max_bytes)?;
+    let mut body = response.into_body().into_reader();
+    let mut buffer = vec![0u8; CHUNK];
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(DownloadError::Cancelled); // dropping `pending` discards it
+        }
+        let n = body.read(&mut buffer).map_err(|e| network_error_io(&e))?;
+        let Some(chunk) = buffer.get(..n) else {
+            return Err(DownloadError::Network("reader overran its buffer".into()));
+        };
+        if chunk.is_empty() {
+            break;
+        }
+        pending.write_all(chunk).map_err(|e| {
+            if e.kind() == io::ErrorKind::FileTooLarge {
+                DownloadError::TooLarge(policy.max_bytes)
+            } else {
+                DownloadError::Storage(VaultError::Io(e))
+            }
+        })?;
+    }
+    let object = pending.commit()?;
+    Ok(Downloaded {
+        object,
+        final_url: url.to_string(),
+        redirects,
+        display_name: display_name(&supplied_name),
+        content_type,
+    })
+}
+
+/// Fetches `url` into memory, at most `max_bytes`, with the same agent,
+/// destination checks and per-hop redirect rule as [`download`], and no
+/// cookie or referer. For signed update files (§13.2): the bytes are
+/// untrusted until tough has verified them.
+pub fn fetch(
+    url: &str,
+    policy: &DownloadPolicy,
+    user_agent: &str,
+    max_bytes: u64,
+    cancel: &AtomicBool,
+) -> Result<Vec<u8>, DownloadError> {
+    let agent = agent(policy);
+    let (response, _, _) = follow(&agent, hop_url(url)?, policy, cancel, |call, _| {
+        call.header("User-Agent", user_agent)
+    })?;
+    let mut body = response.into_body().into_reader();
+    let mut bytes = Vec::new();
+    let mut buffer = vec![0u8; CHUNK];
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(DownloadError::Cancelled);
+        }
+        let n = body.read(&mut buffer).map_err(|e| network_error_io(&e))?;
+        let Some(chunk) = buffer.get(..n) else {
+            return Err(DownloadError::Network("reader overran its buffer".into()));
+        };
+        if chunk.is_empty() {
+            return Ok(bytes);
+        }
+        if u64::try_from(bytes.len().saturating_add(chunk.len())).unwrap_or(u64::MAX) > max_bytes {
+            return Err(DownloadError::TooLarge(max_bytes));
+        }
+        bytes.extend_from_slice(chunk);
+    }
+}
+
+type Call = ureq::RequestBuilder<ureq::typestate::WithoutBody>;
+
+/// Follows redirects one checked hop at a time until a 2xx response, which
+/// is returned with its URL and the number of redirects taken.
+fn follow(
+    agent: &ureq::Agent,
+    first: Url,
+    policy: &DownloadPolicy,
+    cancel: &AtomicBool,
+    headers: impl Fn(Call, &Url) -> Call,
+) -> Result<(ureq::http::Response<ureq::Body>, Url, usize), DownloadError> {
+    let mut url = first;
+    for redirects in 0..=policy.max_redirects {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(DownloadError::Cancelled);
+        }
+        let response = headers(agent.get(url.as_str()), &url)
+            .call()
+            .map_err(network_error)?;
         let status = response.status().as_u16();
         if matches!(status, 301 | 302 | 303 | 307 | 308) {
             let location = response
@@ -159,54 +258,7 @@ pub fn download(
         if !(200..300).contains(&status) {
             return Err(DownloadError::Status(status));
         }
-
-        // Servers put raw UTF-8 (not only visible ASCII) in filenames, so
-        // header values are decoded lossily rather than dropped.
-        let header = |name: &str| {
-            response
-                .headers()
-                .get(name)
-                .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
-        };
-        let supplied_name = header("content-disposition")
-            .as_deref()
-            .or(request.engine_disposition)
-            .and_then(filename_from_disposition)
-            .or_else(|| filename_from_url(&url))
-            .unwrap_or_default();
-        let content_type = header("content-type")
-            .map(|t| t.chars().take(MAX_CONTENT_TYPE_CHARS).collect::<String>());
-
-        let mut pending = store.begin(recipient, policy.max_bytes)?;
-        let mut body = response.into_body().into_reader();
-        let mut buffer = vec![0u8; CHUNK];
-        loop {
-            if cancel.load(Ordering::SeqCst) {
-                return Err(DownloadError::Cancelled); // dropping `pending` discards it
-            }
-            let n = body.read(&mut buffer).map_err(|e| network_error_io(&e))?;
-            let Some(chunk) = buffer.get(..n) else {
-                return Err(DownloadError::Network("reader overran its buffer".into()));
-            };
-            if chunk.is_empty() {
-                break;
-            }
-            pending.write_all(chunk).map_err(|e| {
-                if e.kind() == io::ErrorKind::FileTooLarge {
-                    DownloadError::TooLarge(policy.max_bytes)
-                } else {
-                    DownloadError::Storage(VaultError::Io(e))
-                }
-            })?;
-        }
-        let object = pending.commit()?;
-        return Ok(Downloaded {
-            object,
-            final_url: url.to_string(),
-            redirects,
-            display_name: display_name(&supplied_name),
-            content_type,
-        });
+        return Ok((response, url, redirects));
     }
     Err(DownloadError::TooManyRedirects(policy.max_redirects))
 }
@@ -677,6 +729,81 @@ mod tests {
             Some("plain.bin")
         );
         assert_eq!(filename_from_disposition("inline"), None);
+    }
+
+    #[test]
+    fn fetch_reads_into_memory_under_the_download_rules() {
+        let server = Server::start(routes);
+        let local = policy(&["localhost"]);
+        let no = AtomicBool::new(false);
+        let fetch = |url: &str, policy: &DownloadPolicy, max: u64| {
+            fetch(url, policy, "rift-test", max, &no)
+        };
+        assert_eq!(
+            fetch(&server.url("localhost", "/file"), &local, 1024).unwrap(),
+            b"hello quarantine"
+        );
+        // A checked redirect, as for downloads.
+        assert_eq!(
+            fetch(&server.url("localhost", "/to-file"), &local, 1024).unwrap(),
+            b"hello quarantine"
+        );
+        // Local addresses only with the user's per-name allowance (INV-13).
+        assert!(matches!(
+            fetch(&server.url("localhost", "/file"), &policy(&[]), 1024),
+            Err(DownloadError::Destination { .. })
+        ));
+        assert!(matches!(
+            fetch(
+                &server.url("localhost", "/to-loopback-literal"),
+                &local,
+                1024
+            ),
+            Err(DownloadError::Destination { .. })
+        ));
+        // The limit holds against the stream, not the header.
+        assert!(matches!(
+            fetch(&server.url("localhost", "/lying-length"), &local, 5),
+            Err(DownloadError::TooLarge(5))
+        ));
+        assert!(matches!(
+            fetch(&server.url("localhost", "/no-length"), &local, 4999),
+            Err(DownloadError::TooLarge(4999))
+        ));
+        assert_eq!(
+            fetch(&server.url("localhost", "/no-length"), &local, 5000)
+                .unwrap()
+                .len(),
+            5000
+        );
+        assert!(matches!(
+            fetch(&server.url("localhost", "/missing"), &local, 1024),
+            Err(DownloadError::Status(404))
+        ));
+        assert!(matches!(
+            fetch("file:///etc/passwd", &local, 1024),
+            Err(DownloadError::Scheme(_))
+        ));
+        // No cookie is ever sent.
+        assert!(
+            server
+                .log
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(_, cookie)| cookie.is_none())
+        );
+        let cancelled = AtomicBool::new(true);
+        assert!(matches!(
+            super::fetch(
+                &server.url("localhost", "/file"),
+                &local,
+                "rift-test",
+                1024,
+                &cancelled
+            ),
+            Err(DownloadError::Cancelled)
+        ));
     }
 }
 

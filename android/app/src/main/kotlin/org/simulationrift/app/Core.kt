@@ -31,6 +31,7 @@ import org.simulationrift.core.Verdict
 import org.simulationrift.core.Navigation
 import org.simulationrift.core.QuarantinedFile
 import org.simulationrift.core.Navigator
+import org.simulationrift.core.PendingIntel
 import org.simulationrift.core.PreviewFailure
 import org.simulationrift.core.Preview as CorePreview
 import org.simulationrift.core.SessionFailure
@@ -453,12 +454,42 @@ object Core {
      * `trustedRoot` (§13.2), after a fresh worker has compiled its rules.
      * On any failure the current database stays.
      */
-    fun installIntel(trustedRoot: ByteArray, repository: File, service: Class<out Service> = PreviewService::class.java) {
+    fun installIntel(trustedRoot: ByteArray, repository: File, service: Class<out Service> = PreviewService::class.java) =
+        install(service) { intel -> intel.verifyOffline(trustedRoot, repository.path) }
+
+    /**
+     * Fetches and installs the update published at `base` (its `metadata/`
+     * and `targets/` directories) through the core's checked fetcher, verified
+     * against [trustedRoot]. Local addresses are reached only for host names
+     * the user allowed in this session (INV-13).
+     */
+    fun updateIntelOnline(base: String, service: Class<out Service> = PreviewService::class.java) {
+        val root = trustedRoot()
+        if (root == null) {
+            _intelMessage.value = "This build has no trusted root, so it cannot install updates."
+            return
+        }
+        val trimmed = base.trimEnd('/')
+        val localHosts = _localHosts.value
+        install(service, "Downloading the update…") { intel ->
+            intel.verifyOnline(root, "$trimmed/metadata/", "$trimmed/targets/", localHosts)
+        }
+    }
+
+    /** The update address this build was given (`RIFT_INTEL_URL`, android/build.sh), if any. */
+    fun updateSource(): String? = try {
+        app.assets.open(UPDATE_SOURCE).use { it.readBytes().decodeToString().trim() }.takeIf { it.startsWith("https://") }
+    } catch (e: java.io.FileNotFoundException) {
+        null
+    }
+
+    /** Verifies with `verify`, has a fresh worker compile the rules, then installs; on any failure the current database stays. */
+    private fun install(service: Class<out Service>, progress: String = "Checking the update…", verify: (Intel) -> PendingIntel) {
         val intel = database ?: return
-        _intelMessage.value = "Checking the update…"
+        _intelMessage.value = progress
         updating.execute {
             _intelMessage.value = try {
-                intel.verifyOffline(trustedRoot, repository.path).use { pending ->
+                verify(intel).use { pending ->
                     Scanner.check(app, pending, service)
                     _intel.value = pending.install(nowUnix())
                     "Installed ${pending.snapshot()}."
@@ -555,6 +586,7 @@ object Core {
 
     private const val DEMO_INTEL = "intel-demo"
     private const val PRODUCTION_ROOT = "intel-root/root.json"
+    private const val UPDATE_SOURCE = "intel-root/update-url.txt"
 
     /** Concurrent scans: enough that one hung worker does not hold the queue, few enough for memory. */
     private const val SCAN_WORKERS = 2

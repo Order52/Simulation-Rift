@@ -182,7 +182,7 @@ fi
 "$adb" shell rm -rf $update
 
 echo "== S16f: a clock behind the database is shown"
-# Needs root (S13's step above): the device clock is set two years back,
+# Needs root (the step above S16d): the device clock is set two years back,
 # then restored from the host's clock. The database from S16d is installed.
 auto_time="$("$adb" shell settings get global auto_time | tr -d '\r')"
 [ "$auto_time" = 0 ] || auto_time=1

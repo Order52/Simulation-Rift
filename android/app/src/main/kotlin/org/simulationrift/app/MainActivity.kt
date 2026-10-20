@@ -350,6 +350,7 @@ class MainActivity : ComponentActivity() {
         val status by Core.intel.collectAsState()
         val message by Core.intelMessage.collectAsState()
         val canImport = remember { Core.trustedRoot() != null }
+        val source = remember { Core.updateSource() }
         Card(Modifier.fillMaxWidth().testTag("intel")) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Threat database", style = MaterialTheme.typography.titleMedium)
@@ -373,6 +374,11 @@ class MainActivity : ComponentActivity() {
                 }
                 (status as? IntelStatus.Installed)?.notices?.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("intel-message")) }
+                if (canImport && source != null) {
+                    OutlinedButton(onClick = { Core.updateIntelOnline(source) }, modifier = Modifier.testTag("intel-online")) {
+                        Text("Check for an update")
+                    }
+                }
                 if (canImport) {
                     OutlinedButton(onClick = { chooseUpdate.launch(null) }, modifier = Modifier.testTag("intel-import")) {
                         Text("Import an update folder…")

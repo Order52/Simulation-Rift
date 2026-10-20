@@ -24,6 +24,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -464,6 +465,37 @@ class SecurityTest {
     }
 
     @Test
+    fun s16e_onlineUpdateUsesTheCoresCheckedFetcher() {
+        // A fresh session first (its reset refuses unexpected files, such as
+        // the copy below): localhost is a loopback name, refused without the
+        // user's allowance (INV-13).
+        resetAndAwait(activeGeneration())
+        // The signed demo repository, served on loopback inside this process.
+        val served = File(context.cacheDir, "s16e").apply { deleteRecursively() }
+        copyAsset("intel-demo/repo", served)
+        val server = java.net.ServerSocket(0, 8, java.net.InetAddress.getByName("127.0.0.1"))
+        val requests = java.util.concurrent.atomic.AtomicInteger()
+        thread(name = "s16e-server", isDaemon = true) { serveFiles(server, served, requests) }
+        try {
+            val base = "http://localhost:${server.localPort}"
+            Core.updateIntelOnline(base)
+            val refused = awaitIntelMessage()
+            assertEquals("the update was refused: the update server could not be reached, or is not an allowed destination", refused)
+            assertEquals("no request reached the server", 0, requests.get())
+
+            allowFixtureHost()
+            Core.updateIntelOnline(base)
+            val message = awaitIntelMessage()
+            assertTrue(message, message.startsWith("Installed demo-"))
+            assertTrue("${Core.intel.value}", Core.intel.value is IntelStatus.Installed)
+            report("s16e", "without the allowance: $refused; with it: $message after ${requests.get()} requests")
+        } finally {
+            server.close()
+            served.deleteRecursively()
+        }
+    }
+
+    @Test
     fun s21a_signedDemoDatabaseFindsTheDemoFile() {
         Core.installDemoIntel()
         val installed = awaitIntel { it is IntelStatus.Installed } as? IntelStatus.Installed
@@ -678,7 +710,7 @@ class SecurityTest {
     private fun awaitIntelMessage(): String {
         val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
-            Core.intelMessage.value?.takeIf { it != "Checking the update…" && it != "Reading the update…" }?.let { return it }
+            Core.intelMessage.value?.takeIf { it !in PROGRESS }?.let { return it }
             SystemClock.sleep(50)
         }
         throw AssertionError("no install outcome: ${Core.intelMessage.value}")
@@ -692,6 +724,31 @@ class SecurityTest {
             SystemClock.sleep(50)
         }
         throw AssertionError("no verdict for $id: ${Core.verdicts.value}")
+    }
+
+    /** A minimal static file server for s16e: GET only, names inside `root` only. */
+    private fun serveFiles(server: java.net.ServerSocket, root: File, requests: java.util.concurrent.atomic.AtomicInteger) {
+        while (!server.isClosed) {
+            val socket = try {
+                server.accept()
+            } catch (e: java.io.IOException) {
+                return // closed by the test
+            }
+            socket.use {
+                requests.incrementAndGet()
+                val reader = it.getInputStream().bufferedReader()
+                val path = reader.readLine().orEmpty().split(' ').getOrNull(1).orEmpty().trimStart('/')
+                while (reader.readLine().orEmpty().isNotEmpty()) Unit
+                val file = File(root, path).takeIf { f -> path.split('/').none { c -> c == ".." || c.isEmpty() } && f.isFile }
+                val body = file?.readBytes() ?: ByteArray(0)
+                val status = if (file != null) "200 OK" else "404 Not Found"
+                it.getOutputStream().apply {
+                    write("HTTP/1.1 $status\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                    write(body)
+                    flush()
+                }
+            }
+        }
     }
 
     private fun copyAsset(path: String, target: File) {
@@ -940,6 +997,9 @@ class SecurityTest {
         const val UI_TIMEOUT_MS = 10_000L
         const val PAGE_TIMEOUT_MS = 20_000L
         const val CORE_TIMEOUT_MS = 15_000L
+
+        /** Intel messages that mean "still working". */
+        val PROGRESS = setOf("Checking the update…", "Reading the update…", "Downloading the update…")
 
         /** A retried cleanup: the system wipe, with its bounded bind retries. */
         const val RECOVERY_TIMEOUT_MS = 60_000L

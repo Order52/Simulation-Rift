@@ -12,6 +12,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# These three are already in the tree through tough; Rift's transport implements its trait.
+async-trait = "0.1.92"
+bytes = "1.12.1"
+futures-util = { version = "0.3.34", default-features = false }
 rift-core = { path = "../rift-core" }
 thiserror = "2.0.21"
 # tough's own runtime; Rift drives it from one current-thread runtime per update.

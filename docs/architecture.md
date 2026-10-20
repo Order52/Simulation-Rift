@@ -551,12 +551,13 @@ Each finding carries: source, rule or indicator ID, object hash, engine version,
 - The initial root is embedded in the app. Persisted state holds the trusted root and versions.
 - Roles: root and targets keys offline; snapshot and timestamp keys on the maintainer machine.
 - Expiry: timestamp 7 d, snapshot 14 d, targets 90 d, root 365 d.
-- Offline import is a TUF repository directory or archive verified through a file transport, using exactly the same code path.
+- Offline import is a TUF repository directory or archive verified through a file transport, using exactly the same code path. On Android the user chooses the repository folder in the system picker (no lasting access is kept); the controller copies only plain files of `metadata/` and `targets/`, within count and size bounds, into Rift's own storage, and verifies the copy.
+- Online updates use the same code path with one other transport: rift-core's checked fetcher (INV-13 resolver, per-hop redirects, bounded bodies, no cookies), so updates add no HTTP or TLS stack. The update address is fixed at build time (an https base with `metadata/` and `targets/`); the production root is embedded the same way. A build without a root cannot install updates and says so. Refusals carry a reason (signature, rollback, expired, tampered, too large, damaged, unreadable, unreachable, rules rejected) that the UI shows as one sentence; the full error goes to the log.
 - **Staging paths are never derived from repository target names** (Phase 0 finding, X2). `tough::TargetName` normalizes `../../x` to `x` instead of rejecting it, and keeps absolute names absolute, so `dir.join(name.resolved())` can escape. Rift stages only names from a fixed allowlist of pack files, and only when the raw name is already in normal form.
 - Metadata size limits are set far below tough's defaults: timestamp 16 KiB, snapshot 64 KiB, targets 1 MiB, root 64 KiB.
 - Flow: fetch bounded metadata → verify signatures, thresholds, versions, expiry, hashes, and lengths → download targets into staging → validate the binary tables and JSON schema → compile rules in a worker (smoke test) → run fixture lookups → atomic pointer swap → retain the previous snapshot until no job references it.
 - Scans already in progress stay pinned to their starting snapshot.
-- If the installed data has expired and no update is possible, Rift keeps using it offline with a prominent **stale** warning. Clock problems are surfaced to the user; the expiry check is never bypassed.
+- If the installed data has expired and no update is possible, Rift keeps using it offline with a prominent **stale** warning. Clock problems are surfaced to the user; the expiry check is never bypassed. A device clock more than an hour before the installed database's creation time is shown as a clock problem; an update refused as expired says that the clock may be wrong.
 
 ### 13.3 Sources and licensing
 

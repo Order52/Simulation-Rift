@@ -81,6 +81,7 @@ object Scanner {
             UpdateRefusal.TOO_LARGE -> "it is larger than an update may be"
             UpdateRefusal.DAMAGED -> "it is incomplete or damaged"
             UpdateRefusal.UNREADABLE -> "it could not be read"
+            UpdateRefusal.UNREACHABLE -> "the update server could not be reached, or is not an allowed destination"
             UpdateRefusal.RULES_REJECTED -> "its rules did not pass the check"
         }
         is IntelFailure.Unconfined -> "the checking worker is not confined (${e.detail})"

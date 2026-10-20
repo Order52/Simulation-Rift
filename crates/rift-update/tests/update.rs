@@ -205,3 +205,129 @@ fn keys_are_refused_inside_a_git_work_tree() {
     let repo_keys = Path::new(env!("CARGO_MANIFEST_DIR"));
     assert!(rift_pack::generate_keys(repo_keys).is_err());
 }
+
+/// Serves the files under `root` over HTTP on 127.0.0.1, one request per
+/// connection; 404 for anything else. Test code: names are checked only
+/// enough to stay inside `root`.
+fn serve(root: PathBuf) -> u16 {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            reader.read_line(&mut request).unwrap();
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap_or(0) > 0 && line != "\r\n" {
+                line.clear();
+            }
+            let path = request
+                .split(' ')
+                .nth(1)
+                .unwrap_or("/")
+                .trim_start_matches('/');
+            let file = (!path.split('/').any(|c| c == ".." || c.is_empty()))
+                .then(|| std::fs::read(root.join(path)).ok())
+                .flatten();
+            let (status, body) = match file {
+                Some(body) => ("200 OK", body),
+                None => ("404 Not Found", Vec::new()),
+            };
+            let head = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(&body);
+        }
+    });
+    port
+}
+
+impl Fixture {
+    fn update_online(&self, port: u16, local_hosts: &[&str]) -> Result<Pack, UpdateError> {
+        let base = format!("http://localhost:{port}");
+        let verified = rift_update::verify_online(
+            &self.root,
+            &format!("{base}/metadata"),
+            &format!("{base}/targets/"),
+            &self.path("tuf"),
+            local_hosts.iter().map(|h| (*h).to_owned()).collect(),
+        )?;
+        let files = verified.files.iter().map(|(n, b)| (*n, b.as_slice()));
+        Ok(self.store.install(files, &Accept)?)
+    }
+}
+
+#[test]
+fn online_update_installs_through_the_checked_fetcher() {
+    let f = Fixture::new();
+    let port = serve(f.publish("keys", 1, None));
+    let pack = f.update_online(port, &["localhost"]).unwrap();
+    assert_eq!(f.current(), Some(pack.digest.hex()));
+    assert!(pack.metadata.demo);
+}
+
+#[test]
+fn online_updates_are_refused_like_offline_ones() {
+    let f = Fixture::new();
+    let old = f.publish("keys", 1, None);
+    let old_port = serve(old.clone());
+    f.update_online(old_port, &["localhost"]).unwrap();
+    let current = f
+        .update_online(serve(f.publish("keys", 2, None)), &["localhost"])
+        .unwrap();
+
+    // Rollback: the first repository again, now older than what was trusted.
+    let error = f.update_online(old_port, &["localhost"]).unwrap_err();
+    println!("result online rollback: {error}");
+    assert_eq!(error.refusal(), Refusal::Rollback, "{error}");
+
+    // A target changed on the server.
+    let repo = f.publish("keys", 3, None);
+    let rules = std::fs::read_dir(repo.join("targets"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.to_string_lossy().ends_with("rules.yar"))
+        .unwrap();
+    let mut bytes = std::fs::read(&rules).unwrap();
+    let marker = bytes.windows(6).position(|w| w == b"MARKER").unwrap();
+    bytes[marker] = b'N';
+    std::fs::write(&rules, bytes).unwrap();
+    let error = f.update_online(serve(repo), &["localhost"]).unwrap_err();
+    println!("result online tampered: {error}");
+    assert_eq!(error.refusal(), Refusal::Tampered, "{error}");
+    assert_eq!(f.current(), Some(current.digest.hex()));
+}
+
+#[test]
+fn online_updates_reach_only_allowed_destinations() {
+    let f = Fixture::new();
+    let port = serve(f.publish("keys", 1, None));
+    // localhost resolves to loopback: refused without the user's allowance (INV-13).
+    let error = f.update_online(port, &[]).unwrap_err();
+    println!("result online local: {error}");
+    assert_eq!(error.refusal(), Refusal::Unreachable, "{error}");
+    assert!(error.to_string().contains("loopback"), "{error}");
+    // Nothing listening.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let error = f.update_online(closed, &["localhost"]).unwrap_err();
+    assert_eq!(error.refusal(), Refusal::Unreachable, "{error}");
+    // Only http and https directories.
+    let error = rift_update::verify_online(
+        &f.root,
+        "file:///etc/",
+        "file:///etc/",
+        &f.path("tuf"),
+        vec![],
+    )
+    .unwrap_err();
+    assert!(matches!(error, UpdateError::Address(_)), "{error}");
+    assert_eq!(f.current(), None);
+}

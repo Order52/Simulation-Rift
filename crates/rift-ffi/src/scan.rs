@@ -154,6 +154,7 @@ pub enum UpdateRefusal {
     TooLarge,
     Damaged,
     Unreadable,
+    Unreachable,
     /// The checking worker did not compile exactly the rules the update describes.
     RulesRejected,
 }
@@ -169,6 +170,7 @@ impl From<rift_update::Refusal> for UpdateRefusal {
             R::TooLarge => Self::TooLarge,
             R::Damaged => Self::Damaged,
             R::Unreadable => Self::Unreadable,
+            R::Unreachable => Self::Unreachable,
         }
     }
 }
@@ -244,6 +246,38 @@ impl Intel {
         let verified =
             rift_update::verify_offline(&trusted_root, Path::new(&repository), &self.datastore)
                 .map_err(|e| refused(e.refusal().into(), &e))?;
+        self.pending(verified)
+    }
+
+    /// The same verification for a repository served at `metadata_url` and
+    /// `targets_url`, fetched by the core's checked fetcher. `local_hosts`
+    /// are the user's per-name allowances for local addresses (INV-13).
+    /// Blocks for the whole download: call it off the UI thread.
+    pub fn verify_online(
+        self: Arc<Self>,
+        trusted_root: Vec<u8>,
+        metadata_url: String,
+        targets_url: String,
+        local_hosts: Vec<String>,
+    ) -> Result<Arc<PendingIntel>, IntelFailure> {
+        let verified = rift_update::verify_online(
+            &trusted_root,
+            &metadata_url,
+            &targets_url,
+            &self.datastore,
+            local_hosts,
+        )
+        .map_err(|e| refused(e.refusal().into(), &e))?;
+        self.pending(verified)
+    }
+}
+
+impl Intel {
+    /// Validates verified files; the result installs only after its rule check.
+    fn pending(
+        self: Arc<Self>,
+        verified: rift_update::Verified,
+    ) -> Result<Arc<PendingIntel>, IntelFailure> {
         let pack = Pack::validate(verified.files.iter().map(|(n, b)| (*n, b.as_slice()))).map_err(
             |e| {
                 let reason = match e {

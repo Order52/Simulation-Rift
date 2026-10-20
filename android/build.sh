@@ -54,6 +54,11 @@ rm -rf "$production_root"
 if [ -n "${RIFT_INTEL_ROOT:-}" ]; then
   mkdir -p "$production_root"
   cp "$RIFT_INTEL_ROOT" "$production_root/root.json"
+  # Where "Check for an update" fetches from: an https base with metadata/ and targets/.
+  if [ -n "${RIFT_INTEL_URL:-}" ]; then
+    case "$RIFT_INTEL_URL" in https://*) ;; *) echo "RIFT_INTEL_URL must be an https address" >&2; exit 1 ;; esac
+    printf '%s\n' "$RIFT_INTEL_URL" > "$production_root/update-url.txt"
+  fi
 fi
 
 cd "$here"
