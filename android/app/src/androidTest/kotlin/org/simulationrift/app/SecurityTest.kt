@@ -1075,6 +1075,37 @@ class SecurityTest {
     }
 
     /**
+     * Ordinary browsing (§17 c): the page's traffic leaves through the
+     * controller's proxy, and the browser's UID moves nothing on any real
+     * network itself. Needs the internet; without it the test is skipped
+     * and says so.
+     */
+    @Test
+    fun x2_browsingLeavesOnlyThroughTheProxy() {
+        val online = try {
+            java.net.Socket().use { it.connect(java.net.InetSocketAddress("1.1.1.1", 443), 10_000) }
+            true
+        } catch (e: java.io.IOException) {
+            report("x2", "skipped: no internet ($e)")
+            false
+        }
+        org.junit.Assume.assumeTrue("needs the internet", online)
+        val generation = resetAndAwait(activeGeneration())
+        val controller = android.os.Process.myUid()
+        val browser = context.packageManager.getPackageUid(Rift.BROWSER_PACKAGE, 0)
+        val before = networkBytes(controller) to networkBytes(browser)
+        val allowedBefore = Core.egressStats()?.allowed ?: 0u
+        openBrowser(generation, "https://example.org/")
+        assertNotNull("page", device.wait(Until.findObject(By.textContains("Example Domain")), PAGE_TIMEOUT_MS))
+        val after = networkBytes(controller) to networkBytes(browser)
+        val allowed = (Core.egressStats()?.allowed ?: 0u) - allowedBefore
+        report("x2", "controller +${after.first - before.first} bytes, browser +${after.second - before.second} bytes " +
+            "on real networks; proxy requests allowed +$allowed")
+        assertTrue("the page did not go through the proxy", allowed > 0u && after.first > before.first)
+        assertEquals("browser bytes on real networks", before.second, after.second)
+    }
+
+    /**
      * Bytes `uid` moved on real networks, from netstats after a forced poll:
      * every network but VPNs (type 17). Loopback belongs to no network, so it
      * is not counted.
