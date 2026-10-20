@@ -1,6 +1,6 @@
 # Phase 5: the Linux app on Qt (design revision and PoCs)
 
-**Status (21 Oct 2026): proposed, not externally reviewed; PoCs Q1–Q4 pass.** On 20 Oct the Linux app moved from GTK4 + WebKitGTK to Qt, and was made the last step after Android (architecture §22). §9 of the [architecture](../architecture.md) still describes the reviewed GTK4 design. This document proposes its replacement and lists the questions that have to be answered by measurement before any app code is written. Nothing here is verified unless a PoC row below says so.
+**Status (21 Oct 2026): proposed, not externally reviewed; PoCs Q1–Q4 pass.** On 20 Oct the Linux app moved from GTK4 + WebKitGTK to Qt, and was made the last step after Android (architecture §22). This document proposed the replacement for the GTK4 design, and listed the questions that had to be answered by measurement before any app code was written. All four PoCs pass, and §9 of the [architecture](../architecture.md) now describes the Qt design (v2.2, 21 Oct). Nothing here is verified unless a PoC result below says so.
 
 ## What carries over unchanged
 

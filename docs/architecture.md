@@ -1,11 +1,12 @@
 # Simulation-Rift — Architecture and Specification
 
-**Version:** 2.1 (20 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
-**Date:** 20 October 2026
+**Version:** 2.2 (21 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
+**Date:** 21 October 2026
+**Changes in 2.2:** the Linux app is built on Qt (QML through cxx-qt, Qt WebEngine from Flathub's BaseApp) instead of GTK4 and WebKitGTK. The browser host runs in a no-network Flatpak sub-sandbox and reaches the web only through a forwarded egress proxy in the controller. PoCs Q1–Q4 measured it ([phase-5-qt-design.md](reports/phase-5-qt-design.md)); §9, §6, B1, ADR-10 and the stack table are revised.
 **Changes in 2.1:** the Android browser moves into its own APK (separate UID, wiped by the system at every reset) behind a network lock: a per-app VPN that forwards nothing, and an authenticated loopback proxy in the controller as the browser's only way out. PoC A8 measured both (ADR-04 revised, ADR-14, INV-14, B2/B8, §8.8, S23–S28).
 **Status:** Approved baseline architecture. Phase 0 feasibility tests are in progress; every claim marked **[PoC]** is unverified until its Phase 0 report says otherwise.
 **Platforms:** Android (API 30+, arm64-v8a first, x86_64 for emulators) and Linux (Flatpak, x86_64 and aarch64)
-**Languages:** Rust (shared core, workers, Linux UI), Kotlin (Android UI and platform glue), Python (offline model training only, never shipped)
+**Languages:** Rust (shared core, workers, Linux controller), Kotlin (Android UI and platform glue), QML and C++ (Linux UI and the Qt WebEngine host, kept thin), Python (offline model training only, never shipped)
 
 > Simulation-Rift is a fully local, modular workspace for opening unfamiliar links, downloading and inspecting untrusted files, and keeping chosen files in encrypted storage. It does this by combining OS-enforced isolation, offline-first threat detection, and signed data updates. It never promises perfect isolation. It makes specific, tested claims about named boundaries.
 
@@ -133,7 +134,7 @@ In priority order:
 
 | # | Boundary | Enforced by | Strength | Notes |
 |---|---|---|---|---|
-| B1 | Web content → app | Android: Chromium renderer in an `isolated_app` SELinux domain with seccomp-bpf. Linux: the WebKitGTK WebProcess sandbox (bubblewrap + seccomp) | Strong; exploit chains exist | One renderer per WebView profile, so there is no site isolation within a session. |
+| B1 | Web content → app | Android: Chromium renderer in an `isolated_app` SELinux domain with seccomp-bpf. Linux: Qt WebEngine's renderer sandbox (Chromium's seccomp-bpf, in a portal-spawned Flatpak instance with mount, pid, IPC and network namespaces of its own; Q1, Q2) | Strong; exploit chains exist | One renderer per WebView profile, so there is no site isolation within a session. |
 | B2 | Browser host → vault and core | Android: separate **APK and UID** (`org.simulationrift.browser`). Its data directory is private to it and Rift's is not even mounted in its namespace; the only door is one Binder service exported under a `signature` permission, which checks the caller's UID and signer on every call | Strong; kernel- and SELinux-enforced (PoC A8) | v2.0 used a separate process with the same UID, which was weak. An engine escape now lands in an app that holds no Rift data, keys or code beyond the browser's. The system wipes that app at every reset. |
 | B3 | File content → app | Android: `isolatedProcess` service (random UID, `isolated_app` domain, no permissions). Linux: worker self-lockdown with seccomp-bpf allowlist, Landlock, rlimits, and no_new_privs | Strong for parse-only workers | Workers receive only file descriptors. |
 | B4 | Website → sensors | Permissions are **absent from the manifest** (Android) or denied in WebKit permission callbacks (Linux) | Strong on Android (OS-enforced); policy-enforced on Linux | Callbacks deny as well, as defence in depth. |
@@ -180,26 +181,26 @@ Each invariant has a test ID in §23. An invariant without a passing test is rep
 | INV-11 | In Local Protection mode, Rift's own code sends no content-specific requests (URLs, hashes, files) to any third party. Engine features that do, such as Safe Browsing, are disclosed and controlled by the user. |
 | INV-12 | The app opts out of backup and device-to-device transfer for all data. Vault screens set `FLAG_SECURE`. |
 | INV-13 | Controller-owned network transfers (downloads, updates) re-check every redirect hop. They resolve DNS once per hop and refuse loopback, private, link-local, and multicast destinations unless the user explicitly allows them. They enforce byte limits on the stream, not on `Content-Length`. |
-| INV-14 | While a session is open, the browser has no network path except the controller's egress proxy (Android: the browser UID's traffic is routed into a VPN that forwards nothing, and WebView's proxy override has its implicit bypass rules removed). The proxy accepts only this session's token and applies INV-13's destination rules to every connection. If the lock is lost, the session ends and the browser is wiped. Browsing without the lock is possible only in a reduced mode the user chooses for one session, which the trusted UI names. |
+| INV-14 | While a session is open, the browser has no network path except the controller's egress proxy (Android: the browser UID's traffic is routed into a VPN that forwards nothing, and WebView's proxy override has its implicit bypass rules removed; Linux: the browser host runs in a sub-sandbox with no network, and its connections reach the proxy only over its private socketpair). The proxy accepts only this session's token (Android) or the browser host's socketpair (Linux) and applies INV-13's destination rules to every connection. If the lock is lost, the session ends and the browser is wiped. Browsing without the lock is possible only in a reduced mode the user chooses for one session, which the trusted UI names. |
 
 ## 6. Architecture overview
 
 ```text
- ANDROID — two APKs, two UIDs                                LINUX — Flatpak
- ┌─ controller APK, main process [TRUSTED] ─────┐   ┌─ rift (GTK4) [TRUSTED] ─────────┐
- │ Kotlin/Compose UI · VPN for the browser UID  │   │ gtk4-rs + libadwaita UI          │
- │ rift-core via UniFFI (rift-ffi) · egress     │   │ rift-core (direct Rust)          │
- └──┬──────────────────────┬────────────────────┘   └──┬───────────────┬──────────────┘
-    │ Binder, signature    │ Binder + ParcelFileDescriptor  │ WebKit IPC   │ socketpair + SCM_RIGHTS
-    │ permission + UID chk │                          ┌──▼──────────┐ ┌▼─ rift-worker ──────┐
- ┌──▼─ browser APK ────────┐ ┌▼─ isolatedProcess ─────┐ │ WebKit       │ │ seccomp + Landlock   │
- │ :web WebView host +     │ │ rift-worker-ffi (.so)  │ │ WebProcess   │ │ rlimits, NNP         │
- │ network service; proxy  │ │ PdfRenderer (platform) │ │ (sandboxed)  │ │ PDFium · image ·     │
- │ is 127.0.0.1 (egress)   │ │ image · YARA-X(pulley) │ └──────────────┘ │ YARA-X(pulley)       │
- │ no Rift data, no keys   │ └────────────────────────┘                  └──────────────────────┘
- └──┬──────────────────────┘
- ┌──▼─ WebView renderer ───┐
- │ isolated_app, seccomp   │
+ ANDROID — two APKs, two UIDs                                LINUX — Flatpak (KDE runtime + QtWebEngine BaseApp)
+ ┌─ controller APK, main process [TRUSTED] ─────┐   ┌─ rift controller [TRUSTED] ──────────────┐
+ │ Kotlin/Compose UI · VPN for the browser UID  │   │ QML via cxx-qt · rift-core (direct Rust) │
+ │ rift-core via UniFFI (rift-ffi) · egress     │   │ ForwardedEgress · worker supervisor      │
+ └──┬──────────────────────┬────────────────────┘   └──┬────────────────────┬─────────────────┘
+    │ Binder, signature    │ Binder + ParcelFileDescriptor  │ SEQPACKET on stdin │ socketpair + SCM_RIGHTS
+    │ permission + UID chk │                          ┌──▼─ browser host ──────────┐ ┌▼─ rift-worker ──────┐
+ ┌──▼─ browser APK ────────┐ ┌▼─ isolatedProcess ─────┐ │ flatpak-spawn --sandbox    │ │ seccomp + Landlock   │
+ │ :web WebView host +     │ │ rift-worker-ffi (.so)  │ │ --no-network: Qt WebEngine │ │ rlimits, NNP         │
+ │ network service; proxy  │ │ PdfRenderer (platform) │ │ browser process, forwarder │ │ PDFium · image ·     │
+ │ is 127.0.0.1 (egress)   │ │ image · YARA-X(pulley) │ └──┬─────────────────────────┘ │ YARA-X(pulley)       │
+ │ no Rift data, no keys   │ └────────────────────────┘ ┌──▼─ renderers ─────────────┐ └──────────────────────┘
+ └──┬──────────────────────┘                            │ Chromium seccomp-bpf, own  │
+ ┌──▼─ WebView renderer ───┐                            │ mnt/pid/ipc/net namespaces │
+ │ isolated_app, seccomp   │                            └────────────────────────────┘
  └─────────────────────────┘
 ```
 
@@ -403,27 +404,29 @@ Without the VPN a proxy is not a boundary (A8 finding 15): WebRTC sends UDP arou
 
 ## 9. Linux platform
 
-> **Superseded in part (20 Oct 2026).** The Linux app will use Qt, not GTK4, and is built last, after Android (§22). This section is the reviewed v2.0 GTK4/WebKitGTK design, kept until the Qt design replaces it. The Qt proposal and its PoCs (Q1–Q4) are in [phase-5-qt-design.md](reports/phase-5-qt-design.md). The parts that do not depend on the toolkit (Flatpak, worker lockdown, the network-namespace lock) are expected to carry over.
+> **Revised 21 Oct 2026 (v2.2).** The Linux app uses Qt, not GTK4 and WebKitGTK, and is built last, after Android (§22). The reviewed v2.0 GTK4 design is in this file's history (v2.1, commit 2040c5c). The evidence for this section is PoCs Q1–Q4 in [phase-5-qt-design.md](reports/phase-5-qt-design.md), which also has the process and message details.
 
 ### 9.1 Distribution
 
-**Flatpak first**, on the GNOME runtime, which provides GTK4, libadwaita, and WebKitGTK 6.0 and is security-updated by runtime maintainers. The declared test baselines are current Fedora Workstation and Ubuntu LTS, both with Flathub. Native packages are post-V1.
+**Flatpak first**, on the KDE runtime 6.10 with Flathub's `io.qt.qtwebengine.BaseApp` 6.10 (Freedesktop SDK 25.08), which the runtime's and BaseApp's maintainers keep patched. The declared test baselines are current Fedora Workstation and Ubuntu LTS, both with Flathub. Native packages are post-V1.
 
-Why: distribution WebKitGTK versions vary. Ubuntu 23.10+ restricts unprivileged user namespaces through AppArmor, which breaks unprofiled bubblewrap use [R13]. Flatpak gives one tested runtime.
+Why: distributions ship Qt WebEngine at different versions and with different sandbox setups. Ubuntu 23.10+ restricts unprivileged user namespaces through AppArmor [R13]. The BaseApp spawns renderers as sandboxed Flatpak instances through the portal, which works without user namespaces of the app's own (Q1). Flatpak gives one tested runtime. The release build uses the SDK's Rust extension, so the workspace's `rust-version` is that compiler's (1.98, Q3).
 
 ### 9.2 Browser
 
-- WebKitGTK 6.0 API (`webkit6` crate).
-- Rift requires the WebProcess sandbox to be **actually active**, not just configured. WebKit has an open, reopened bug in which WebKitGTK runs processes unsandboxed with no warning when the Flatpak sandbox is unavailable [R12].
-- After starting a session, Rift inspects the WebProcess (`/proc/<pid>/status` Seccomp/NoNewPrivs and namespace links under `/proc/<pid>/ns`) and refuses to browse if it is not confined (INV-7) **[PoC L1]**. Phase 0 refinements:
-  - Web processes are identified by `/proc/<pid>/comm` (the executed binary), never by command line, because the `bwrap` launcher carries the web-process path among its arguments.
-  - WebKit starts more web processes as tabs and sites change (process swap on navigation), so the check runs for every new web process before its page is shown, not once per session.
-  - The check is necessary, not redundant: WebKitGTK 2.54.1 aborted when `bwrap` could not create namespaces, but an environment variable silently disables the sandbox, and R12 shows a fallback path has existed before.
-  - The **network process is not sandboxed** by WebKitGTK (L1: no seccomp, no new namespaces). It parses HTTP, TLS and cookies for every site, so a bug there runs with the user's full privileges in a native package. This is a main reason for Flatpak first: there it is at least bounded by the Flatpak sandbox (to be verified in Phase 0 L1-Flatpak).
-- **Network lock on Linux (Phase 5 design, PoC L4 pending).** The browser host runs as a separate process in a Flatpak sub-sandbox (`flatpak-spawn --sandbox --no-network`), so it and WebKit's network process have their own network namespace with only a loopback interface. WebKit's proxy setting (`WebKitNetworkProxySettings`) points at a forwarder inside that sandbox, which passes each connection over an inherited Unix socket to the controller's egress proxy. Escaped code in the browser sandbox then reaches nothing at all, not even the host's loopback: a stronger result than on Android, where loopback is shared. The sub-sandbox also has no access to the app's data directory (only `--sandbox-expose` paths, of which there are none). L4 must show that WebKitGTK runs in such a sub-sandbox and that the web process sandbox still starts inside it.
-- Permission requests (`permission-request` signal): deny all, including camera, microphone, geolocation, notifications, and clipboard read.
-- Downloads: the `decide-policy` and `download-started` handlers cancel the engine download and submit to the core transfer, as on Android. Engine downloads may be used later if they prove more compatible.
-- Optional hardening for later evaluation: disable JavaScriptCore's JIT for untrusted sessions. There is precedent in Edge's enhanced security mode [R23]. The mechanism is unsupported and is not relied on in V1.
+- **Engine.** Qt WebEngine Widgets 6.10 (Chromium-based), driven from a thin C++ layer called from Rust through cxx. One off-the-record `QWebEngineProfile` per session, in a browser host process that ends at every reset.
+- **Browser host in a no-network sub-sandbox [PoC Q2].** The controller starts the browser host with `flatpak-spawn --sandbox --no-network`, sharing only the display, the GPU and the (filtered) session bus. The host has its own network namespace with only loopback, and no access to the app's data. Qt WebEngine's network service runs inside the browser host. A process the host spawns through the portal has no network either (Q2).
+- **Network lock (INV-14 on Linux) [PoC Q2].** Qt's application proxy points at a forwarder on the browser host's own loopback. The forwarder passes each connection to the controller over the session channel (`SCM_RIGHTS`). The controller serves it with `ForwardedEgress`, which applies the same checks as Android's proxy but has no listener and asks for no token: the socketpair authenticates the browser host. Escaped code in the browser host or a renderer reaches only what the proxy lets through, not even the host's loopback. This is stronger than Android, where loopback is shared.
+- **Session channel.** One `SOCK_SEQPACKET` socketpair, given to the browser host as its stdin. It carries postcard messages for navigation decisions, renderer reports, download hand-offs and forwarded connections.
+- **The renderer sandbox must be active, not just configured (INV-7) [PoC Q1].**
+  - Every renderer runs in a portal-spawned sandbox instance with Chromium's seccomp-bpf filter on top of Flatpak's, `NoNewPrivs`, and mount, pid, IPC and network namespaces of its own.
+  - The browser host can see its renderers (Q1, Q2). Before a renderer's page is shown, it checks that renderer: more seccomp filters than its own, `NoNewPrivs: 1`, and mount and pid namespaces of its own. It reports the result to the controller, which ends the session on a failure.
+  - At start it refuses the engine's switches: `QTWEBENGINE_DISABLE_SANDBOX`, `QTWEBENGINE_CHROMIUM_FLAGS`, `--no-sandbox` and `--single-process`. With the sandbox disabled, a renderer has only Flatpak's filter and no namespaces of its own, which the check tells apart (Q1's negative control).
+  - Renderers share the app's user namespace. Their network namespace is the empty one of the sub-sandbox (Q1, Q2).
+- **Permission requests** (`QWebEnginePage::permissionRequested`): deny all, including camera, microphone, location, notifications, screen capture and clipboard read.
+- **Downloads:** `QWebEngineProfile::downloadRequested` is refused, and the URL goes to the core's checked transfer, as on Android.
+- **Navigation:** `QWebEnginePage::acceptNavigationRequest` asks the controller synchronously, and the controller decides with the shared policy (§10). The browser host draws Rift's toolbar and interstitials from the controller's escaped facts.
+- **Known limits.** Qt WebEngine lags Chrome. Its Chromium is older, with security fixes backported, so a minimum Qt WebEngine patch release is a release parameter. The BaseApp is a community build. `allow-dbus` gives the browser host the same filtered session bus as the app, so the portals the app may call are part of the browser host's surface.
 
 ### 9.3 Workers **[PoC L2]**
 
@@ -715,7 +718,7 @@ Versions are as of 17 Oct 2026 and are locked by `Cargo.lock` and Gradle catalog
 | Shared logic | Rust stable (pinned by `rust-toolchain.toml`) | — |
 | Rust↔Kotlin | UniFFI | 0.32 |
 | Android UI | Kotlin, Jetpack Compose, AndroidX WebKit; compileSdk 37 (required by Compose BOM 2026.09), targetSdk 36 | latest stable |
-| Linux UI | Qt (decided 20 Oct 2026, to be reviewed before Phase 5; §22). Previously gtk4-rs, libadwaita, webkit6 | to be decided |
+| Linux UI | Qt 6.10 (KDE runtime): QML through cxx-qt, Qt WebEngine Widgets for the browser host (§9; decided 20 Oct 2026, PoCs Q1–Q4 21 Oct) | cxx-qt 0.10 (pinned, pre-1.0) |
 | Rule engine | `yara-x` with the `pulley` feature (no JIT) | 1.21 |
 | PDF | Android `PdfRenderer` (PoC-gated); Linux PDFium via `pdfium-render` | 0.9 |
 | Images | `image` (`png`, `zune-jpeg`, `image-webp`) | 0.25 |
@@ -743,7 +746,7 @@ Each decision lists what was chosen, what was rejected, why, and what would make
 | 07 | Vault: age format and an encrypted index file | libsodium plus a custom format; SQLite with encrypted fields; SQLCipher | Avoids designing our own crypto format. Encrypting all metadata leaks less than per-field encryption. `sodiumoxide` has been archived since 2021. | More than 10,000 objects → SQLCipher. |
 | 08 | Intel: memory-mapped sorted hash tables plus Safe Browsing canonicalization | SQLite; cleartext lists | Trivially validated, fast, compact, atomic to swap, and no complex parser in the update path. | — |
 | 09 | TUF via `tough` | A hand-rolled signed manifest; `rust-tuf` | Root rotation, thresholds, and freeze and rollback protection come from an established framework. | — |
-| 10 | Linux distribution: Flatpak first | Distro packages | One tested WebKitGTK, patched by the runtime. | — |
+| 10 | Linux distribution: Flatpak first, on the KDE runtime with the QtWebEngine BaseApp (revised 21 Oct 2026; previously the GNOME runtime with WebKitGTK) | Distro packages | One tested Qt WebEngine, patched by the runtime and BaseApp maintainers, with renderers sandboxed through the portal (Q1). | — |
 | 11 | AI deferred to Phase 6, gated | AI in V1 | Uncertain marginal value over heuristics and Safe Browsing. Keeps V1 focused. | — |
 | 12 | Images: Rust decoders | Platform BitmapFactory, ImageDecoder | Memory-safe decoders. The libwebp CVE-2023-4863 is a precedent for C codec risk. | — |
 | 13 | License: MIT OR Apache-2.0 | GPL | Compatible with every chosen dependency (BSD, MIT, Apache, MPL). Can be revisited before outside contributions. | Maintainers choose otherwise. |
@@ -795,7 +798,7 @@ Simulation-Rift/
 | **6: AI experiment** | Training notebook, model card, Rust inference | Ships only if it adds measured value within budget. |
 | **7: Hardening** | Fuzz campaigns, fault injection, privacy captures, ProxyController study, dependency review | Release gates (§24). |
 
-**Order (decided 20 Oct 2026).** Android comes first: Phases 4, 6 and 7 are completed for Android before Phase 5 starts, so Linux is the last step. The Linux app will use **Qt** instead of GTK4. §9, ADR-10 and the stack table still describe the GTK4/WebKitGTK design that was reviewed in v2.0. Before any Linux code is written, they will be revised and reviewed for Qt: the choice of web engine (Qt WebEngine is Chromium-based, so its sandbox is Chromium's and must be confirmed active inside Flatpak), the PoCs L1–L4 redone against it, and the Rust↔Qt binding (for example cxx-qt).
+**Order (decided 20 Oct 2026).** Android comes first: Phases 4, 6 and 7 are completed for Android before Phase 5 starts, so Linux is the last step. The Linux app uses **Qt** instead of GTK4. The revision was made on 21 Oct 2026 (v2.2): §9, ADR-10 and the stack table, after PoCs Q1–Q4. It has not had an external review.
 
 **Phase 0 proofs of concept:**
 
@@ -813,6 +816,7 @@ Simulation-Rift/
 | L2 | Does the worker lockdown hold? | Natively, inside Docker, and inside Flatpak: open, socket, execve, ptrace, and kill are denied. Allowed work succeeds. |
 | L3 | Is the sealed-memfd output immutable? | After sealing, writes from the worker fail; the controller verifies the seals. |
 | L4 | Can WebKitGTK run in a no-network Flatpak sub-sandbox behind a forwarding proxy? (v2.1) | Pages load through the controller's proxy; direct connections and DNS from the sandbox fail; the WebProcess sandbox is still active. |
+| Q1–Q4 | The Qt redo of L1, L4 and L2 (v2.2): renderer sandbox, network lock, cxx-qt build, worker lockdown inside Flatpak | See [phase-5-qt-design.md](reports/phase-5-qt-design.md). All four pass in CI (20–21 Oct 2026). L1 and L4 as written apply to the superseded WebKitGTK design. |
 | X1 | Does the vault format detect damage? | Round trip works; truncation, tampering, swapped objects, and a wrong key are each detected. |
 | X2 | Can TUF be verified offline on Android targets? | A `tuftool` repository verifies through file transport. Tampering, rollback, expiry, and path traversal are rejected. Cross-compiles for Android. |
 | X3 | Are URL lookups fast and correct? | Canonicalization passes the published Safe Browsing examples; p95 lookup ≤ 5 ms with 1 million entries. |
@@ -973,6 +977,6 @@ Consulted on 17 Oct 2026. Verify again before release.
 | Online Enhanced mode in V1 architecture | Reserved, not built | No provider has suitable terms yet |
 | Background update scheduling | Manual only in V1 | Battery; simplicity |
 | Feed sources assumed packageable | Licensing blocks redistribution; demo packs plus a direct-adapter design | abuse.ch Nov 2025 terms |
-| Distro packaging on Linux | Flatpak first | One tested, runtime-patched WebKitGTK |
+| Distro packaging on Linux | Flatpak first | One tested, runtime-patched web engine (Qt WebEngine since v2.2) |
 
 Content carried forward unchanged in substance: scope exclusions, the result vocabulary, immutable-object verdict binding, TUF update flow, fail-closed rules, the demonstration sequence (now Phase 2–5 evidence), the AI evaluation methodology, and the honesty rules about claims.
