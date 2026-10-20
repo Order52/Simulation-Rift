@@ -473,6 +473,51 @@ object Core {
         }
     }
 
+    /**
+     * The root that imported updates are verified against (§13.2): the
+     * production root if the build has one (`RIFT_INTEL_ROOT`, android/build.sh),
+     * else the demo root of a debug build. Null: this build cannot install updates.
+     */
+    fun trustedRoot(): ByteArray? = listOf(PRODUCTION_ROOT, "$DEMO_INTEL/root.json").firstNotNullOfOrNull { path ->
+        try {
+            app.assets.open(path).use { it.readBytes() }
+        } catch (e: java.io.FileNotFoundException) {
+            null
+        }
+    }
+
+    /**
+     * Imports the repository in `tree`, which the user chose, verified against
+     * [trustedRoot]. The copy is Rift's own state (files/rift, on the disposal
+     * allowlist) and is removed after the attempt.
+     */
+    internal fun importIntel(tree: IntelImport.Tree, service: Class<out Service> = PreviewService::class.java) {
+        _intelMessage.value = "Reading the update…"
+        updating.execute {
+            val root = trustedRoot()
+            if (root == null) {
+                _intelMessage.value = "This build has no trusted root, so it cannot install updates."
+                return@execute
+            }
+            val copy = File(app.filesDir, "rift/import")
+            try {
+                val copied = IntelImport.copy(tree, File(copy, "repo"))
+                Log.i(TAG, "intel import: copied ${copied.files} files, skipped ${copied.skipped}")
+                installIntel(root, File(copy, "repo"), service)
+            } catch (e: IntelImport.Refused) {
+                _intelMessage.value = "the update was not read: ${e.message}"
+            } catch (e: java.io.IOException) {
+                Log.w(TAG, "intel import failed", e)
+                _intelMessage.value = "the update could not be read from the chosen folder"
+            } catch (e: SecurityException) {
+                Log.w(TAG, "intel import failed", e)
+                _intelMessage.value = "the chosen folder could not be read"
+            }
+            // Runs after the install on the same executor.
+            updating.execute { copy.deleteRecursively() }
+        }
+    }
+
     /** Debug builds carry a signed demo database (`android/build.sh`); release builds do not. */
     fun demoIntelAvailable(): Boolean = try {
         app.assets.list(DEMO_INTEL)?.contains("root.json") == true
@@ -482,7 +527,8 @@ object Core {
 
     fun installDemoIntel(service: Class<out Service> = PreviewService::class.java) {
         updating.execute {
-            val copy = File(app.cacheDir, "intel-import")
+            // Rift's own state (files/rift), so a reset meanwhile finds no stray file.
+            val copy = File(app.filesDir, "rift/import")
             try {
                 copy.deleteRecursively()
                 copyAssets("$DEMO_INTEL/repo", File(copy, "repo"))
@@ -508,6 +554,7 @@ object Core {
     }
 
     private const val DEMO_INTEL = "intel-demo"
+    private const val PRODUCTION_ROOT = "intel-root/root.json"
 
     /** Concurrent scans: enough that one hung worker does not hold the queue, few enough for memory. */
     private const val SCAN_WORKERS = 2

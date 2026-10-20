@@ -59,6 +59,11 @@ class MainActivity : ComponentActivity() {
         if (result.resultCode == RESULT_OK) NetworkLock.start(this, userAction = true)
     }
 
+    /** A threat-database update the user chose (§13.2): read once, no lasting access to the folder. */
+    private val chooseUpdate = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree != null) Core.importIntel(IntelImport.DocumentTree(applicationContext, tree))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Core.ensureStarted(this)
@@ -344,6 +349,7 @@ class MainActivity : ComponentActivity() {
     private fun IntelCard() {
         val status by Core.intel.collectAsState()
         val message by Core.intelMessage.collectAsState()
+        val canImport = remember { Core.trustedRoot() != null }
         Card(Modifier.fillMaxWidth().testTag("intel")) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Threat database", style = MaterialTheme.typography.titleMedium)
@@ -359,6 +365,13 @@ class MainActivity : ComponentActivity() {
                 )
                 (status as? IntelStatus.Installed)?.notices?.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("intel-message")) }
+                if (canImport) {
+                    OutlinedButton(onClick = { chooseUpdate.launch(null) }, modifier = Modifier.testTag("intel-import")) {
+                        Text("Import an update folder…")
+                    }
+                } else {
+                    Text("This build has no trusted root, so it cannot install updates.", style = MaterialTheme.typography.bodySmall)
+                }
                 if (Core.demoIntelAvailable()) {
                     OutlinedButton(onClick = { Core.installDemoIntel() }, modifier = Modifier.testTag("intel-demo")) {
                         Text("Install the signed demo database")

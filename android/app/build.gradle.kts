@@ -48,6 +48,8 @@ android {
         getByName("main").kotlin.directories += "build/generated-rift/kotlin"
         // The signed demo threat database, debug builds only (build.sh).
         getByName("debug").assets.directories += "build/generated-intel"
+        // The production root for updates, when the build is given one (build.sh, RIFT_INTEL_ROOT).
+        getByName("main").assets.directories += "build/generated-intel-root"
     }
 
     packaging {
@@ -57,6 +59,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.13.0")

@@ -135,6 +135,52 @@ open_link() {
 result() { echo "$1 $2${3:+ ($3)}" | tee -a "$out/host-results.txt"; }
 : > "$out/host-results.txt"
 
+# Taps the first node whose text (case-insensitive) or resource id is $2.
+tap() { # text|id value
+  "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1 || return 1
+  case $1 in text) match="text=\"$2\"" ;; id) match="resource-id=\"$2\"" ;; esac
+  xy="$("$adb" shell cat /data/local/tmp/rift-ui.xml | tr -d '\r' | tr '>' '\n' | grep -iF "$match" | head -1 \
+    | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p' \
+    | awk '{ print int(($1 + $3) / 2), int(($2 + $4) / 2) }')"
+  [ -n "$xy" ] || return 1
+  "$adb" shell input tap $xy
+  sleep 1
+}
+# The same, retried while the screen settles (bounded).
+tap_when() { i=0; until tap "$1" "$2"; do i=$((i + 1)); [ $i -lt 10 ] || return 1; sleep 1; done; }
+
+echo "== S16d: import through the system folder picker"
+# The user's path: the home screen's import button, Android's folder picker
+# (DocumentsUI), and the one-time access grant. The folder holds the build's
+# signed demo repository plus two files that are not part of it.
+update=/sdcard/Download/rift-s16d
+"$adb" shell rm -rf $update
+"$adb" push "$here/app/build/generated-intel/intel-demo/repo" $update >/dev/null
+"$adb" shell "echo x > $update/targets/.junk && echo x > $update/notes.txt"
+"$adb" shell am force-stop $pkg
+"$adb" logcat -c
+"$adb" shell am start -n $pkg/.MainActivity >/dev/null
+wait_log "session [0-9]+ active" 30 || true
+close_dialogs
+found=no
+for i in 1 2 3 4 5 6; do
+  if tap id intel-import; then found=yes; break; fi
+  "$adb" shell input swipe 500 1600 500 600 300
+  sleep 1
+done
+if [ $found = yes ] \
+  && { tap text rift-s16d || { tap_when text Download && tap_when text rift-s16d; }; } \
+  && tap_when text "use this folder" && tap_when text allow && wait_log "intel install:" 30; then
+  line="$("$adb" logcat -d -s Rift:I | tr -d '\r' | grep -E "intel (import|install):" | sed 's/.*: intel/intel/' | tr '\n' ';')"
+  case "$line" in
+    *"copied 8 files, skipped 1"*"Installed demo-"*) result S16d PASS "$line" ;;
+    *) result S16d FAIL "$line" ;;
+  esac
+else
+  result S16d FAIL "could not drive the folder picker (import button found: $found)"
+fi
+"$adb" shell rm -rf $update
+
 echo "== S14: renderer crash"
 "$adb" shell am force-stop $pkg
 "$adb" logcat -c

@@ -431,6 +431,39 @@ class SecurityTest {
     }
 
     @Test
+    fun s16c_importedFolderIsCopiedVerifiedAndRemoved() {
+        // A folder as a user might choose it: the repository plus things that are not part of it.
+        val chosen = File(context.cacheDir, "s16c").apply { deleteRecursively() }
+        copyAsset("intel-demo/repo", chosen)
+        File(chosen, "notes.txt").writeText("not part of the repository")
+        File(chosen, "targets/.DS_Store").writeText("x")
+        File(chosen, "targets/nested").mkdirs()
+        val staging = File(context.filesDir, "rift/import")
+        try {
+            // Without targets/, nothing is installed and the user is told why.
+            File(chosen, "targets").renameTo(File(context.cacheDir, "s16c-targets"))
+            Core.importIntel(IntelImport.FileTree(chosen))
+            val missing = awaitIntelMessage()
+            assertEquals("the update was not read: the folder has no targets directory; choose the repository folder itself", missing)
+            File(context.cacheDir, "s16c-targets").renameTo(File(chosen, "targets"))
+
+            Core.importIntel(IntelImport.FileTree(chosen))
+            val message = awaitIntelMessage()
+            assertTrue(message, message.startsWith("Installed demo-"))
+            val installed = Core.intel.value as? IntelStatus.Installed
+            assertNotNull("${Core.intel.value}", installed)
+            // The copy is removed after the attempt, on the same executor.
+            val deadline = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
+            while (staging.exists() && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
+            assertFalse("staging copy left behind", staging.exists())
+            report("s16c", "without targets: $missing; then: $message")
+        } finally {
+            chosen.deleteRecursively()
+            File(context.cacheDir, "s16c-targets").deleteRecursively()
+        }
+    }
+
+    @Test
     fun s21a_signedDemoDatabaseFindsTheDemoFile() {
         Core.installDemoIntel()
         val installed = awaitIntel { it is IntelStatus.Installed } as? IntelStatus.Installed
@@ -645,7 +678,7 @@ class SecurityTest {
     private fun awaitIntelMessage(): String {
         val deadline = SystemClock.elapsedRealtime() + SCAN_TIMEOUT_MS
         while (SystemClock.elapsedRealtime() < deadline) {
-            Core.intelMessage.value?.takeIf { it != "Checking the update…" }?.let { return it }
+            Core.intelMessage.value?.takeIf { it != "Checking the update…" && it != "Reading the update…" }?.let { return it }
             SystemClock.sleep(50)
         }
         throw AssertionError("no install outcome: ${Core.intelMessage.value}")

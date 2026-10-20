@@ -45,6 +45,17 @@ rm -rf "$intel" && mkdir -p "$intel/pack"
 cp "$keys/root.json" "$intel/root.json"
 rm -rf "$intel/pack"
 
+# The root that every build verifies imported updates against, when one is
+# given: the public root.json of the production repository (its keys never
+# come near this machine's builds). Without it, release builds cannot
+# install updates and say so; debug builds fall back to the demo root.
+production_root="$here/app/build/generated-intel-root/intel-root"
+rm -rf "$production_root"
+if [ -n "${RIFT_INTEL_ROOT:-}" ]; then
+  mkdir -p "$production_root"
+  cp "$RIFT_INTEL_ROOT" "$production_root/root.json"
+fi
+
 cd "$here"
 # The controller never uses WebView (§8.4): only the browser app, under its
 # own UID, may. A static check of the sources, then of the built code below.
@@ -55,7 +66,7 @@ fi
 mkdir -p build
 [ -f build/outsider.jks ] || "$JAVA_HOME/bin/keytool" -genkeypair -keystore build/outsider.jks -storepass rift-outsider \
   -keypass rift-outsider -alias outsider -keyalg EC -groupname secp256r1 -validity 30 -dname "CN=Rift outsider test" >/dev/null 2>&1
-"${GRADLE:-./gradlew}" --quiet assembleDebug assembleDebugAndroidTest :browser:testDebugUnitTest
+"${GRADLE:-./gradlew}" --quiet assembleDebug assembleDebugAndroidTest :browser:testDebugUnitTest :app:testDebugUnitTest
 
 # Every native library in the APK, including JNA's, must be 16 KB aligned (§8.1).
 readelf="$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -1)"
