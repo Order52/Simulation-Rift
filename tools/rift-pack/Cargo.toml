@@ -15,6 +15,7 @@ workspace = true
 aws-lc-rs = "1.18.2" # already in the tree through tough; generates Ed25519 keys
 jiff = "0.2.38"
 rift-core = { path = "../../crates/rift-core" }
+serde = { version = "1.0.229", features = ["derive"] } # already in the tree through tough; the root policy file
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 thiserror = "2.0.21"

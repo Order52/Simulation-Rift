@@ -2,11 +2,14 @@
 //!
 //! - [`generate_keys`]: one Ed25519 key per TUF role, written outside any
 //!   git work tree (private signing keys never go into source control).
-//! - [`init_root`]: a signed `root.json` naming those keys (1-of-1 per role;
-//!   a production key policy with offline root and targets keys is separate).
+//! - [`init_root`]: a signed `root.json` naming those keys (1-of-1 per role,
+//!   for development and tests; releases use [`production`]).
 //! - [`write_demo_pack`]: the first-party demo pack. It is harmless: its
 //!   indicators match only [`DEMO_FILE`] and a `.invalid` URL.
 //! - [`publish`]: a signed repository (`metadata/`, `targets/`) for a pack.
+//!
+//! - [`production`]: the release flow, with each key held by one person,
+//!   thresholds, offline root and targets keys, and root rotation.
 //!
 //! Every pack is validated with the app's own validator before it is written
 //! or published, so the tool cannot produce a pack the app would refuse.
@@ -26,6 +29,8 @@ use tough::editor::signed::{PathExists, SignedRole};
 use tough::key_source::{KeySource, LocalKeySource};
 use tough::schema::{KeyHolder, RoleKeys, RoleType, Root, Signed};
 use tough::sign::{Sign, parse_keypair};
+
+pub mod production;
 
 /// The harmless file the demo pack's file indicator and marker rule match.
 pub const DEMO_FILE: &[u8] = b"Simulation-Rift demo file. It is harmless. RIFT-DEMO-MARKER\n";
