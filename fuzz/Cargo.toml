@@ -15,6 +15,8 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 rift-core = { path = "../crates/rift-core" }
 rift-protocol = { path = "../crates/rift-protocol" }
+rift-worker = { path = "../crates/rift-worker" }
+sha2 = "0.11.1"
 tempfile = "3.27.0"
 
 # Not part of the product workspace: it builds only on nightly.
@@ -65,6 +67,27 @@ bench = false
 [[bin]]
 name = "egress_head"
 path = "fuzz_targets/egress_head.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "worker_image"
+path = "fuzz_targets/worker_image.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "worker_scan"
+path = "fuzz_targets/worker_scan.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "trusted_text"
+path = "fuzz_targets/trusted_text.rs"
 test = false
 doc = false
 bench = false
