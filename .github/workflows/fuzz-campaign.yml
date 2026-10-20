@@ -15,6 +15,10 @@ on:
         description: Minutes per target
         required: true
         default: "60"
+      targets:
+        description: Targets to run (a JSON list)
+        required: true
+        default: '["display_name","egress_head","intel_table","navigation","protocol_response","trusted_text","url_canonicalize","vault_index","worker_image","worker_scan"]'
 
 permissions:
   contents: read
@@ -31,17 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - display_name
-          - egress_head
-          - intel_table
-          - navigation
-          - protocol_response
-          - trusted_text
-          - url_canonicalize
-          - vault_index
-          - worker_image
-          - worker_scan
+        target: ${{ fromJSON(inputs.targets) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install pinned nightly, llvm-tools and cargo-fuzz

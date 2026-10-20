@@ -8,7 +8,7 @@
 use libfuzzer_sys::fuzz_target;
 use rift_protocol::{
     Confinement, Envelope, LandlockStatus, PROTOCOL_VERSION, Request, Response, decode_response,
-    encode,
+    read_frame, write_frame,
 };
 use rift_worker::{Deadline, Worker};
 
@@ -35,7 +35,10 @@ fuzz_target!(|data: &[u8]| {
         Deadline::Supervisor,
     );
     let outcome = worker.handle(&request, Some(&mut image));
-    let encoded = encode(&outcome.response).expect("the worker's answer encodes");
+    // Through the pipe's framing, as the controller reads it.
+    let mut frame = Vec::new();
+    write_frame(&mut frame, &outcome.response).expect("the worker's answer encodes");
+    let encoded = read_frame(&mut frame.as_slice()).expect("the controller reads the frame");
     let accepted = decode_response(&encoded, &request)
         .unwrap_or_else(|e| panic!("the controller refused {:?}: {e:?}", outcome.response.body));
     match (accepted.get(), outcome.pixels) {
