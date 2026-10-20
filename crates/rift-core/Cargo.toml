@@ -24,7 +24,10 @@ serde_json = "1.0.154"
 sha2 = "0.11.1"
 thiserror = "2.0.21"
 unicode-security = "0.1.2"
-ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
+# TLS with rustls' aws-lc-rs provider, which tough already needs; ureq's
+# `rustls` feature would add ring as a second crypto library.
+rustls = { version = "=0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
 url = "2.5.8"
 
 [dev-dependencies]

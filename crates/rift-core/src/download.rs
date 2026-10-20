@@ -18,12 +18,14 @@
 
 use std::fmt;
 use std::io::{self, Read, Write};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use percent_encoding::percent_decode_str;
 use ureq::config::Config;
 use ureq::http::Uri;
+use ureq::tls::{TlsConfig, TlsProvider};
 use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
 use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 use url::Url;
@@ -284,6 +286,16 @@ fn agent(policy: &DownloadPolicy) -> ureq::Agent {
         .timeout_connect(Some(policy.connect_timeout))
         .timeout_recv_response(Some(policy.response_timeout))
         .timeout_global(Some(policy.total_timeout))
+        // The one crypto provider in the build (tough uses it too); Mozilla's
+        // roots, as ureq's default.
+        .tls_config(
+            TlsConfig::builder()
+                .provider(TlsProvider::Rustls)
+                .unversioned_rustls_crypto_provider(Arc::new(
+                    rustls::crypto::aws_lc_rs::default_provider(),
+                ))
+                .build(),
+        )
         .build();
     let resolver = CheckedResolver {
         inner: DefaultResolver::default(),
