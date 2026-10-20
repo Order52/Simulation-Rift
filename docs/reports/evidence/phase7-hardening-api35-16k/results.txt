@@ -1,0 +1,14 @@
+download: /files/big -> the file is larger than the 104857600-byte limit
+download: http://localhost:8766/files/hello.txt -> localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+download: http://localhost:8766/files/to-loopback -> 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+download: /files/hello.txt -> QuarantinedFile(id=b4d588405dac95397cfa249d52adea35, displayName=hello.txt, size=1040, sha256=b996cb5919d5b903999e90db3fc84b05ab73d46c0a2546651035a1a530e57935, contentTyp
+download: /files/hostile -> QuarantinedFile(id=a62f8f6db2e7f4c253e7b3b56e192169, displayName=evilgpj.pdf, size=16, sha256=c5c2e8be6ad0825a56ded1f1a153ceaf11dc060ab44b120a94406a08207babc2, contentType=
+download: /login?next=/files/private.bin -> QuarantinedFile(id=b632f11354dad1eccd3ca8e729486357, displayName=private.bin, size=1050, sha256=306153a5ff5fd7b62d9abf47f378fd7224ae53083811c8a2ceb79f9ebad5
+s16e: without the allowance: the update was refused: the update server could not be reached, or is not an allowed destination; with it: Installed demo-20261020T073604Z. after 8 requests
+s25: page: {"control":"answered","loopback":"answered","emulator_host":"answered","loopback_v6":"answered","websocket":"error","webrtc":"candidate:3402318224 1 udp 2113937151 10.111.0.1 43284 typ host
+download: /files/picture.png -> QuarantinedFile(id=4194a29ef9a30b589ef86b2e0a52e436, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, cont
+x1: bytes on real networks before {controller=18458, browser=0}, after {controller=18458, browser=0}; update requests 8; alarm and job lines {alarm=0, jobscheduler=0}; control request counted (224 byt
+x2: controller +8722 bytes, browser +0 bytes on real networks; proxy requests allowed +1
+download: https://example.org/ -> QuarantinedFile(id=70b2513539fb3e7562dce0e204807411, displayName=download, size=577, sha256=25ddf2c883e0d1958ea971d279a7e4f0fd446724ee3db7db19dadabd4a62e484, contentT
+download: https://wrong.host.badssl.com/ -> network error: invalid peer certificate: certificate not valid for name "wrong.host.badssl.com"; certificate is only valid for DnsName("*.badssl.com") or Dn
+x2: core HTTPS: example.org stored 577 bytes; wrong host: network error: invalid peer certificate: certificate not valid for name "wrong.host.badssl.com"; certificate is only valid for DnsName("*.bads

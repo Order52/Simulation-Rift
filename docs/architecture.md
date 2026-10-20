@@ -384,6 +384,7 @@ PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and coo
   - `setUnlockedDeviceRequired(true)`.
   - By default `setUserAuthenticationParameters(0, BIOMETRIC_STRONG | DEVICE_CREDENTIAL)`, so every unwrap needs authentication through BiometricPrompt with a CryptoObject.
 - Without a secure lock screen, auth-bound keys are impossible. The user must then choose a vault passphrase (age scrypt). Rift never silently stores an unprotected key.
+- Every passphrase wrapping (the vault passphrase, the recovery passphrase) uses one fixed scrypt work factor, N = 2^17 (128 MiB), and unlocking accepts exactly that factor. age would otherwise time the device to pick it and accept at most its current measurement + 4, so a busy moment refused the right passphrase (Phase 4, finding 6).
 - Key invalidation (for example, new biometrics enrolled) makes the vault unrecoverable without the optional recovery passphrase. This is stated when the vault is created.
 - **As built (Phase 4).** `VaultKeystore` creates the key only for a new vault (never while one exists, since a new key replaces the old one), StrongBox first and the TEE otherwise, and authorizes each wrap and unwrap through the platform `android.hardware.biometrics.BiometricPrompt` with a `CryptoObject` (no AndroidX dependency; minSdk 30). The wrapped identity is `[format 1][12-byte IV][ciphertext and GCM tag]`. On the API 35 emulator, removing the PIN **deleted the key entry outright** rather than leaving an invalidated key, so both cases are reported with the same sentence and the user is offered deletion of the vault. The emulator's Keystore reports `software only` (it has no TEE); hardware backing is unverified until a physical phone is tested. The **recovery passphrase** is optional and set after creation: `identity.recovery` holds a second, age scrypt-encrypted copy of the identity. When the key is gone, the vault opens with it, and "protect again" makes a new key (only once the old one is gone, since a new key replaces it) and replaces `identity.platform`. A stale recovery copy is deleted when a new vault is created.
 
@@ -457,7 +458,7 @@ Rift checks user-entered URLs, main-frame navigations that the engine reports, a
 
 Rift **does not** claim to inspect subresources, WebSockets, WebRTC, service-worker fetches, or POST navigations. WebView's callbacks have documented gaps, and WebRTC data channels can reach local-network addresses without a permission prompt.
 
-Host-level enforcement of all engine traffic through `androidx.webkit.ProxyController` is a Phase 7 investigation. It is not a V1 claim. The diagnostics screen states the actual coverage.
+Host-level enforcement of all engine traffic through `androidx.webkit.ProxyController` is a Phase 7 investigation. It is not a V1 claim. The diagnostics screen states the actual coverage. **Since architecture 2.1:** the browser app's WebView uses `ProxyController` with the implicit bypass rules removed, and the network lock makes the proxy its only route; x2 measured 0 bytes on real networks for the browser's UID while a page loaded through the proxy ([Phase 7](reports/phase-7.md)). That shows the route, not the destinations, which INV-13's tests cover.
 
 ### 10.4 Verdict handling
 

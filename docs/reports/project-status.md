@@ -1,6 +1,6 @@
 # Project status: Simulation-Rift
 
-**As of 20 Oct 2026.** For a short current snapshot, see [`../../STATUS.md`](../../STATUS.md). This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`phase-4.md`](phase-4.md), [`browser-isolation.md`](browser-isolation.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
+**As of 20 Oct 2026.** For a short current snapshot, see [`../../STATUS.md`](../../STATUS.md). This file summarizes everything done so far, what is finished, what is not, the known limitations and how to work around them, and what is left before the project is complete. Detail and raw evidence live in [`phase-0.md`](phase-0.md), [`phase-1.md`](phase-1.md), [`phase-2.md`](phase-2.md), [`phase-3.md`](phase-3.md), [`phase-4.md`](phase-4.md), [`phase-7.md`](phase-7.md), [`dependencies.md`](dependencies.md), [`browser-isolation.md`](browser-isolation.md), [`evidence/`](evidence/) and [`../architecture.md`](../architecture.md). Nothing here is an audited security product. No claim below means more than "tested in the stated environment".
 
 ## 1. Where the project stands
 
@@ -13,7 +13,7 @@
 | 4: Vault | **Built and tested on the host and the API 35 emulator** ([report](phase-4.md)): a Keystore key behind BiometricPrompt (or a passphrase), keep from quarantine, warned export, lock on request, in the background and when idle, and a no-plaintext-on-disk inventory. Kept files preview in an isolated worker until the vault locks; a recovery passphrase opens a vault whose key was lost. **Open:** a physical phone (the emulator's Keystore is software only). |
 | 5: Linux app | Not started. **Moved to the last step** and **to Qt instead of GTK4** (decided 20 Oct 2026); the design will be revised before any code. |
 | 6: AI experiment | Not started; deferred and gated by design. |
-| 7: Hardening | Not started. |
+| 7: Hardening | **Started on Android** ([report](phase-7.md)): privacy measurements x1 (local work and updates move no byte on real networks; nothing scheduled) and x2 (browsing leaves only through the controller's proxy) pass on API 35; the dependency and licence inventory is written ([inventory](dependencies.md)). **Open:** fault injection, long fuzz campaigns, in-app licence notices, an Android advisory check, an external review, and release gates that need a phone. |
 
 ## 2. What was done
 
@@ -129,6 +129,10 @@ Phase 2 findings, added to the list above: 15–26.
 45. (Phase 4) S16d's local failures: the address field had focus, and the keyboard covered the lower half where the script's swipes started, so the page never scrolled. The script now hides the keyboard first, only while Android reports it shown. Why the field had focus after a restart is not known.
 46. (Phase 4) On a cold CI emulator (API 34), Android took over 10 s to confirm the browser app's first data clear (9.2 s on the retry, about 0.4 s afterwards), which failed the first session. The clear confirmation now has its own 30 s bound and logs its duration; running out still fails the reset.
 47. (Phase 4, open) On CI (API 34, run 39379866862), s28 failed once: 50 ms after the test opened a new browser window (just after the wipe that followed losing the lock), Android removed the window's task ("remove task") and the window never showed. The outcome was safe (nothing loaded), but a user would have to open the window again. Rift's code removes no tasks; the cause is not confirmed (the force-stop of the clear and the new `singleTask` start may race). The test now opens the window up to three times and reports how many it needed.
+48. (Phase 4) age chose the scrypt work factor by timing the device, and accepted at most its current measurement + 4 when unlocking. In a full run the right passphrase was refused in 0.2 s, without scrypt running, right after the launcher came to the front; Rift called it a wrong passphrase. Every passphrase wrapping now uses N = 2^17 and unlocking accepts exactly that; a heavier file is reported as data Rift did not write. The cause is inferred from the timing and the error type; the factors were not logged.
+49. (Phase 7) The local emulator's DNS proxy stopped answering after a long uptime (the shell could not resolve names either, with Rift stopped). The privacy test's control therefore uses an IP address, not a name; a restart of the emulator fixed DNS.
+50. (Phase 7) The core refused all of `64:ff9b::/32`, and the proxy and the downloader refuse a name if any of its addresses is refused. On a DNS64 network (common on IPv6-only mobile networks) every IPv4-only host also resolves to `64:ff9b::<IPv4>`, so all of them were refused; the host network test found it on the development network. Addresses in the well-known `64:ff9b::/96` are now judged by the IPv4 address they carry; the rest of the /32 (including local-use `64:ff9b:1::/48`) stays refused.
+51. (Phase 7) Two crypto libraries shipped: `ureq`'s TLS used `ring`, `tough` uses `aws-lc-rs`. The core's TLS now uses rustls' aws-lc-rs provider and `ring` is in no build. `librift_ffi.so` went from 7.76 to 7.50 MB (arm64) and from 8.66 to 8.99 MB (x86_64, since aws-lc's x86_64 cipher code is now linked). Native code per ABI is now 19.2 MB (arm64) and 24.5 MB (x86_64); x86_64 has 0.5 MB of the 25 MB budget left. TLS was rechecked on the host and on the device (x2).
 
 ### 2.8 Phase 4 code (vault)
 
@@ -244,7 +248,7 @@ Phase 2 findings, added to the list above: 15–26.
 
 **Phase 6 and 7 (Android)**
 10. Optional AI experiment, shipped only if it adds measured value.
-11. Hardening: fuzz campaigns, fault injection, privacy network captures, dependency review, release gates (§24), and an external security review before any release claim.
+11. Hardening: ~~privacy network checks~~ (x1, x2 on API 35; [phase-7.md](phase-7.md)) and ~~the dependency and licence inventory~~ ([dependencies.md](dependencies.md)); open: fuzz campaigns, fault injection, in-app licence notices, an Android advisory check, release gates (§24), and an external security review before any release claim.
 
 **Phase 5: Linux (last, decided 20 Oct 2026)**
 12. A Qt desktop app on the shared core (not GTK4), with the worker lockdown and a fail-closed engine-sandbox check. The §9 design is revised for Qt and its PoCs redone first.

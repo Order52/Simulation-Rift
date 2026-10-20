@@ -1,0 +1,105 @@
+--------- beginning of main
+10-20 10:37:06.464 13541 13541 I Rift    : network lock active
+10-20 10:37:06.761 13572 13582 I RiftBrowser: system wipe requested in pid 13572
+10-20 10:37:06.815 13541 13566 I Rift    : browser data cleared after 0 ms
+10-20 10:37:06.957 13541 13566 I Rift    : browser wiped: pid 13572 -> 13596, no files
+10-20 10:37:06.960 13541 13566 I Rift    : session 1 active
+10-20 10:37:07.356 13541 13551 I Rift    : browser registered for generation 1, network LOCKED
+10-20 10:37:07.831 13541 13552 I Rift    : browser network in generation 1: proxied=true locked=true
+10-20 10:37:08.145 13656 13656 I RiftBrowser: download handed to the core in generation 1
+10-20 10:37:08.582 13541 13742 I Rift    : download 1 in generation 1: not captured: the file is larger than the 104857600-byte limit
+10-20 10:37:08.626 13541 13554 I Rift    : result download: /files/big -> the file is larger than the 104857600-byte limit
+10-20 10:37:08.656 13596 13618 I RiftBrowser: system wipe requested in pid 13596
+10-20 10:37:08.737 13541 13566 I Rift    : browser data cleared after 42 ms
+10-20 10:37:09.043 13541 13566 I Rift    : browser wiped: pid 13596 -> 13761, no files
+10-20 10:37:09.064 13541 13566 I Rift    : generation 1 disposed
+10-20 10:37:09.079 13541 13566 I Rift    : session 2 active
+10-20 10:37:09.414 13541 13762 I Rift    : browser registered for generation 2, network LOCKED
+10-20 10:37:09.904 13541 13762 I Rift    : browser network in generation 2: proxied=true locked=true
+10-20 10:37:10.141 13541 13856 I Rift    : download 2 in generation 2: not captured: localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 10:37:10.242 13541 13554 I Rift    : result download: http://localhost:8766/files/hello.txt -> localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 10:37:10.290 13541 13742 I Rift    : download 3 in generation 2: not captured: 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 10:37:10.363 13541 13554 I Rift    : result download: http://localhost:8766/files/to-loopback -> 127.0.0.1 resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 10:37:10.374 13777 13777 I RiftBrowser: new link in generation 2 (engine running)
+10-20 10:37:10.388 13777 13777 I RiftBrowser: download handed to the core in generation 2
+10-20 10:37:10.395 13541 13856 I Rift    : download 4 in generation 2: stored 1040 bytes
+10-20 10:37:10.397 13541 13869 I Rift    : scan of b4d588405dac95397cfa249d52adea35 in generation 2 after 2 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 10:37:10.477 13541 13554 I Rift    : result download: /files/hello.txt -> QuarantinedFile(id=b4d588405dac95397cfa249d52adea35, displayName=hello.txt, size=1040, sha256=b996cb5919d5b903999e90db3fc84b05ab73d46c0a2546651035a1a530e57935, contentType=text/plain, source=http://localhost:8766/files/hello.txt, redirects=0)
+10-20 10:37:10.488 13777 13777 I RiftBrowser: new link in generation 2 (engine running)
+10-20 10:37:10.494 13777 13777 I RiftBrowser: download handed to the core in generation 2
+10-20 10:37:10.506 13541 13742 I Rift    : download 5 in generation 2: stored 16 bytes
+10-20 10:37:10.506 13541 13881 I Rift    : scan of a62f8f6db2e7f4c253e7b3b56e192169 in generation 2 after 1 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 10:37:10.589 13541 13554 I Rift    : result download: /files/hostile -> QuarantinedFile(id=a62f8f6db2e7f4c253e7b3b56e192169, displayName=evilgpj.pdf, size=16, sha256=c5c2e8be6ad0825a56ded1f1a153ceaf11dc060ab44b120a94406a08207babc2, contentType=application/pdf, source=http://localhost:8766/files/hostile, redirects=0)
+10-20 10:37:10.605 13777 13777 I RiftBrowser: new link in generation 2 (engine running)
+10-20 10:37:10.620 13777 13777 I RiftBrowser: download handed to the core in generation 2
+10-20 10:37:10.625 13541 13856 I Rift    : download 6 in generation 2: stored 1050 bytes
+10-20 10:37:10.625 13541 13869 I Rift    : scan of b632f11354dad1eccd3ca8e729486357 in generation 2 after 0 ms: Not fully scanned; findings []; gaps [The file-hash check did not run: no verified threat database is installed., The rule scan did not run: no verified threat database is installed.]
+10-20 10:37:10.710 13541 13554 I Rift    : result download: /login?next=/files/private.bin -> QuarantinedFile(id=b632f11354dad1eccd3ca8e729486357, displayName=private.bin, size=1050, sha256=306153a5ff5fd7b62d9abf47f378fd7224ae53083811c8a2ceb79f9ebad57127, contentType=application/octet-stream, source=http://localhost:8766/files/private.bin, redirects=0)
+10-20 10:37:10.740 13761 13774 I RiftBrowser: system wipe requested in pid 13761
+10-20 10:37:10.824 13541 13566 I Rift    : browser data cleared after 16 ms
+10-20 10:37:11.177 13541 13566 I Rift    : browser wiped: pid 13761 -> 13911, no files
+10-20 10:37:11.179 13541 13566 I Rift    : generation 2 disposed
+10-20 10:37:11.197 13541 13566 I Rift    : session 3 active
+10-20 10:37:11.208 13541 13928 W Rift    : intel update not installed
+10-20 10:37:11.208 13541 13928 W Rift    : org.simulationrift.core.IntelFailure$Refused: reason=UNREACHABLE, detail=the update could not be verified: Failed to fetch http://localhost:45341/metadata/timestamp.json: Transport 'other' error fetching 'http://localhost:45341/metadata/timestamp.json': localhost resolves to 127.0.0.1, a loopback, private, link-local or otherwise non-public address
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.read(rift_ffi.kt:6405)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.read(rift_ffi.kt:6397)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.FfiConverter.liftFromRustBuffer(rift_ffi.kt:198)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.liftFromRustBuffer(rift_ffi.kt:6397)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.liftFromRustBuffer(rift_ffi.kt:6397)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.FfiConverterRustBuffer.lift(rift_ffi.kt:215)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.lift(rift_ffi.kt:6397)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.FfiConverterTypeIntelFailure.lift(rift_ffi.kt:6397)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.IntelFailure$ErrorHandler.lift(rift_ffi.kt:6388)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.IntelFailure$ErrorHandler.lift(rift_ffi.kt:6387)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.Rift_ffiKt.uniffiCheckCallStatus(rift_ffi.kt:282)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.Rift_ffiKt.access$uniffiCheckCallStatus(rift_ffi.kt:1)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.core.Intel.verifyOnline(rift_ffi.kt:8524)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.app.Core.updateIntelOnline$lambda$33(Core.kt:505)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.app.Core$$ExternalSyntheticLambda1.invoke(D8$$SyntheticClass:0)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.app.Core.install$lambda$37(Core.kt:522)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at org.simulationrift.app.Core$$ExternalSyntheticLambda14.run(D8$$SyntheticClass:0)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1145)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:644)
+10-20 10:37:11.208 13541 13928 W Rift    : 	at java.lang.Thread.run(Thread.java:1012)
+10-20 10:37:11.209 13541 13928 I Rift    : intel install: the update was refused: the update server could not be reached, or is not an allowed destination
+10-20 10:37:11.441 13541 13928 I Rift    : intel install: Installed demo-20261020T073604Z.
+10-20 10:37:11.479 13541 13554 I Rift    : result s16e: without the allowance: the update was refused: the update server could not be reached, or is not an allowed destination; with it: Installed demo-20261020T073604Z. after 8 requests
+10-20 10:37:11.802 13541 13551 I Rift    : browser registered for generation 3, network LOCKED
+10-20 10:37:12.252 13541 13762 I Rift    : browser network in generation 3: proxied=true locked=true
+10-20 10:37:17.907 13541 13554 I Rift    : result s25: page: {"control":"answered","loopback":"answered","emulator_host":"answered","loopback_v6":"answered","websocket":"error","webrtc":"candidate:3402318224 1 udp 2113937151 10.111.0.1 43284 typ host generation 0 ufrag yDQc network-cost 999\ncandidate:1786065141 1 udp 2113942271 fd00:7269:6674::1 60815 typ host generation 0 ufrag yDQc network-cost 999","done":"1"}; arrived: [tcp control host=localhost:8766]; refused by the proxy: [127.0.0.1:8766, 10.0.2.2:8766, [::1]:8766, 127.0.0.1:8766]
+10-20 10:37:17.919 13541 13565 I Rift    : vault deleted: true
+10-20 10:37:17.925 13911 13922 I RiftBrowser: system wipe requested in pid 13911
+10-20 10:37:17.996 13541 13566 I Rift    : browser data cleared after 0 ms
+10-20 10:37:18.258 13541 13566 I Rift    : browser wiped: pid 13911 -> 14131, no files
+10-20 10:37:18.260 13541 13566 I Rift    : generation 3 disposed
+10-20 10:37:18.276 13541 13566 I Rift    : session 4 active
+10-20 10:37:18.587 13541 13928 I Rift    : intel install: Installed demo-20261020T073604Z.
+10-20 10:37:18.955 13541 13550 I Rift    : browser registered for generation 4, network LOCKED
+10-20 10:37:19.401 13541 13762 I Rift    : browser network in generation 4: proxied=true locked=true
+10-20 10:37:19.660 14221 14221 I RiftBrowser: download handed to the core in generation 4
+10-20 10:37:19.700 13541 13742 I Rift    : download 7 in generation 4: stored 107456 bytes
+10-20 10:37:19.730 13541 13554 I Rift    : result download: /files/picture.png -> QuarantinedFile(id=4194a29ef9a30b589ef86b2e0a52e436, displayName=picture.png, size=107456, sha256=5962c713494bf095f141f7e5e15f8de0abeb249786f7b7d547b65e2bc831ea99, contentType=image/png, source=http://localhost:8766/files/picture.png, redirects=0)
+10-20 10:37:19.779 13541 13881 I Rift    : scan of 4194a29ef9a30b589ef86b2e0a52e436 in generation 4 after 78 ms: Not flagged; findings []; gaps []
+10-20 10:37:19.852 13541 14319 I Rift    : preview of 4194a29ef9a30b589ef86b2e0a52e436 in generation 4 after 70 ms: 300x200
+10-20 10:37:20.086 13541 13565 I Rift    : vault created (passphrase)
+10-20 10:37:20.141 13541 13565 I Rift    : vault: kept a 107456-byte file
+10-20 10:37:20.241 13541 13869 I Rift    : scan of kept file after 52 ms: Not flagged; findings []; gaps []
+10-20 10:37:20.292 13541 13565 I Rift    : vault locked: on request
+10-20 10:37:35.606 13541 13554 I Rift    : result x1: bytes on real networks before {controller=18458, browser=0}, after {controller=18458, browser=0}; update requests 8; alarm and job lines {alarm=0, jobscheduler=0}; control request counted (224 bytes)
+10-20 10:37:35.607 13541 13565 I Rift    : vault deleted: true
+10-20 10:37:35.709 14131 14145 I RiftBrowser: system wipe requested in pid 14131
+10-20 10:37:35.822 13541 13566 I Rift    : browser data cleared after 20 ms
+10-20 10:37:36.071 13541 13566 I Rift    : browser wiped: pid 14131 -> 14401, no files
+10-20 10:37:36.083 13541 13566 I Rift    : generation 4 disposed
+10-20 10:37:36.091 13541 13566 I Rift    : session 5 active
+10-20 10:37:36.500 13541 13762 I Rift    : browser registered for generation 5, network LOCKED
+10-20 10:37:36.936 13541 13550 I Rift    : browser network in generation 5: proxied=true locked=true
+10-20 10:37:38.627 13541 13554 I Rift    : result x2: controller +8722 bytes, browser +0 bytes on real networks; proxy requests allowed +1
+10-20 10:37:39.392 13541 13856 I Rift    : download 8 in generation 5: stored 577 bytes
+10-20 10:37:39.444 13541 13554 I Rift    : result download: https://example.org/ -> QuarantinedFile(id=70b2513539fb3e7562dce0e204807411, displayName=download, size=577, sha256=25ddf2c883e0d1958ea971d279a7e4f0fd446724ee3db7db19dadabd4a62e484, contentType=text/html; charset=utf-8, source=https://example.org/, redirects=0)
+10-20 10:37:39.564 13541 13881 I Rift    : scan of 70b2513539fb3e7562dce0e204807411 in generation 5 after 172 ms: Not flagged; findings []; gaps []
+10-20 10:37:40.345 13541 13742 I Rift    : download 9 in generation 5: not captured: network error: invalid peer certificate: certificate not valid for name "wrong.host.badssl.com"; certificate is only valid for DnsName("*.badssl.com") or DnsName("badssl.com")
+10-20 10:37:40.360 13541 13554 I Rift    : result download: https://wrong.host.badssl.com/ -> network error: invalid peer certificate: certificate not valid for name "wrong.host.badssl.com"; certificate is only valid for DnsName("*.badssl.com") or DnsName("badssl.com")
+10-20 10:37:40.360 13541 13554 I Rift    : result x2: core HTTPS: example.org stored 577 bytes; wrong host: network error: invalid peer certificate: certificate not valid for name "wrong.host.badssl.com"; certificate is only valid for DnsName("*.badssl.com") or DnsName("badssl.com")
+10-20 10:37:40.372 14446 14446 I RiftBrowser: browser process exiting: core disconnected
