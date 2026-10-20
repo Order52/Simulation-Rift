@@ -21,7 +21,7 @@
 | `librift_worker_ffi.so` | Isolated preview and scan workers | 187 |
 | Both | | 350 distinct |
 
-The lockfile lists 390 crates in all. The rest are host tools (`tools/rift-pack`), tests, build scripts and the bindings generator.
+Of these, proc-macros run only at build time. **285 third-party crates are linked** into the two libraries for either ABI (292 for arm64 including Rift's own 7). The lockfile lists 390 crates in all; the rest are host tools (`tools/rift-pack`), tests, build scripts and the bindings generator.
 
 ## Licences
 
@@ -29,7 +29,16 @@ Everything is under licences in `deny.toml`'s allow list (Apache-2.0, Apache-2.0
 
 `uniffi` (MPL-2.0, in both libraries) is file-level copyleft. It is used unmodified, and its source is public on crates.io; a release must state where that source can be obtained.
 
-Android dependencies: AndroidX Compose (BOM 2026.09.00), `activity-compose` 1.13.0, `core-ktx` 1.17.0 and `webkit` 1.17.1, all Apache-2.0; JNA 5.19.1, under Apache-2.0 OR LGPL-2.1-or-later, which Rift uses under Apache-2.0. The test-only libraries (AndroidX Test runner, ext-junit, UI Automator) are Apache-2.0 and do not ship.
+Android dependencies, as declared: AndroidX Compose (BOM 2026.09.00), `activity-compose` 1.13.0, `core-ktx` 1.17.0 (resolved to 1.18.0 through a transitive requirement) and `webkit` 1.17.1, all Apache-2.0; JNA 5.19.1, under Apache-2.0 OR LGPL-2.1-or-later, which Rift uses under Apache-2.0. The test-only libraries (AndroidX Test runner, ext-junit, UI Automator) are Apache-2.0 and do not ship.
+
+## Notices in the apps (§25)
+
+Each APK carries its third-party notices as assets, generated at build time, and the controller shows them ("Open-source licences" on the home screen; test l1).
+
+- **Rust crates** (`android/notices.py`, run by `build.sh`): every crate linked into the two libraries, with its licence expression, source, and the licence and notice files it publishes; identical texts once. Twenty crates publish no licence file. For them, `android/licence-texts/crates.txt` names the licence files of their repository at the matching tag (for example YARA-X's BSD-3-Clause, uniffi's MPL-2.0, Wasmtime's Apache-2.0 with LLVM exception). Three crates have no licence file in their repository either. For two MIT crates (`ascii_tree`, `cookie-factory`) the standard MIT text is printed with the crate's listed authors as the holders. `io_tee` and `typed-path` are offered under Apache-2.0 and used under it. A crate that publishes no file and is not listed (with its exact version) fails the build.
+- **Android libraries** (`android/notices.gradle.kts`, per APK): every module on the release runtime classpath with the licences its POM (or parent POM) declares. The build fails if one does not offer Apache-2.0, whose text each APK carries. Texts an archive does not carry are kept in `licence-texts/android/` and appended: JNA's licence statement, and libffi's MIT notice, which JNA's native library needs.
+
+The texts in `licence-texts/` were downloaded from the upstream repositories on 20 Oct 2026 and read before being added.
 
 ## Security-sensitive dependencies
 
@@ -67,7 +76,7 @@ Owner: the project maintainer (Order52) is the only maintainer, so every row has
 ## Gaps
 
 - **Android dependencies have no automated advisory check.** The AndroidX and JNA versions are pinned and current as of this date, but nothing in CI flags a new advisory for them.
-- **No licence notices in the app.** §25 requires an "Open-source licenses" screen with the third-party notices; the app has none yet. Distribution needs it (MIT, Apache-2.0 and BSD all ask for their notices).
+- **Notices are as good as their sources.** Where neither a crate nor its repository publishes a licence file, the notice names the authors from the crate's metadata; that is not the same as a copyright statement from the holders. No legal review has been done.
 - **No source audit.** Advisory databases list known problems only. The worker's parsers (`yara-x`, the image decoders) run on hostile input; containing them is the isolated worker's job (§8.6), not trust in the parsers.
 - **One maintainer** for every dependency.
 - **The WebView is outside Rift's control.** Its version on a given device depends on that device's updates; Rift refuses versions below its minimum.
