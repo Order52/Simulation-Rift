@@ -156,7 +156,14 @@ tap() { # text|id value
 }
 # Scrolls the home screen by half the display's height. Fixed coordinates
 # missed CI's smaller emulator screen, where S16d and S16f never scrolled.
+# A shown keyboard (a focused address field) covers the lower half, where
+# the swipe starts, so the page stayed put (S16d, Phase 4). BACK is sent
+# only while Android reports the keyboard shown; otherwise it would leave Rift.
 scroll_down() {
+  if "$adb" shell dumpsys input_method | tr -d '\r' | grep -q "mInputShown=true"; then
+    "$adb" shell input keyevent KEYCODE_BACK
+    sleep 1
+  fi
   dims="$("$adb" shell wm size | tr -d '\r' | sed -n 's/.*: *\([0-9]*\)x\([0-9]*\)$/\1 \2/p' | tail -1)"
   w="${dims% *}" h="${dims#* }"
   "$adb" shell input swipe $((w / 2)) $((h * 3 / 4)) $((w / 2)) $((h / 4)) 300
