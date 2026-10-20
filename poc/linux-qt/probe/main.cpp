@@ -40,8 +40,10 @@ QString statusField(const QString &pid, const QString &key)
     QFile file(QStringLiteral("/proc/%1/status").arg(pid));
     if (!file.open(QIODevice::ReadOnly))
         return QStringLiteral("unreadable");
-    while (!file.atEnd()) {
-        const QString line = QString::fromUtf8(file.readLine());
+    // /proc files report size 0, so QFile::atEnd() is true before any read:
+    // read the whole file instead of line by line.
+    const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
         if (line.startsWith(key + QLatin1Char(':')))
             return line.mid(key.size() + 1).trimmed();
     }
@@ -73,8 +75,10 @@ void reportVisibleEngineProcesses()
             if (namespaceOf(pid, kind) != namespaceOf(self, kind))
                 fresh << QLatin1String(kind);
         }
-        say(QStringLiteral("inside sees pid %1 (%2): Seccomp=%3 NoNewPrivs=%4 new_namespaces=%5")
+        say(QStringLiteral("inside sees pid %1 (%2): Seccomp=%3 filters=%4 (mine %5) NoNewPrivs=%6 new_namespaces=%7")
                 .arg(pid, comm, statusField(pid, QStringLiteral("Seccomp")),
+                     statusField(pid, QStringLiteral("Seccomp_filters")),
+                     statusField(self, QStringLiteral("Seccomp_filters")),
                      statusField(pid, QStringLiteral("NoNewPrivs")), fresh.join(QLatin1Char(','))));
     }
     say(QStringLiteral("inside sees %1 engine processes").arg(seen));

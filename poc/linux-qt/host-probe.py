@@ -6,13 +6,17 @@ truncated by the kernel to 15 bytes), reads its type from its own command
 line (Chromium's --type=...), its seccomp and NoNewPrivs state, and which
 namespaces differ from the host's and from the app's main process.
 
-A renderer counts as confined only with Seccomp=2, NoNewPrivs=1, and user,
-mount and network namespaces different from the app's main process (a
-sandbox of its own, not just the app's Flatpak sandbox).
+Every process in a Flatpak already has Seccomp=2 and NoNewPrivs=1 from
+bubblewrap (one filter). A renderer therefore counts as sandboxed by the
+engine only with more seccomp filters than the app's main process (Chromium
+stacks its own), NoNewPrivs=1, and mount and pid namespaces of its own.
+Whether it also has user and network namespaces of its own is reported
+separately: the first run (20 Oct) showed it does not.
 
 Usage: python3 -I host-probe.py (the app's main process is found by its
 comm, qt-probe; the pid it prints is in its own pid namespace)
-Exit 0: every renderer confined; 1: a renderer not confined; 2: none found.
+Exit 0: every renderer sandboxed by the engine; 1: a renderer not; 2: none
+found.
 """
 
 import os
@@ -57,10 +61,18 @@ def process_type(pid):
     raw = read(f"/proc/{pid}/cmdline")
     if raw is None:
         return "unreadable"
-    for arg in raw.split(b"\0"):
+    # Chromium rewrites its title over argv, joined by spaces, not NULs.
+    for arg in raw.replace(b"\0", b" ").split(b" "):
         if arg.startswith(b"--type="):
             return arg[len(b"--type="):].decode(errors="replace")
     return "browser-or-launcher"
+
+
+def filters(fields):
+    try:
+        return int(fields.get("Seccomp_filters", ""))
+    except ValueError:
+        return -1
 
 
 def find(comm):
@@ -73,7 +85,8 @@ def find(comm):
 def main():
     app = find("qt-probe")
     host = str(os.getpid())
-    renderers = confined = 0
+    renderers = confined = own_user_net = 0
+    app_filters = filters(status(app)) if app else -1
     for entry in sorted(pathlib.Path("/proc").iterdir(), key=lambda p: p.name):
         if not entry.name.isdigit():
             continue
@@ -97,13 +110,17 @@ def main():
             ok = (
                 fields.get("Seccomp") == "2"
                 and fields.get("NoNewPrivs") == "1"
-                and all(k in vs_app for k in ("user", "mnt", "net"))
+                and app_filters >= 1
+                and filters(fields) > app_filters
+                and all(k in vs_app for k in ("mnt", "pid"))
             )
             confined += ok
+            own_user_net += all(k in vs_app for k in ("user", "net"))
     if app:
-        print(f"app main pid {app}: Seccomp={status(app).get('Seccomp')} "
+        print(f"app main pid {app}: Seccomp={status(app).get('Seccomp')} filters={app_filters} "
               f"new_vs_host={','.join(k for k in NAMESPACES if differs(app, host, k)) or '-'}")
-    print(f"verdict: {confined} of {renderers} renderers confined")
+    print(f"verdict: {confined} of {renderers} renderers sandboxed by the engine; "
+          f"{own_user_net} of {renderers} with user and network namespaces of their own")
     if renderers == 0:
         sys.exit(2)
     sys.exit(0 if confined == renderers else 1)
