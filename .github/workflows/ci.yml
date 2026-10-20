@@ -33,6 +33,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+      # The Android libraries on every module's runtime classpaths (from the
+      # gradle.lockfiles) against OSV's advisories; android/scan-dependencies.sh
+      # says what is left out. A pinned release, checked against the SHA-256
+      # it was published with.
+      - name: Scan the Android libraries (OSV-Scanner)
+        env:
+          OSV_SCANNER_VERSION: v2.6.0
+          OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/$OSV_SCANNER_VERSION/osv-scanner_linux_amd64"
+          echo "$OSV_SCANNER_SHA256  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          sh android/scan-dependencies.sh "$RUNNER_TEMP/osv-scanner"
 
   # Phase 0 evidence on a real x86_64 distribution kernel (PoC L2/L3).
   linux-worker-lockdown:
