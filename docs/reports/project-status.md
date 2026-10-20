@@ -62,7 +62,7 @@ The original specification was reviewed and replaced by `docs/architecture.md`: 
 | `rift-core::vault` | age-encrypted, HMAC-authenticated vault format. |
 | `rift-worker` | Shared job logic: rule loading, YARA-X scans, bounded image decoding. Deadline mode chosen per platform. |
 
-Tooling: pinned Rust toolchain (1.99.1), `clippy` with strict lints, `cargo deny` (licenses and RustSec advisories, with scoped and justified exceptions), and CI on Ubuntu and macOS plus a Linux lockdown job.
+Tooling: pinned Rust toolchain (1.99.1; the code must also build with 1.98, the Flatpak SDK's compiler, checked by the `msrv` CI job), `clippy` with strict lints, `cargo deny` (licenses and RustSec advisories, with scoped and justified exceptions), and CI on Ubuntu and macOS plus a Linux lockdown job.
 
 ### 2.4 Findings that changed the design
 

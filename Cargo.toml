@@ -6,7 +6,11 @@ exclude = ["poc"]
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.99"
+# The oldest compiler the code must build with: the Flatpak SDK's Rust
+# extension (org.freedesktop.Sdk.Extension.rust-stable, 25.08), which the
+# Linux release builds with and which trails stable. Development uses the
+# newer toolchain pinned in rust-toolchain.toml; CI checks both.
+rust-version = "1.98"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Order52/Simulation-Rift"
 publish = false
