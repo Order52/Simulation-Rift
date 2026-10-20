@@ -28,3 +28,15 @@ codegen-units = 1
 # The symbol table is most of the Android library (23 MB -> 14 MB for arm64);
 # exported JNI symbols live in .dynsym and are kept.
 strip = "symbols"
+
+# Tests run passphrase wrapping at the fixed scrypt work factor (N = 2^17,
+# rift_core::vault::PASSPHRASE_WORK_FACTOR); unoptimized, scrypt takes
+# several seconds per call. Only the hashing crates are optimized.
+[profile.dev.package.scrypt]
+opt-level = 3
+[profile.dev.package.salsa20]
+opt-level = 3
+[profile.dev.package.pbkdf2]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3

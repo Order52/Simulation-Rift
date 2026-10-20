@@ -55,7 +55,20 @@ pub enum VaultError {
     Randomness,
     #[error("invalid key material")]
     InvalidKey,
+    /// A passphrase-wrapped identity asks for more scrypt work than Rift
+    /// writes: not a wrong passphrase, and not a file Rift wrote.
+    #[error(
+        "the passphrase protection needs scrypt work factor {required}; Rift writes and accepts {allowed}"
+    )]
+    ExcessiveWork { required: u8, allowed: u8 },
 }
+
+/// The scrypt work factor (N = 2^17: 128 MiB, about a second on a phone)
+/// for every passphrase-wrapped identity Rift writes, and the only one it
+/// accepts. age would otherwise pick it by timing the device at that moment
+/// and accept at most that measurement + 4; a busy moment at unlock then
+/// refused the right passphrase before running scrypt (v2, Phase 4).
+pub const PASSPHRASE_WORK_FACTOR: u8 = 17;
 
 /// Random object identifier; storage names never reveal content hashes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -117,7 +130,11 @@ impl VaultKey {
 
     /// Wraps the identity with an age passphrase (scrypt) — the Linux provider.
     pub fn wrap_with_passphrase(&self, passphrase: SecretString) -> Result<Vec<u8>, VaultError> {
-        let encryptor = age::Encryptor::with_user_passphrase(passphrase);
+        let mut recipient = age::scrypt::Recipient::new(passphrase);
+        recipient.set_work_factor(PASSPHRASE_WORK_FACTOR);
+        let encryptor =
+            age::Encryptor::with_recipients(iter::once(&recipient as &dyn age::Recipient))
+                .map_err(|e| VaultError::Encrypt(e.to_string()))?;
         let mut out = Vec::new();
         let mut writer = encryptor
             .wrap_output(&mut out)
@@ -131,7 +148,8 @@ impl VaultKey {
         wrapped: &[u8],
         passphrase: SecretString,
     ) -> Result<Self, VaultError> {
-        let identity = age::scrypt::Identity::new(passphrase);
+        let mut identity = age::scrypt::Identity::new(passphrase);
+        identity.set_max_work_factor(PASSPHRASE_WORK_FACTOR);
         let mut secret = String::new();
         decryptor(wrapped, &identity)?
             .read_to_string(&mut secret)
@@ -216,7 +234,13 @@ fn decryptor<'a, R: Read + 'a>(
         age::Decryptor::new(ciphertext).map_err(|e| VaultError::Decrypt(e.to_string()))?;
     decryptor
         .decrypt(iter::once(identity))
-        .map_err(|e| VaultError::Decrypt(e.to_string()))
+        .map_err(|e| match e {
+            age::DecryptError::ExcessiveWork { required, .. } => VaultError::ExcessiveWork {
+                required,
+                allowed: PASSPHRASE_WORK_FACTOR,
+            },
+            e => VaultError::Decrypt(e.to_string()),
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -503,6 +527,49 @@ mod tests {
             VaultKey::unwrap_with_passphrase(&wrapped, SecretString::from("wrong".to_owned()))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn passphrase_work_is_fixed_and_more_is_not_a_wrong_passphrase() {
+        let key = VaultKey::generate();
+        let wrapped = key
+            .wrap_with_passphrase(SecretString::from("correct horse".to_owned()))
+            .unwrap();
+        // The header names the work factor in the clear: `-> scrypt <salt> 17`.
+        let header = String::from_utf8_lossy(&wrapped[..wrapped.len().min(200)]).into_owned();
+        let stanza = header
+            .lines()
+            .find(|l| l.starts_with("-> scrypt "))
+            .unwrap();
+        assert_eq!(
+            stanza.rsplit(' ').next(),
+            Some(PASSPHRASE_WORK_FACTOR.to_string().as_str())
+        );
+
+        // More work than Rift writes: refused before scrypt runs, and said so.
+        let mut heavier =
+            age::scrypt::Recipient::new(SecretString::from("correct horse".to_owned()));
+        heavier.set_work_factor(PASSPHRASE_WORK_FACTOR + 1);
+        let mut out = Vec::new();
+        let mut writer =
+            age::Encryptor::with_recipients(iter::once(&heavier as &dyn age::Recipient))
+                .unwrap()
+                .wrap_output(&mut out)
+                .unwrap();
+        writer
+            .write_all(key.export_secret().expose_secret().as_bytes())
+            .unwrap();
+        writer.finish().unwrap();
+        assert!(matches!(
+            VaultKey::unwrap_with_passphrase(&out, SecretString::from("correct horse".to_owned())),
+            Err(VaultError::ExcessiveWork { required, allowed })
+                if required == PASSPHRASE_WORK_FACTOR + 1 && allowed == PASSPHRASE_WORK_FACTOR
+        ));
+        // A wrong passphrase is still a decryption failure.
+        assert!(matches!(
+            VaultKey::unwrap_with_passphrase(&wrapped, SecretString::from("wrong".to_owned())),
+            Err(VaultError::Decrypt(_))
+        ));
     }
 
     #[test]

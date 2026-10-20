@@ -116,9 +116,11 @@ impl From<LockerError> for VaultFailure {
                     Self::WrongSecret
                 }
                 VaultError::TooLarge(limit) => Self::TooLarge { limit },
+                // Not a wrong passphrase: a wrapping Rift did not write.
                 VaultError::ContentMismatch
                 | VaultError::IndexMalformed(_)
-                | VaultError::IndexMissing => Self::Damaged {
+                | VaultError::IndexMissing
+                | VaultError::ExcessiveWork { .. } => Self::Damaged {
                     detail: e.to_string(),
                 },
                 other => Self::Storage {
