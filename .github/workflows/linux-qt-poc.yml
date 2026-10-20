@@ -1,0 +1,48 @@
+name: linux-qt-poc
+
+# Phase 5 PoCs for the Qt design (docs/reports/phase-5-qt-design.md): Qt
+# WebEngine from Flathub's BaseApp in a real Flatpak on Ubuntu, probed from
+# the host. Runs when the PoC changes, or by hand.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - poc/linux-qt/**
+      - .github/workflows/linux-qt-poc.yml
+
+permissions:
+  contents: read
+
+jobs:
+  q1-sandbox:
+    name: Q1 Qt WebEngine sandbox in Flatpak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q flatpak flatpak-builder xvfb dbus
+          flatpak --version
+          echo "unprivileged user namespaces restricted by AppArmor: $(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo n/a)"
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Build the probe Flatpak
+        run: |
+          flatpak-builder --user --install-deps-from=flathub --install --force-clean \
+            --disable-rofiles-fuse build poc/linux-qt/org.simulationrift.QtProbe.yml 2>&1 | tail -20
+          flatpak info --user org.simulationrift.QtProbe
+          flatpak info --user io.qt.qtwebengine.BaseApp//6.10 | head -12 || true
+      - name: Run the probe
+        run: |
+          mkdir -p out
+          { uname -a; flatpak --version; flatpak list --user; } > out/environment.txt
+          dbus-run-session -- xvfb-run -a sh poc/linux-qt/run-ci.sh out
+          cat out/summary.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: linux-qt-q1
+          path: out/
+          if-no-files-found: ignore

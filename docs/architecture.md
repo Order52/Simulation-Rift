@@ -403,7 +403,7 @@ Without the VPN a proxy is not a boundary (A8 finding 15): WebRTC sends UDP arou
 
 ## 9. Linux platform
 
-> **Superseded in part (20 Oct 2026).** The Linux app will use Qt, not GTK4, and is built last, after Android (§22). This section is the reviewed v2.0 GTK4/WebKitGTK design, kept until the Qt design replaces it. The parts that do not depend on the toolkit (Flatpak, worker lockdown, the network-namespace lock) are expected to carry over.
+> **Superseded in part (20 Oct 2026).** The Linux app will use Qt, not GTK4, and is built last, after Android (§22). This section is the reviewed v2.0 GTK4/WebKitGTK design, kept until the Qt design replaces it. The Qt proposal and its PoCs (Q1–Q4) are in [phase-5-qt-design.md](reports/phase-5-qt-design.md). The parts that do not depend on the toolkit (Flatpak, worker lockdown, the network-namespace lock) are expected to carry over.
 
 ### 9.1 Distribution
 

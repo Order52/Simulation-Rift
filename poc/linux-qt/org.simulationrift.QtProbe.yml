@@ -1,0 +1,21 @@
+# PoC Q1 (Phase 5): Qt WebEngine from Flathub's BaseApp, as a shipping
+# Flatpak would use it. No network permission beyond what browsing needs;
+# no filesystem access.
+app-id: org.simulationrift.QtProbe
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: qt-probe
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+modules:
+  - name: qt-probe
+    buildsystem: cmake-ninja
+    sources:
+      - type: dir
+        path: probe
