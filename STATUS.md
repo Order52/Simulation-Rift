@@ -28,6 +28,7 @@ The Android debug build works end to end on emulators, and its browser is now is
 | Other apps cannot drive the browser or the core | The same permission and checks; the proxy answers 407 without the session token | S24 |
 | Pages cannot reach your LAN, router or local services | Every engine request goes to Rift's proxy (Chromium's implicit loopback bypass removed), which refuses loopback, private and link-local addresses unless you allow a host name for the session | S9, S25 |
 | WebRTC and escaped code have no network route | A VPN for the browser app only that forwards nothing: TCP, UDP and DNS are dropped; WebRTC sees only the VPN's own address | S26 |
+| Links do not share a session | A link from another app opens in a new session, after Android wipes the browser app, whenever the current session has loaded a page | n5 |
 | Nothing survives a reset | Android's own wipe of the browser app; a fresh instance must report zero files and a new process id; checked again from outside with root in S13 | S12, S13, S27 |
 | Losing the lock ends the session | If another VPN starts, the session ends and the browser is wiped; Rift never takes the VPN back without you | S28 |
 | No silent downgrade | Without the lock the browser refuses to load pages; "reduced isolation" is an explicit per-session choice, labelled for the whole session | S28, S28b |
@@ -42,7 +43,8 @@ The Android debug build works end to end on emulators, and its browser is now is
 | Feature | What it does | Tests |
 |---|---|---|
 | Disposable, isolated browser | System WebView in the separate browser app, behind the network lock; no native bridges or device permissions; refuses to browse if the engine sandbox or the lock cannot be confirmed, or WebView is too old. | S1, S2, S15, S23–S28, N1–N4 |
-| Navigation policy | Blocks addresses the threat database lists and automatic external-app links, asks before lookalike addresses, marks unencrypted pages, explains every decision. | N1–N4, w1 |
+| Navigation policy | Blocks addresses the threat database lists and automatic external-app links, asks before lookalike addresses, marks unencrypted pages, explains every decision. Every address is judged as the engine reads it (WHATWG URL), and Rift loads exactly that form. | N1–N5, w1 |
+| Links from other apps | Rift can be chosen as the browser or sent a link. The link in a shared message is found (defanged ones too: `hxxps://`, `[.]`), and each link from another app opens in a new, wiped session once the current one has loaded a page. | n5 |
 | Live page watch | The bar shows the session's status and a list of what its pages tried (location, camera, microphone, files, local network, connections around the proxy, listed addresses and hosts, downloads and their verdicts), with what is not watched; the home screen shows it too. Only a reset clears it. | w1 |
 | Download capture | Downloads are re-fetched by the Rust core (destination checks on every redirect, size limit, cookies only to their origin) into encrypted quarantine. Hostile names are display-only. | S8–S10 |
 | Previews | Images and PDFs render in an isolated worker (no files, no network, seccomp on the parser thread, deadlines, unbound after each job). Text is shown as escaped plain text. | P1, P2, S3–S7, S19 |

@@ -152,6 +152,9 @@ Phase 2 findings, added to the list above: 15–26.
 68. (Phase 7) INV-12's `FLAG_SECURE` for vault screens was never set: a screenshot with the vault unlocked showed it (h3). The controller's window is now secure while the vault is unlocked.
 69. (Phase 7) §10.1's "no autofill" was not enforced: an autofill service got fill requests from the home screen and from a page's sign-in form (h3). Compose's text fields and WebView report to autofill themselves, so excluding the window's views was not enough. Compose fields are now marked as holding no autofill data; the WebView describes no page, accepts no fill and saves no form data. One empty request per focused page field remains.
 70. (Phase 7) Other apps could draw over both of Rift's windows (an overlay covered 97 %) and a non-tool accessibility service read the home screen (h3, H4). Both apps now hide other apps' overlays (API 31+; on API 30 they drop touches through them) and mark their content for accessibility tools only (API 34+).
+71. (Phase 7) The navigation check read some addresses differently from the engine. The Safe Browsing canonicalization checked `https://evil.example\@good.example/` as `good.example`, while WebView opened `evil.example`; a host with spaces passed and then loaded nothing. The core now checks the WHATWG form the engine parses, and the browser loads that form.
+72. (Phase 7) A WebView that had shown no page covered the browser's trusted bar in black: Compose does not clip an embedded view, and an undrawn WebView fills its whole clip. The engine's area is now clipped and the bar drawn above it (n5).
+73. (Phase 7) A link shared inside a message was silently ignored, and links from other apps opened beside the current session's pages. Shared text now gives its first link (defanged spellings included), and a link from another app opens in a new, wiped session once the current one has loaded a page.
 
 ### 2.8 Phase 4 code (vault)
 

@@ -288,7 +288,7 @@ Everything else is a concrete type.
 - Permissions: `INTERNET`; `USE_BIOMETRIC` for the vault's unlock prompt (§8.7; a normal permission that only lets the app ask the system to authenticate the user); `HIDE_OVERLAY_WINDOWS` in both apps (a normal permission that lets a window hide other apps' overlays, §10.7); and `POST_NOTIFICATIONS` if transfer progress notifications are adopted. The browser APK also requests `ACCESS_NETWORK_STATE` (a normal permission), so that it can confirm its default network is the lock before it loads a page (§8.8). **No** camera, microphone, location, contacts, SMS, storage, accessibility, device-admin, or install-packages permissions. Because the permissions are absent, the OS denies them regardless of WebView callbacks (B4).
 - `android:allowBackup="false"` and `dataExtractionRules` that exclude everything (INV-12).
 - `usesCleartextTraffic` is set only as required for user-initiated HTTP browsing. Rift's own traffic is HTTPS-only.
-- Intent filters: `ACTION_VIEW` for http/https (Rift appears as a browser choice) and `ACTION_SEND` with `text/plain` (URLs) and `*/*` (file import).
+- Intent filters: `ACTION_VIEW` for http/https (Rift appears as a browser choice) and `ACTION_SEND` with `text/plain` (a link in shared text, §10.2). Files shared from other apps (`*/*`) are not accepted yet; files reach Rift only as downloads.
 - Components:
   - Two APKs signed with the same key (ADR-04, revised in v2.1). The controller, `org.simulationrift.app`, holds everything below except the browser. The browser, `org.simulationrift.browser`, holds only `BrowserActivity` (`android:process=":web"`) and `SessionService` (its default process, which never loads WebView). Both define the `signature` permission `org.simulationrift.permission.RIFT`; each exported component requires it, and each side also checks the calling UID's package and signer on every call. The browser has no launcher entry.
   - `MainActivity` (main process).
@@ -449,7 +449,7 @@ rift-core's vault (§14) under the app's data directory, protected by a passphra
 ### 10.1 Features
 
 - Address bar, back/forward, reload, the session indicator, Reset, a downloads list, and a protection status chip.
-- Trusted controls live outside web content and cannot be covered (INV-6).
+- Trusted controls live outside web content and cannot be covered (INV-6). On Android the bar is drawn above the engine's area, which is clipped to its bounds: an engine that has not drawn a page yet fills its whole clip, and covered the bar until Phase 7 (finding 21). n5 checks that the bar is drawn.
 - No password manager, no autofill, no import from other browsers, and no extensions.
 
 ### 10.2 Navigation rules
@@ -462,10 +462,14 @@ rift-core's vault (§14) under the app's data directory, protected by a passphra
 | `intent:`, `market:`, custom schemes | Never auto-forwarded. V1 shows "external app links are blocked". |
 | `blob:`, `data:` in-page | Engine-internal use is allowed. Downloads from these sources are unsupported in V1. |
 | Certificate error | Cancelled. There is no click-through in V1. |
+| A link from another app (`ACTION_VIEW`, or shared text) | Opened in a new, wiped session if the current one has loaded any page, so links never share a session with pages opened before them. In shared text the first `http(s)://` link is used ("look at this: https://…"), with the defanged spellings of threat reports undone (`hxxps://`, `example[.]com`, `[:]`); text without a link is refused as "not a valid web address". Tested by n5. |
+| Any address Rift loads itself (typed, shared, from another app) | Judged and loaded in the form the engine parses (WHATWG URL): see §10.3. |
 
 ### 10.3 URL checks and the honest coverage claim
 
 Rift checks user-entered URLs, main-frame navigations that the engine reports, and every download URL and redirect hop that the core fetches.
+
+Every check judges an address as the browser engine reads it. The core first parses it with the WHATWG URL standard (the `url` crate, which Chromium and Qt WebEngine follow), refuses what does not parse as an `http(s)` address, and runs the Safe Browsing canonicalization, the indicator lookup and the heuristics on that serialization. For addresses Rift loads itself, `typed_address` returns that same serialization, so the browser loads exactly what was judged. Until Phase 7 the looser Safe Browsing canonicalization read some addresses differently from the engine: `https://evil.example\@good.example/` was checked as `good.example` and opened as `evil.example`, and a host with spaces passed the check and then loaded nothing (Phase 7 finding 20).
 
 Rift **does not** claim to inspect subresources, WebSockets, WebRTC, service-worker fetches, or POST navigations. WebView's callbacks have documented gaps, and WebRTC data channels can reach local-network addresses without a permission prompt.
 
