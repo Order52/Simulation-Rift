@@ -6,6 +6,10 @@
 // the controller, and every connection goes to Qt's application proxy:
 // the forwarder to the controller's egress proxy. Text from the controller
 // is shown as plain text, never as HTML.
+//
+// The window starts on about:blank, without asking the controller, so that
+// a renderer exists and is checked before the controller sends the first
+// page. Nothing here logs an address: stderr may outlive the session.
 
 #include "browser.h"
 
@@ -31,6 +35,7 @@
 #include <QtWebEngineCore/qtwebenginecoreversion.h>
 #include <QtWebEngineCore/qwebenginepage.h>
 
+#include <cstdio>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -74,6 +79,7 @@ protected:
 
 private:
     Window *m_window;
+    bool m_started = false;
 };
 
 class Window : public QMainWindow
@@ -144,6 +150,9 @@ public:
         });
         connect(m_page, &QWebEnginePage::urlChanged, this, [this](const QUrl &url) {
             m_address->setText(url.toDisplayString());
+        });
+        connect(m_page, &QWebEnginePage::loadFinished, this, [](bool ok) {
+            std::fputs(ok ? "rift-browser: page loaded\n" : "rift-browser: page did not load\n", stderr);
         });
         connect(m_page, &QWebEnginePage::titleChanged, this, [this](const QString &title) {
             setWindowTitle(QStringLiteral("Rift session: %1").arg(title));
@@ -224,6 +233,11 @@ bool Page::acceptNavigationRequest(const QUrl &url, NavigationType type, bool is
     // through the controller's proxy, which screens it.
     if (!isMainFrame)
         return true;
+    if (!m_started) {
+        m_started = true;
+        if (url == QUrl(QStringLiteral("about:blank")))
+            return true; // the bootstrap page: no network, and its renderer gets checked
+    }
     const bool confirmedByUser = !confirmed.isEmpty() && url == confirmed;
     confirmed = QUrl();
     const std::string text = url.toString(QUrl::FullyEncoded).toStdString();
@@ -267,6 +281,7 @@ std::int32_t run_browser(std::uint16_t proxy_port)
     }
     if (closeEarly)
         return 0;
+    window.load(QUrl(QStringLiteral("about:blank")));
     for (const std::string &url : early)
         window.load(QUrl(QString::fromStdString(url)));
     const int code = QApplication::exec();
