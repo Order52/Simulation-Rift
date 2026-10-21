@@ -282,7 +282,7 @@ class SecurityTest {
                     repeat(12) { i ->
                         dir?.let { java.io.File(it, "n6-tree-$i.xml").outputStream().use { out -> device.dumpWindowHierarchy(out) } }
                         listed = listed || device.hasObject(By.textContains("rift-n6.png"))
-                        device.swipe(w / 2, h * 3 / 4, w / 2, h / 2, 80)
+                        inputSwipe(w / 2, h * 3 / 4, w / 2, h / 2)
                         device.waitForIdle()
                     }
                     throw AssertionError("the file's View safely button is not on the home screen (its name is shown: $listed; trees in n6-tree-*.xml)")
@@ -291,7 +291,7 @@ class SecurityTest {
             // button at the edge can be under the gesture bar), found afresh
             // for each tap, and tapped twice at most.
             val h = device.displayHeight
-            if (view.visibleBounds.bottom > h * 4 / 5) device.swipe(device.displayWidth / 2, h * 3 / 4, device.displayWidth / 2, h / 2, 80)
+            if (view.visibleBounds.bottom > h * 4 / 5) inputSwipe(device.displayWidth / 2, h * 3 / 4, device.displayWidth / 2, h / 2)
             device.waitForIdle()
             val opened = (1..2).any {
                 device.findObject(By.res("preview-${file.id}"))?.click()
@@ -1953,13 +1953,23 @@ class SecurityTest {
         return ask(intent)
     }
 
+    /** A 300 ms swipe through the shell's `input`, slow enough not to fling. */
+    private fun inputSwipe(x1: Int, y1: Int, x2: Int, y2: Int) {
+        device.executeShellCommand("input swipe $x1 $y1 $x2 $y2 300")
+        device.waitForIdle()
+        // API 34 caches the accessibility tree in UiAutomation, and a scrolled
+        // Compose screen kept its old tree there: the button was on screen and
+        // not found. Clearing the cache makes the next lookup read the screen.
+        if (android.os.Build.VERSION.SDK_INT >= 34) InstrumentationRegistry.getInstrumentation().uiAutomation.clearCache()
+    }
+
     /** Swipes a quarter of the screen at a time, slowly (no fling), down then back up, until [selector] shows (at most 20 swipes each way). */
     private fun swipeUntil(selector: androidx.test.uiautomator.BySelector): androidx.test.uiautomator.UiObject2? {
         val (w, h) = device.displayWidth to device.displayHeight
         for (up in listOf(false, true)) {
             repeat(20) {
                 device.findObject(selector)?.let { return it }
-                if (up) device.swipe(w / 2, h / 2, w / 2, h * 3 / 4, 80) else device.swipe(w / 2, h * 3 / 4, w / 2, h / 2, 80)
+                if (up) inputSwipe(w / 2, h / 2, w / 2, h * 3 / 4) else inputSwipe(w / 2, h * 3 / 4, w / 2, h / 2)
                 device.waitForIdle()
             }
         }
