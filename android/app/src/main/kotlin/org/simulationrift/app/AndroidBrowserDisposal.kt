@@ -239,6 +239,10 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
             // update time it was written for. Neither holds browsing data.
             Regex("files/profileInstalled"),
             Regex("files/profileinstaller_profileWrittenFor_lastUpdateTime\\.dat"),
+            // ART's runtime app image (Android 14+, apps that are not
+            // debuggable): compiled from Rift's own APK when it starts, so
+            // every reset of a release build failed until it was allowed.
+            Regex("cache/oat_primary/[a-z0-9_]+/base\\.art"),
         )
     }
 }
