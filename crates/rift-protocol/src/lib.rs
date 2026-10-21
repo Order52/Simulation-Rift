@@ -1,4 +1,5 @@
-//! Controller ⇄ worker contract (docs/architecture.md §7.2, INV-3).
+//! Controller ⇄ worker contract (docs/architecture.md §7.2, INV-3), and in
+//! [`session`] the controller ⇄ Linux browser host contract (§9.2).
 //!
 //! Workers parse untrusted content and must be assumed compromised, so every
 //! response is treated as hostile input: frames are size-checked before any
@@ -9,6 +10,8 @@
 use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize};
+
+pub mod session;
 
 pub const PROTOCOL_VERSION: u16 = 1;
 /// Largest control frame in either direction. Pixels never travel in frames.

@@ -1,0 +1,18 @@
+[package]
+name = "rift-channel"
+version = "0.1.0"
+description = "Simulation-Rift: the controller-to-browser-host session channel on Linux"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rift-protocol = { path = "../rift-protocol" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1.1.5", features = ["fs", "net", "stdio"] }
