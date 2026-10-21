@@ -272,6 +272,8 @@ class SecurityTest {
             val home = device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS)
             val view = home?.scrollUntil(Direction.DOWN, Until.findObject(By.res("preview-${file.id}")))
                 ?: device.findObject(By.res("preview-${file.id}"))
+                // A small screen can fling past it: look back up too.
+                ?: home?.scrollUntil(Direction.UP, Until.findObject(By.res("preview-${file.id}")))
                 ?: swipeUntil(By.res("preview-${file.id}"))
                 ?: run {
                     screenshot("n6-home")
@@ -301,8 +303,10 @@ class SecurityTest {
         }
     }
 
+    // v1 and v2 (Check, Rift AI) are named to run after s16a-s16b and n3,
+    // which need no threat database installed: v1 installs the demo one.
     @Test
-    fun c1_checkLooksAtALinkWithoutOpeningIt() {
+    fun v1_checkLooksAtALinkWithoutOpeningIt() {
         Core.installDemoIntel()
         assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
         val generation = activeGeneration()
@@ -322,13 +326,14 @@ class SecurityTest {
                 field.text = url
                 (device.wait(Until.findObject(By.res("check").enabled(true)), UI_TIMEOUT_MS) ?: throw AssertionError("check button")).click()
                 // The previous result is replaced as the text changes: wait for this one's.
-                val title = device.wait(Until.findObject(By.res("check-title").text(expected)), UI_TIMEOUT_MS)?.text
+                // hasObject, not the element's text: the card is redrawn as the result arrives.
+                val title = expected.takeIf { device.wait(Until.hasObject(By.res("check-title").text(expected)), UI_TIMEOUT_MS) == true }
                     ?: throw AssertionError("$url: expected \"$expected\", shown: ${runCatching { device.findObject(By.res("check-title"))?.text }.getOrNull()}")
                 device.waitForIdle()
                 val score = runCatching { device.findObject(By.res("check-ai-score"))?.text }.getOrNull()
                 val abstained = device.findObject(By.res("check-ai-abstained")) != null
                 rows += "$url: $title, AI ${score ?: if (abstained) "not scored (most visited site)" else "none"}"
-                screenshot("c1-${rows.size}")
+                screenshot("v1-${rows.size}")
             }
             // Checking opened nothing: the same session, no page loaded, no browser window.
             assertEquals(generation, activeGeneration())
@@ -350,23 +355,23 @@ class SecurityTest {
         val p50 = micros[150]
         val p95 = micros[284]
         assertTrue("p95 $p95 us", p95 < 15_000)
-        report("c1", "${rows.joinToString("; ")}; nothing opened; a whole check p50 $p50 us, p95 $p95 us on this device")
+        report("v1", "${rows.joinToString("; ")}; nothing opened; a whole check p50 $p50 us, p95 $p95 us on this device")
     }
 
     @Test
-    fun c2_riftAiWarnsBeforeAPageLoads() {
+    fun v2_riftAiWarnsBeforeAPageLoads() {
         val generation = resetAndAwait(activeGeneration())
         val url = "http://secure-paypal-login.verify-account.xyz/signin/update.php?id=1"
         openBrowser(generation, url)
         assertNotNull("the warning", device.wait(Until.findObject(By.res("interstitial")), PAGE_TIMEOUT_MS))
         assertNotNull(device.wait(Until.findObject(By.textContains("Rift AI")), UI_TIMEOUT_MS))
-        screenshot("c2-interstitial")
+        screenshot("v2-interstitial")
         // The live watch has it as a warning.
         val seen = awaitWatch(generation) { "ai-suspicious" in it }
         assertTrue("seen: $seen", "ai-suspicious" in seen)
         val event = Core.pageWatch(generation)!!.events.first { it.code == "ai-suspicious" }
         assertEquals(PageWatch.Level.WARNING, event.level)
-        report("c2", "warned before loading: ${event.text.take(160)}")
+        report("v2", "warned before loading: ${event.text.take(160)}")
     }
 
     /** Hands `intent` to Rift's home screen as another app's link or share would. */
@@ -1922,13 +1927,15 @@ class SecurityTest {
         return ask(intent)
     }
 
-    /** Swipes the screen up, a third at a time, until [selector] shows (at most 15 swipes). */
+    /** Swipes a third of the screen at a time, down then back up, until [selector] shows (at most 15 swipes each way). */
     private fun swipeUntil(selector: androidx.test.uiautomator.BySelector): androidx.test.uiautomator.UiObject2? {
         val (w, h) = device.displayWidth to device.displayHeight
-        repeat(15) {
-            device.findObject(selector)?.let { return it }
-            device.swipe(w / 2, h * 3 / 4, w / 2, h * 5 / 12, 20)
-            device.waitForIdle()
+        for (up in listOf(false, true)) {
+            repeat(15) {
+                device.findObject(selector)?.let { return it }
+                if (up) device.swipe(w / 2, h * 5 / 12, w / 2, h * 3 / 4, 20) else device.swipe(w / 2, h * 3 / 4, w / 2, h * 5 / 12, 20)
+                device.waitForIdle()
+            }
         }
         return device.findObject(selector)
     }

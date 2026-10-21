@@ -58,7 +58,7 @@ Every source is split **by site** (80% train, 10% validation, 10% test), so the 
 
 AUC on the test split of the trained sources: 0.9781. The heuristics alone (§10.3) warn on 0.003% of the never-seen Phishing.Database pages and 0.03% of PhiUSIIL's: they look for specific tricks (a lookalike of a protected brand, an `@` in the address), not for resemblance.
 
-**Speed:** p50 1.9 µs, p95 4.0 µs per address on the training machine. On the Android emulator, a whole check (navigation policy, threat database, Rift AI) takes p50 19 µs and p95 64 µs (c1).
+**Speed:** p50 1.9 µs, p95 4.0 µs per address on the training machine. On the Android emulator, a whole check (navigation policy, threat database, Rift AI) takes p50 19 µs and p95 64 µs (v1).
 
 **Addresses checked by hand** (none in the training data):
 
