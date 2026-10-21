@@ -13,12 +13,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::vault::{Locker, State};
 use crate::worker::Workers;
 use rift_channel::Channel;
 use rift_ffi::{
     DownloadInfo, EgressStats, ForwardedEgress, Intel, IntelStatus, Navigation, Navigator, Preview,
-    PreviewKind, Recovery, Sessions, VaultEntry, Verdict, display_safe, typed_address,
+    PreviewKind, Recovery, Sessions, Verdict, display_safe, typed_address,
 };
 use rift_protocol::session::{
     Decision, Fact, FromBrowser, MAX_FACT_CODE_BYTES, MAX_FACT_TEXT_BYTES, MAX_FACTS,
@@ -90,13 +89,6 @@ pub enum Event {
         title: String,
         shown: Result<Shown, String>,
     },
-    /// The vault's state, its kept files (id and text) while unlocked, and
-    /// what the last vault action did.
-    Vault {
-        state: State,
-        kept: Vec<(String, String)>,
-        message: Option<String>,
-    },
 }
 
 pub type Notify = Arc<dyn Fn(Event) + Send + Sync>;
@@ -104,7 +96,7 @@ pub type Notify = Arc<dyn Fn(Event) + Send + Sync>;
 /// Where the controller keeps its data, all inside the Flatpak's own.
 #[derive(Debug, Clone)]
 pub struct Paths<'a> {
-    /// `$XDG_DATA_HOME/rift`: sessions, the threat database and the vault.
+    /// `$XDG_DATA_HOME/rift`: sessions and the threat database.
     pub data: &'a Path,
     /// `~/.var/app/<id>/sandbox`: the browser host's state directories.
     pub sandbox: &'a Path,
@@ -133,7 +125,6 @@ pub struct Controller {
     workers: Workers,
     demo_intel: Option<PathBuf>,
     intel_root: Option<PathBuf>,
-    locker: Locker,
     /// Serializes starting and ending sessions, so that ending one never
     /// ends its successor.
     lifecycle: Mutex<()>,
@@ -165,7 +156,6 @@ impl Controller {
             workers: Workers::new(paths.worker),
             demo_intel: paths.demo_intel.map(Path::to_owned),
             intel_root: paths.intel_root.map(Path::to_owned),
-            locker: Locker::new(&paths.data.join("vault")),
             lifecycle: Mutex::new(()),
             downloads: Arc::new(AtomicUsize::new(0)),
         });
@@ -282,48 +272,6 @@ impl Controller {
             pending.snapshot()
         ));
         Ok(format!("Installed {}.", pending.snapshot()))
-    }
-
-    pub fn locker(&self) -> &Locker {
-        &self.locker
-    }
-
-    /// The vault as the UI shows it, with `message` from the last action.
-    pub fn vault_event(&self, message: Option<String>) -> Event {
-        let state = self.locker.state();
-        let (kept, problem) = match state {
-            State::Unlocked => match self.locker.entries() {
-                Ok(entries) => (
-                    entries
-                        .iter()
-                        .map(|e| (e.id.clone(), kept_text(e)))
-                        .collect(),
-                    None,
-                ),
-                Err(error) => (
-                    Vec::new(),
-                    Some(format!("The vault could not be read: {error}")),
-                ),
-            },
-            _ => (Vec::new(), None),
-        };
-        Event::Vault {
-            state,
-            kept,
-            message: problem.or(message),
-        }
-    }
-
-    /// Copies quarantined file `id` of `generation` into the vault.
-    pub fn keep(&self, generation: u64, id: &str) -> Result<String, String> {
-        let entry = self
-            .locker
-            .keep(&self.sessions, generation, id, now_unix())?;
-        log(&format!("vault: kept a {}-byte file", entry.size));
-        Ok(format!(
-            "Kept {} in the vault. It is the original file and is still untrusted.",
-            entry.display_name
-        ))
     }
 
     /// Previews quarantined file `id` of `generation` (§11.2): images are
@@ -672,25 +620,6 @@ fn encode_png(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>, String>
         .and_then(|mut writer| writer.write_image_data(pixels))
         .map_err(|e| format!("the preview could not be encoded: {e}"))?;
     Ok(png)
-}
-
-/// A kept file in one line. rift-ffi escapes every text in it.
-fn kept_text(entry: &VaultEntry) -> String {
-    let scan = entry.scan.as_ref().map_or_else(
-        || "never scanned".to_owned(),
-        |scan| {
-            let demo = if scan.demo {
-                ", with the demo database"
-            } else {
-                ""
-            };
-            format!("last scan: {}{demo}", scan.label)
-        },
-    );
-    format!(
-        "{} ({} bytes, {}): {scan}",
-        entry.display_name, entry.size, entry.media_type
-    )
 }
 
 /// Hands one forwarded connection to the proxy. Only stream sockets are

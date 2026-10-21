@@ -13,11 +13,7 @@
 #            into quarantine, and scanned by a confined worker, which finds
 #            the demo database's marker in it
 #   ui       driven through accessibility while that file is quarantined:
-#            create the vault, preview the file, keep it, open and cancel
-#            the export warning, export it through the file chooser portal
-#            (the app has no filesystem access of its own), allow a local
-#            host, lock, refuse a wrong passphrase, unlock, delete
-#            (ui-check.py); the exported copy holds the downloaded bytes
+#            preview the file, allow a local host (ui-check.py)
 #   image    a downloaded PNG is decoded by a confined worker and shown in
 #            the window's preview (ui-check.py --image)
 #   crash    killing the browser host ends and destroys the session
@@ -122,11 +118,9 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
   # httpbin echoes the query into the body and sends it as an attachment.
   launch download "https://httpbin.org/response-headers?Content-Disposition=attachment%3B%20filename%3Ddemo.txt&marker=RIFT-DEMO-MARKER" \
     --env=QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
-  exported=$HOME/rift-e2e-export.txt
-  rm -f "$exported"
   if wait_count "$out/download.log" "^rift: session [0-9]*: a download was quarantined" 1 150; then
     echo "### ui"
-    python3 -I -B "$here/ui-check.py" --export "$exported" > "$out/ui.txt" 2>&1 || fail "ui: $(tail -1 "$out/ui.txt")"
+    python3 -I -B "$here/ui-check.py" > "$out/ui.txt" 2>&1 || fail "ui: $(tail -1 "$out/ui.txt")"
     cat "$out/ui.txt"
   else
     fail "download: nothing was quarantined"
@@ -135,16 +129,6 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
   grep -E "^rift(-browser)?:" "$out/download.log"
   grep -q "a download was quarantined; scan: \(Known malicious\|Suspicious\)" "$out/download.log" \
     || fail "download: the scan did not find the demo marker"
-  grep -q "^rift: vault: kept a [0-9]*-byte file" "$out/download.log" || fail "ui: nothing was kept"
-  grep -q "^rift: vault locked" "$out/download.log" || fail "ui: the vault was not locked"
-  kept=$(sed -n 's/^rift: vault: kept a \([0-9]*\)-byte file$/\1/p' "$out/download.log" | head -1)
-  grep -q "^rift: vault: exported a ${kept:-x}-byte file" "$out/download.log" || fail "ui: no export of the kept file"
-  if [ -f "$exported" ] && [ "$(wc -c < "$exported")" -eq "${kept:-0}" ] && grep -q RIFT-DEMO-MARKER "$exported"; then
-    echo "exported copy: $(wc -c < "$exported") bytes, with the marker"
-  else
-    fail "ui: the exported copy is missing or differs"
-  fi
-  rm -f "$exported"
   clean download
   echo
 

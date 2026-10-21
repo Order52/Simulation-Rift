@@ -16,7 +16,7 @@ name = "rift-worker"
 path = "src/main.rs"
 
 # The worker links the parsers, the protocol and the channel only: no
-# rift-core, so no session, vault or intelligence code is mapped next to
+# rift-core, so no session or intelligence code is mapped next to
 # untrusted input. Confinement as in PoC L2 (poc/linux-worker-lockdown).
 [dependencies]
 landlock = "0.4.7"

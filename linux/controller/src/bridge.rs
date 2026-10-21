@@ -15,7 +15,7 @@ pub mod qobject {
         type QUrl = cxx_qt_lib::QUrl;
     }
 
-    // QML sees camelCase names: vault_status as vaultStatus.
+    // QML sees camelCase names: local_hosts as localHosts.
     #[auto_cxx_name]
     extern "RustQt" {
         #[qobject]
@@ -29,10 +29,6 @@ pub mod qobject {
         #[qproperty(bool, active)]
         /// This build has an address to check for database updates.
         #[qproperty(bool, can_update)]
-        /// "missing", "locked", "unlocked" or "unusable".
-        #[qproperty(QString, vault)]
-        #[qproperty(QStringList, kept)]
-        #[qproperty(QString, vault_status)]
         /// Host names the user allowed to reach local addresses this session.
         #[qproperty(QString, local_hosts)]
         /// Changes with every preview shown.
@@ -57,13 +53,6 @@ pub mod qobject {
         #[qinvokable]
         fn refresh(self: Pin<&mut Self>);
 
-        /// Creates the vault, protected by `passphrase`.
-        #[qinvokable]
-        fn create_vault(self: Pin<&mut Self>, passphrase: &QString);
-        #[qinvokable]
-        fn unlock_vault(self: Pin<&mut Self>, passphrase: &QString);
-        #[qinvokable]
-        fn lock_vault(self: Pin<&mut Self>);
         /// Installs the threat database update in `folder`, chosen by the user.
         #[qinvokable]
         fn import_intel(self: Pin<&mut Self>, folder: &QUrl);
@@ -76,16 +65,6 @@ pub mod qobject {
         /// Previews quarantined file `index` (as listed).
         #[qinvokable]
         fn preview(self: Pin<&mut Self>, index: i32);
-        /// Copies quarantined file `index` (as listed) into the vault.
-        #[qinvokable]
-        fn keep(self: Pin<&mut Self>, index: i32);
-        /// Deletes kept file `index` (as listed) from the vault.
-        #[qinvokable]
-        fn remove_kept(self: Pin<&mut Self>, index: i32);
-        /// Writes kept file `index` (as listed) to `target`, chosen by the
-        /// user after the export warning.
-        #[qinvokable]
-        fn export_kept(self: Pin<&mut Self>, index: i32, target: &QUrl);
     }
 
     impl cxx_qt::Threading for RiftController {}
@@ -101,7 +80,6 @@ use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QList, QString, QStringList, QUrl};
 
 use crate::session::{Controller, Event, Notify, Shown};
-use crate::vault::State;
 
 /// Set once by `main` before QML is loaded.
 #[derive(Debug)]
@@ -127,9 +105,6 @@ pub struct RiftControllerRust {
     address: QString,
     active: bool,
     can_update: bool,
-    vault: QString,
-    kept: QStringList,
-    vault_status: QString,
     local_hosts: QString,
     preview_serial: i32,
     preview_title: QString,
@@ -138,20 +113,17 @@ pub struct RiftControllerRust {
     preview_note: QString,
     /// The quarantined files listed, as (generation, id, text).
     files: Vec<(u64, String, String)>,
-    /// The kept files' ids, in the order listed.
-    kept_ids: Vec<String>,
 }
 
 impl Default for RiftControllerRust {
     fn default() -> Self {
         let startup = STARTUP.get();
-        let (intel, vault, can_update) = match startup.map(|s| &s.controller) {
+        let (intel, can_update) = match startup.map(|s| &s.controller) {
             Some(Ok(controller)) => (
                 controller.intel_summary(),
-                state_name(controller.locker().state()),
                 controller.update_source().is_some(),
             ),
-            _ => (String::new(), state_name(State::Unusable), false),
+            _ => (String::new(), false),
         };
         Self {
             status: QString::from(startup.map_or("", |s| s.status.as_str())),
@@ -162,9 +134,6 @@ impl Default for RiftControllerRust {
             address: QString::from(startup.and_then(|s| s.address.as_deref()).unwrap_or("")),
             active: false,
             can_update,
-            vault: QString::from(vault),
-            kept: QStringList::default(),
-            vault_status: QString::default(),
             local_hosts: QString::default(),
             preview_serial: 0,
             preview_title: QString::default(),
@@ -172,7 +141,6 @@ impl Default for RiftControllerRust {
             preview_image: QString::default(),
             preview_note: QString::default(),
             files: Vec::new(),
-            kept_ids: Vec::new(),
         }
     }
 }
@@ -238,41 +206,6 @@ impl qobject::RiftController {
             .set_denials(QString::from(denials.join("\n").as_str()));
     }
 
-    pub fn create_vault(self: Pin<&mut Self>, passphrase: &QString) {
-        let passphrase = String::from(passphrase);
-        self.run(move |controller, notify| {
-            let message = match controller.locker().create(passphrase) {
-                Ok(()) => {
-                    "The vault was created. Kept files are encrypted; they are still untrusted."
-                        .into()
-                }
-                Err(error) => format!("The vault was not created: {error}"),
-            };
-            notify(controller.vault_event(Some(message)));
-        });
-    }
-
-    pub fn unlock_vault(self: Pin<&mut Self>, passphrase: &QString) {
-        let passphrase = String::from(passphrase);
-        self.run(move |controller, notify| {
-            let message = match controller.locker().unlock(passphrase) {
-                Ok(()) => None,
-                Err(error) => Some(format!("The vault was not unlocked: {error}")),
-            };
-            notify(controller.vault_event(message));
-        });
-    }
-
-    pub fn lock_vault(self: Pin<&mut Self>) {
-        let Ok(controller) = controller() else { return };
-        // On the GUI thread: a lock never waits for other work.
-        if controller.locker().lock() {
-            crate::session::log("vault locked");
-        }
-        let event = controller.vault_event(Some("The vault is locked.".into()));
-        self.apply(event);
-    }
-
     pub fn import_intel(self: Pin<&mut Self>, folder: &QUrl) {
         let Some(dir) = folder
             .to_local_file()
@@ -323,66 +256,6 @@ impl qobject::RiftController {
             let shown = controller.preview(generation, &id);
             notify(Event::Previewed { title, shown });
         });
-    }
-
-    pub fn keep(self: Pin<&mut Self>, index: i32) {
-        let Some((generation, id, _)) = usize::try_from(index)
-            .ok()
-            .and_then(|i| self.rust().files.get(i).cloned())
-        else {
-            return;
-        };
-        self.run(move |controller, notify| {
-            let message = controller
-                .keep(generation, &id)
-                .unwrap_or_else(|error| format!("The file was not kept: {error}"));
-            notify(controller.vault_event(Some(message)));
-        });
-    }
-
-    pub fn remove_kept(self: Pin<&mut Self>, index: i32) {
-        let Some(id) = self.kept_id(index) else {
-            return;
-        };
-        self.run(move |controller, notify| {
-            let message = match controller.locker().remove(&id) {
-                Ok(()) => "The file was deleted from the vault.".into(),
-                Err(error) => format!("The file was not deleted: {error}"),
-            };
-            notify(controller.vault_event(Some(message)));
-        });
-    }
-
-    pub fn export_kept(self: Pin<&mut Self>, index: i32, target: &QUrl) {
-        let Some(id) = self.kept_id(index) else {
-            return;
-        };
-        let Some(path) = target
-            .to_local_file()
-            .map(|p| std::path::PathBuf::from(String::from(&p)))
-        else {
-            self.set_vault_status(QString::from(
-                "The file was not exported: choose a local file.",
-            ));
-            return;
-        };
-        self.run(move |controller, notify| {
-            let message = match controller.locker().export(&id, &path) {
-                Ok(size) => {
-                    crate::session::log(&format!("vault: exported a {size}-byte file"));
-                    "Exported. The copy is outside Rift's protection now, and was not made safe."
-                        .into()
-                }
-                Err(error) => format!("The file was not exported: {error}"),
-            };
-            notify(controller.vault_event(Some(message)));
-        });
-    }
-
-    fn kept_id(&self, index: i32) -> Option<String> {
-        usize::try_from(index)
-            .ok()
-            .and_then(|i| self.rust().kept_ids.get(i).cloned())
     }
 
     /// Runs `work` off the GUI thread, with a way to report back to it.
@@ -469,30 +342,10 @@ impl qobject::RiftController {
                 let serial = self.preview_serial().wrapping_add(1);
                 self.set_preview_serial(serial);
             }
-            Event::Vault {
-                state,
-                kept,
-                message,
-            } => {
-                self.as_mut().set_vault(QString::from(state_name(state)));
-                self.as_mut()
-                    .set_kept(list(kept.iter().map(|(_, text)| text.as_str())));
-                self.as_mut().rust_mut().kept_ids = kept.into_iter().map(|(id, _)| id).collect();
-                self.set_vault_status(QString::from(message.as_deref().unwrap_or("")));
-            }
         }
     }
 }
 
 fn list<'a>(texts: impl Iterator<Item = &'a str>) -> QStringList {
     QStringList::from(&texts.map(QString::from).collect::<QList<QString>>())
-}
-
-fn state_name(state: State) -> &'static str {
-    match state {
-        State::Missing => "missing",
-        State::Locked => "locked",
-        State::Unlocked => "unlocked",
-        State::Unusable => "unusable",
-    }
 }

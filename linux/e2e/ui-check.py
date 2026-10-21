@@ -1,23 +1,18 @@
 """Drives the controller's window through accessibility (AT-SPI), as a user
 would, and checks what it shows. Run while a session is open whose
 quarantine holds the download case's file (with the demo database's
-marker in it); with --no-download, only the vault's create,
-lock and unlock are checked.
+marker in it).
 
-Steps: create a vault; preview the quarantined file (its text, escaped by
-rift-core, holds the marker); keep it in the vault; open and cancel the
-export warning; with --export, export it to that path through the file
-chooser portal (its dialog is answered with XTest: it belongs to the
-portal's backend, outside the app); allow a local host name; lock; refuse a
-wrong passphrase; unlock; delete the kept file. With --image, only preview
-the quarantined image: a worker decodes it, and the window shows it.
+Steps: preview the quarantined file (its text, escaped by rift-core, holds
+the marker); allow a local host name. With --image, only preview the
+quarantined image: a worker decodes it, and the window shows it.
 
 Text goes in through the accessible EditableText interface where Qt offers
 it (6.11), or else (6.10) by focusing the field through accessibility,
 giving the window X input focus and typing with XTest (xdotool), which
 --keyboard forces.
 
-Usage: python3 -I ui-check.py [--no-download | --image] [--keyboard] [--export <path>]
+Usage: python3 -I ui-check.py [--image] [--keyboard]
 Exit 0: every step as expected; 1: a step failed (it says which).
 """
 
@@ -27,12 +22,9 @@ import time
 
 import pyatspi
 
-PASSPHRASE = "rift end-to-end passphrase"
 TIMEOUT = 60
 WINDOW_TITLE = "Simulation-Rift"
-CHOOSER_TITLE = "Export to"
 KEYBOARD = "--keyboard" in sys.argv[1:]
-EXPORT = sys.argv[sys.argv.index("--export") + 1] if "--export" in sys.argv[1:] else None
 
 
 class Failed(Exception):
@@ -137,35 +129,6 @@ def type_into(app, role, name, value):
     print(f"typed into {name!r}")
 
 
-def x_windows(title):
-    found = subprocess.run(["xdotool", "search", "--name", f"^{title}$"], capture_output=True, text=True)
-    return found.stdout.split()
-
-
-def export_through_portal(app, path):
-    press(app, "Export…")
-    label(app, "leaves Rift's protection")
-    press(app, "Export anyway")
-    # The window can be found before it is mapped, when it cannot take the
-    # focus yet.
-    focus = ["xdotool", "search", "--name", f"^{CHOOSER_TITLE}$", "windowfocus", "--sync"]
-    def focused():
-        try:
-            return subprocess.run(focus, capture_output=True, timeout=10).returncode == 0 or None
-        except subprocess.TimeoutExpired:
-            return None
-
-    wait(f"the file chooser {CHOOSER_TITLE!r} to take the focus", focused)
-    time.sleep(1)
-    # The name field has the focus; a path in it also picks the folder.
-    subprocess.run(["xdotool", "key", "ctrl+a"], check=True)
-    subprocess.run(["xdotool", "type", "--delay", "20", path], check=True)
-    time.sleep(0.5)
-    subprocess.run(["xdotool", "key", "Return"], check=True)
-    label(app, "Exported. The copy is outside Rift's protection")
-    print(f"exported through the portal to {path}")
-
-
 def preview_image(app):
     press(app, "Preview")
     note = label(app, "pixels, decoded by an isolated worker")
@@ -178,61 +141,21 @@ def preview_image(app):
 
 
 def main():
-    no_download = "--no-download" in sys.argv[1:]
     app = application()
     if "--image" in sys.argv[1:]:
         preview_image(app)
         print("ui: all steps as expected")
         return
 
-    label(app, "No vault yet")
-    type_into(app, "password text", "Passphrase", PASSPHRASE)
-    press(app, "Create")
-    label(app, "The vault is unlocked")
-    print("vault created and unlocked")
+    press(app, "Preview")
+    label(app, "RIFT-DEMO-MARKER")
+    print("preview shows the file's text")
+    press(app, "Close")
 
-    if not no_download:
-        press(app, "Preview")
-        label(app, "RIFT-DEMO-MARKER")
-        print("preview shows the file's text")
-        press(app, "Close")
-
-        press(app, "Keep in vault")
-        label(app, "in the vault. It is the original file and is still untrusted.")
-        kept = label(app, "last scan:")
-        print(f"kept: {kept[0].name}")
-
-        press(app, "Export…")
-        label(app, "leaves Rift's protection")
-        press(app, "Cancel")
-        no_label(app, "leaves Rift's protection")
-        print("export warning shown and cancelled")
-        if EXPORT is not None:
-            export_through_portal(app, EXPORT)
-
-        type_into(app, "text", "Host name", "printer.local")
-        press(app, "Allow")
-        label(app, "allowed this session: printer.local")
-        print("local host allowed")
-
-    press(app, "Lock")
-    label(app, "The vault is locked.")
-    no_label(app, "last scan:")
-    type_into(app, "password text", "Passphrase", "not the passphrase at all")
-    press(app, "Unlock")
-    label(app, "was not unlocked")
-    print("a wrong passphrase is refused")
-    type_into(app, "password text", "Passphrase", PASSPHRASE)
-    press(app, "Unlock")
-    label(app, "The vault is unlocked")
-    print("unlocked again")
-
-    if not no_download:
-        label(app, "last scan:")
-        press(app, "Delete")
-        label(app, "deleted from the vault")
-        no_label(app, "last scan:")
-        print("the kept file was deleted")
+    type_into(app, "text", "Host name", "printer.local")
+    press(app, "Allow")
+    label(app, "allowed this session: printer.local")
+    print("local host allowed")
     print("ui: all steps as expected")
 
 

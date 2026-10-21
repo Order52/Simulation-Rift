@@ -14,7 +14,6 @@
 mod bridge;
 mod browser;
 mod session;
-mod vault;
 mod worker;
 
 use std::path::{Path, PathBuf};

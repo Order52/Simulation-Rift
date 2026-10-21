@@ -24,27 +24,11 @@ ApplicationWindow {
         onTriggered: rift.refresh()
     }
 
-    // The vault locks after five minutes without a vault action, and when
-    // the window is minimized or hidden (§14.2).
-    Timer {
-        id: vaultIdle
-        interval: 5 * 60 * 1000
-        running: rift.vault === "unlocked"
-        onTriggered: rift.lockVault()
-    }
-    onVisibilityChanged: if (window.visibility === Window.Minimized || window.visibility === Window.Hidden) rift.lockVault()
-    function touchVault() { vaultIdle.restart() }
-
-    // The kept file whose export warning is shown, or -1.
-    property int exporting: -1
     // Previews show only what Rift made: escaped text, or a PNG encoded
     // from the pixels an isolated worker decoded.
     Connections {
         target: rift
         function onPreviewSerialChanged() { preview.open() }
-        // A warning names a row by its place, which a changed list gives
-        // to another file.
-        function onKeptChanged() { window.exporting = -1 }
     }
     Dialog {
         id: preview
@@ -91,12 +75,6 @@ ApplicationWindow {
         id: importFrom
         title: "Import a threat database update"
         onAccepted: rift.importIntel(selectedFolder)
-    }
-    FileDialog {
-        id: exportTarget
-        title: "Export to"
-        fileMode: FileDialog.SaveFile
-        onAccepted: { window.touchVault(); rift.exportKept(window.exporting, selectedFile); window.exporting = -1 }
     }
 
     ColumnLayout {
@@ -215,102 +193,6 @@ ApplicationWindow {
                 Button {
                     text: "Preview"
                     onClicked: rift.preview(row.index)
-                }
-                Button {
-                    text: "Keep in vault"
-                    enabled: rift.vault === "unlocked"
-                    onClicked: { window.touchVault(); rift.keep(row.index) }
-                }
-            }
-        }
-
-        Label { text: "Vault"; font.bold: true }
-        Label {
-            Layout.fillWidth: true
-            wrapMode: Text.Wrap
-            text: rift.vault === "missing" ? "No vault yet. Choose a passphrase of 10 characters or more; it cannot be recovered."
-                : rift.vault === "locked" ? "The vault is locked."
-                : rift.vault === "unlocked" ? "The vault is unlocked. Kept files are encrypted, and still untrusted."
-                : "This vault was made by a platform key Linux does not have."
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            visible: rift.vault === "missing" || rift.vault === "locked"
-            TextField {
-                id: passphrase
-                Layout.fillWidth: true
-                echoMode: TextInput.Password
-                placeholderText: "Passphrase"
-                Accessible.name: placeholderText
-                onAccepted: vaultAction.clicked()
-            }
-            Button {
-                id: vaultAction
-                text: rift.vault === "missing" ? "Create" : "Unlock"
-                onClicked: {
-                    if (rift.vault === "missing") rift.createVault(passphrase.text)
-                    else rift.unlockVault(passphrase.text)
-                    passphrase.clear()
-                }
-            }
-        }
-        Button {
-            text: "Lock"
-            visible: rift.vault === "unlocked"
-            onClicked: rift.lockVault()
-        }
-        Label {
-            Layout.fillWidth: true
-            wrapMode: Text.Wrap
-            textFormat: Text.PlainText
-            text: rift.vaultStatus
-            visible: text !== ""
-        }
-        ListView {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 130
-            clip: true
-            visible: rift.vault === "unlocked"
-            model: rift.kept
-            delegate: ColumnLayout {
-                id: keptRow
-                required property string modelData
-                required property int index
-                width: ListView.view.width
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.Wrap
-                        textFormat: Text.PlainText
-                        text: keptRow.modelData
-                    }
-                    Button {
-                        text: "Export…"
-                        onClicked: { window.touchVault(); window.exporting = keptRow.index }
-                    }
-                    Button {
-                        text: "Delete"
-                        onClicked: { window.touchVault(); window.exporting = -1; rift.removeKept(keptRow.index) }
-                    }
-                }
-                // The warning comes before the file chooser, as on Android.
-                RowLayout {
-                    Layout.fillWidth: true
-                    visible: window.exporting === keptRow.index
-                    Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.Wrap
-                        text: "The exported copy leaves Rift's protection. It is the original file, not made safe: opening it outside Rift can harm this computer, whatever its scan said."
-                    }
-                    Button {
-                        text: "Export anyway"
-                        onClicked: { window.touchVault(); exportTarget.open() }
-                    }
-                    Button {
-                        text: "Cancel"
-                        onClicked: window.exporting = -1
-                    }
                 }
             }
         }
