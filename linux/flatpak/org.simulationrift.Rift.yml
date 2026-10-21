@@ -34,16 +34,11 @@ modules:
     build-commands:
       - cargo --version
       # Qt WebEngine comes from the BaseApp under /app, which the SDK's
-      # qmake does not know: its headers and libraries are added here.
+      # qmake does not know: a wrapper presents both as one installation.
       - |
         set -eu
-        engine=$(find /app -path '*/QtWebEngineCore/QWebEnginePage' -print -quit)
-        [ -n "$engine" ] || { echo "Qt WebEngine headers not found under /app"; exit 1; }
-        include=$(dirname "$(dirname "$engine")")
-        library=$(dirname "$(find /app -name 'libQt6WebEngineCore.so*' -print -quit)")
-        echo "Qt WebEngine: headers $include, libraries $library"
-        export CPATH="$include:$include/QtWebEngineCore:$include/QtWebEngineWidgets"
-        export RUSTFLAGS="-L native=$library"
+        sh linux/flatpak/qt-for-app.sh "$PWD/qt-for-app"
+        export QMAKE="$PWD/qt-for-app/qmake"
         mkdir -p .cargo
         cp linux/vendor-config.toml .cargo/config.toml
         cargo build --offline --release --locked --manifest-path linux/Cargo.toml
