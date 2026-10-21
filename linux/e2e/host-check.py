@@ -45,10 +45,19 @@ def status(pid):
 
 
 def namespace(pid, kind):
-    try:
-        return os.readlink(f"/proc/{pid}/ns/{kind}")
-    except OSError:
-        return None
+    """The namespace, read through any live thread: once a process's first
+    thread has exited, its own entry shows only the user and pid ones."""
+    for path in [f"/proc/{pid}"] + sorted(str(t) for t in pathlib.Path(f"/proc/{pid}/task").glob("*")):
+        try:
+            return os.readlink(f"{path}/ns/{kind}")
+        except OSError:
+            continue
+    return None
+
+
+def zombie(pid):
+    """Exited and not yet reaped: it runs no code and holds no namespace."""
+    return status(pid).get("State", "").startswith("Z")
 
 
 def differs(pid, other, kind):
@@ -100,6 +109,9 @@ def main():
 
     renderers = 0
     for pid in engine:
+        if zombie(pid):
+            print(f"engine {pid}: exited, not yet reaped (skipped)")
+            continue
         unreadable = [k for k in NAMESPACES if namespace(pid, k) is None]
         if unreadable:
             problems.append(f"engine process {pid}: namespaces {unreadable} could not be read")

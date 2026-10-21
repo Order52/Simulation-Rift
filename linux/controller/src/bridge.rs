@@ -15,6 +15,8 @@ pub mod qobject {
         type QUrl = cxx_qt_lib::QUrl;
     }
 
+    // QML sees camelCase names: vault_status as vaultStatus.
+    #[auto_cxx_name]
     extern "RustQt" {
         #[qobject]
         #[qml_element]

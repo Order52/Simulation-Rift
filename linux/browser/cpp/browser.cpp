@@ -20,7 +20,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
-#include <QNetworkProxy>
+#include <QNetworkProxyFactory>
 #include <QPointer>
 #include <QPushButton>
 #include <QStackedWidget>
@@ -271,11 +271,15 @@ bool g_closeEarly = false;
 
 std::int32_t run_browser(std::uint16_t proxy_port)
 {
-    // The engine's own proxy settings, as Chromium switches after
-    // --webEngineArgs: every connection to the forwarder, and "<-loopback>"
-    // removes Chromium's implicit bypass for loopback and localhost, so that
-    // those go to the controller's proxy too, which refuses them unless the
-    // user allowed the name (INV-13), as on Android.
+    // The engine's proxy, as Chromium switches after --webEngineArgs: every
+    // connection to the forwarder, and "<-loopback>" removes Chromium's
+    // implicit bypass for loopback and localhost, so that those go to the
+    // controller's proxy too, which refuses them unless the user allowed the
+    // name (INV-13), as on Android. Qt WebEngine reads these switches only
+    // when Qt Network uses the system configuration, over which they take
+    // precedence; with an application proxy it builds its own rules and
+    // keeps the bypass. If they were ignored, the engine would connect
+    // directly, from a network namespace with nothing but its own loopback.
     static std::string server = "--proxy-server=http://127.0.0.1:" + std::to_string(proxy_port);
     static char name[] = "rift-browser";
     static char engineArgs[] = "--webEngineArgs";
@@ -284,9 +288,8 @@ std::int32_t run_browser(std::uint16_t proxy_port)
     static int argc = 4;
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("rift-browser"));
-    // Before any profile exists: every connection goes to the forwarder.
-    QNetworkProxy::setApplicationProxy(
-        QNetworkProxy(QNetworkProxy::HttpProxy, QStringLiteral("127.0.0.1"), proxy_port));
+    // Before any profile exists (see the switches above).
+    QNetworkProxyFactory::setUseSystemConfiguration(true);
 
     Window window;
     window.show();

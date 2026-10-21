@@ -32,7 +32,7 @@ ApplicationWindow {
         running: rift.vault === "unlocked"
         onTriggered: rift.lockVault()
     }
-    onVisibilityChanged: if (visibility === Window.Minimized || visibility === Window.Hidden) rift.lockVault()
+    onVisibilityChanged: if (window.visibility === Window.Minimized || window.visibility === Window.Hidden) rift.lockVault()
     function touchVault() { vaultIdle.restart() }
 
     property int exporting: -1
@@ -43,7 +43,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: Math.min(parent.width - 32, 480)
         Label {
-            width: parent.width
+            width: exportWarning.availableWidth
             wrapMode: Text.Wrap
             text: "The exported copy leaves Rift's protection. It is the original file, not made safe: opening it outside Rift can harm this computer, whatever its scan said."
         }
