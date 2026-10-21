@@ -5,10 +5,13 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -104,6 +107,10 @@ object Core {
 
     private val _downloads = MutableStateFlow<List<Download>>(emptyList())
     val downloads: StateFlow<List<Download>> = _downloads
+
+    /** A file another app just handed over and Rift took in, for the home screen to open; cleared once opened. */
+    private val _handedOver = MutableStateFlow<String?>(null)
+    val handedOver: StateFlow<String?> = _handedOver
 
     private val _localHosts = MutableStateFlow<List<String>>(emptyList())
     val localHosts: StateFlow<List<String>> = _localHosts
@@ -242,6 +249,7 @@ object Core {
         _state.value = State.Resetting(current)
         currentGeneration = null // decisions for the old generation now block
         _downloads.value = emptyList()
+        _handedOver.value = null
         _localHosts.value = emptyList()
         _previews.value = emptyMap()
         _verdicts.value = emptyMap()
@@ -461,6 +469,75 @@ object Core {
 
     fun typed(input: String): String = typedAddress(input)
 
+    /**
+     * A file another app handed to Rift (ACTION_VIEW or ACTION_SEND): read
+     * through the temporary grant it came with, never parsed here, and
+     * streamed into this session's quarantine as a download is (§11.1).
+     * Then it is scanned and previewed in isolated workers, and the home
+     * screen opens it. Only `content:` URIs of other apps are read: a
+     * `file:` path or one of Rift's own providers would make Rift read
+     * with its own rights on another app's behalf.
+     */
+    fun takeIn(uri: Uri) {
+        val generation = currentGeneration ?: return
+        val opened = sessions ?: return
+        val key = downloadKeys.incrementAndGet()
+        val label = "a file from another app"
+        _downloads.update { it + Download(key, label) }
+        // Its own thread, not a transfer one: the other app controls how fast
+        // (or whether) the content arrives, and must not hold up downloads. A
+        // file still arriving at reset is not listed or kept (the generation
+        // check here and the intake's cancellation).
+        Thread({
+            val outcome = try {
+                Download(key, label, file = receive(opened, generation, uri))
+            } catch (e: DownloadFailure) {
+                Download(key, label, failure = describe(e))
+            } catch (e: IOException) {
+                Download(key, label, failure = "the other app's file could not be read: ${e.javaClass.simpleName}")
+            } catch (e: SecurityException) {
+                Download(key, label, failure = "the other app did not let Rift read the file")
+            } catch (e: IllegalArgumentException) {
+                Download(key, label, failure = e.message ?: "the file was refused")
+            }
+            Log.i(TAG, "file $key handed over in generation $generation: " + (outcome.file?.let { "stored ${it.size} bytes" } ?: "not taken in: ${outcome.failure}"))
+            if (generation == currentGeneration) {
+                _downloads.update { list -> list.map { if (it.key == key) outcome else it } }
+                outcome.file?.let {
+                    scan(it.id, scanWorker)
+                    preview(it.id)
+                    _handedOver.value = it.id
+                }
+            }
+        }, "rift-intake").apply { isDaemon = true }.start()
+    }
+
+    fun handedOverShown() {
+        _handedOver.value = null
+    }
+
+    private fun receive(opened: Sessions, generation: Long, uri: Uri): QuarantinedFile {
+        require(uri.scheme == "content") { "Rift takes files only as content from another app, not ${displaySafe(uri.scheme ?: "a bare path")}" }
+        val owner = uri.authority?.let { app.packageManager.resolveContentProvider(it, 0)?.packageName }
+        require(owner != app.packageName && owner != Rift.BROWSER_PACKAGE) { "Rift does not take files from itself" }
+        val resolver = app.contentResolver
+        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+        } ?: uri.lastPathSegment ?: "file"
+        opened.beginIntake(generation.toULong(), name, resolver.getType(uri)).use { intake ->
+            val input = resolver.openInputStream(uri) ?: throw IOException("the other app gave no content")
+            input.use {
+                val buffer = ByteArray(INTAKE_CHUNK)
+                while (true) {
+                    val n = it.read(buffer)
+                    if (n < 0) break
+                    if (n > 0) intake.write(buffer.copyOf(n))
+                }
+            }
+            return intake.finish()
+        }
+    }
+
     fun submitDownload(generation: Long, info: DownloadInfo) {
         val opened = sessions ?: return
         if (generation != currentGeneration) return
@@ -678,6 +755,9 @@ object Core {
 
     /** Concurrent scans: enough that one hung worker does not hold the queue, few enough for memory. */
     private const val SCAN_WORKERS = 2
+
+    /** Bytes per copy into the core when another app hands over a file. */
+    private const val INTAKE_CHUNK = 256 * 1024
 
     /** The keystore alias of the vault key earlier versions made ([forgetVault]). */
     private const val OLD_VAULT_KEY = "rift-vault-wrap"

@@ -1,6 +1,7 @@
 package org.simulationrift.app
 
 import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.text.format.Formatter
@@ -14,6 +15,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -66,6 +70,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -80,6 +86,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.IntentCompat
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.TextStyle
@@ -99,6 +106,12 @@ class MainActivity : ComponentActivity() {
 
     /** A link handed to Rift by another app, opened once a session is active. */
     private var pendingLink by mutableStateOf<String?>(null)
+
+    /** A file handed to Rift by another app, taken in once a session is active. */
+    private var pendingFile by mutableStateOf<Uri?>(null)
+
+    /** The quarantined file shown full screen, if any. */
+    private var viewing by mutableStateOf<String?>(null)
 
     /** Android's one-time VPN consent for the network lock (§8.8). */
     private val consent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -122,7 +135,7 @@ class MainActivity : ComponentActivity() {
         NetworkLock.start(this, userAction = false)
         // Not when Android recreates the activity (after a crash or a kill):
         // a link handed over before then is not opened again without the user.
-        if (savedInstanceState == null) pendingLink = linkFrom(intent)
+        if (savedInstanceState == null) receive(intent)
         // No overlays, autofill, non-tool accessibility services or recents snapshot.
         WindowGuard.apply(this)
         setContent { RiftTheme { NoPersonalizedLearning { Home() } } }
@@ -141,7 +154,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        linkFrom(intent)?.let { pendingLink = it }
+        receive(intent)
+    }
+
+    /** What another app handed over: a file, or else a link. */
+    private fun receive(intent: Intent) {
+        val file = fileFrom(intent)
+        if (file != null) pendingFile = file else linkFrom(intent)?.let { pendingLink = it }
+    }
+
+    /** A file opened with Rift (ACTION_VIEW of a `content:` URI) or shared to it (EXTRA_STREAM). */
+    private fun fileFrom(intent: Intent): Uri? = when (intent.action) {
+        Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "content" }
+        Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+        else -> null
     }
 
     /**
@@ -150,7 +176,7 @@ class MainActivity : ComponentActivity() {
      * checks it before loading.
      */
     private fun linkFrom(intent: Intent): String? = when (intent.action) {
-        Intent.ACTION_VIEW -> intent.dataString
+        Intent.ACTION_VIEW -> intent.dataString?.takeIf { intent.data?.scheme != "content" }
         Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
         else -> null
     }?.takeIf { it.isNotBlank() }?.let(Core::typed)
@@ -177,10 +203,27 @@ class MainActivity : ComponentActivity() {
                 browse(active.generation, link)
             }
         }
+        // A file needs no network: it is taken in as soon as a session is active.
+        val file = pendingFile
+        if (active != null && file != null) {
+            pendingFile = null
+            Core.takeIn(file)
+        }
+        val handedOver by Core.handedOver.collectAsState()
+        LaunchedEffect(handedOver) {
+            handedOver?.let {
+                viewing = it
+                Core.handedOverShown()
+            }
+        }
         // Test tags double as resource ids so UI tests can find trusted controls.
         Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }, color = MaterialTheme.colorScheme.surface) {
             if (showingNotices) {
                 NoticesScreen()
+                return@Surface
+            }
+            viewing?.let {
+                FileScreen(it)
                 return@Surface
             }
             Column(
@@ -546,7 +589,6 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun FilesCard() {
         val downloads by Core.downloads.collectAsState()
-        val previews by Core.previews.collectAsState()
         val verdicts by Core.verdicts.collectAsState()
         Card(
             Modifier.fillMaxWidth().animateContentSize().testTag("downloads"),
@@ -557,8 +599,8 @@ class MainActivity : ComponentActivity() {
                 Text("Files", style = MaterialTheme.typography.titleMedium)
                 if (downloads.isEmpty()) {
                     Text(
-                        "Files you download while browsing land here: fetched again by Rift, encrypted, scanned, and viewable " +
-                            "safely. They are deleted with the session.",
+                        "Files you download while browsing, or open or share with Rift from other apps, land here: " +
+                            "encrypted, scanned, and viewable safely. They are deleted with the session.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -582,7 +624,11 @@ class MainActivity : ComponentActivity() {
                     }
                     if (file != null) {
                         VerdictArea(file.id, verdicts.containsKey(file.id), verdicts[file.id])
-                        PreviewArea(file.id, file.displayName, previews[file.id])
+                        FilledTonalButton(onClick = { view(file.id) }, modifier = Modifier.testTag("preview-${file.id}")) {
+                            Icon(painterResource(R.drawable.ic_eye), contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("View safely")
+                        }
                     }
                 }
                 Text(
@@ -634,41 +680,108 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun view(fileId: String) {
+        if (Core.previews.value[fileId] == null) Core.preview(fileId)
+        viewing = fileId
+    }
+
+    /**
+     * One quarantined file, full screen: its verdict and what an isolated
+     * worker drew of it (pinch to zoom, double-tap to fit), or its escaped
+     * text. Back returns to the home screen.
+     */
     @Composable
-    private fun PreviewArea(fileId: String, name: String, preview: Core.Preview?) {
+    private fun FileScreen(fileId: String) {
+        BackHandler { viewing = null }
+        val downloads by Core.downloads.collectAsState()
+        val previews by Core.previews.collectAsState()
+        val verdicts by Core.verdicts.collectAsState()
+        val file = downloads.firstNotNullOfOrNull { d -> d.file?.takeIf { it.id == fileId } }
+        // Gone with its session: back to the home screen.
+        LaunchedEffect(file == null) { if (file == null) viewing = null }
+        if (file == null) return
+        LaunchedEffect(fileId) { if (Core.previews.value[fileId] == null) Core.preview(fileId) }
+        val preview = previews[fileId]
+        Column(
+            Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp, vertical = 8.dp).testTag("viewer"),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            TextButton(onClick = { viewing = null }, contentPadding = PaddingValues(0.dp), modifier = Modifier.testTag("viewer-close")) {
+                Text("Back")
+            }
+            Text(file.displayName, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                "${Formatter.formatShortFileSize(LocalContext.current, file.size.toLong())} · from ${file.source}" +
+                    (file.contentType?.let { " · labelled $it" } ?: "") + " · sha256 ${file.sha256.take(12)}…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            VerdictArea(file.id, verdicts.containsKey(file.id), verdicts[file.id])
+            Box(
+                Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                PreviewContent(fileId, file.displayName, preview)
+            }
+            Text(
+                when {
+                    preview?.bitmap != null -> "A picture drawn by an isolated worker: no scripts, links or network. " +
+                        "${preview.bitmap.width}×${preview.bitmap.height}. Pinch to zoom."
+                    preview?.text != null -> preview.note.orEmpty()
+                    else -> "Opened in an isolated worker with no files and no network. Nothing in the file runs."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    @Composable
+    private fun PreviewContent(fileId: String, name: String, preview: Core.Preview?) {
         val bitmap = preview?.bitmap
         when {
-            preview == null -> FilledTonalButton(onClick = { Core.preview(fileId) }, modifier = Modifier.testTag("preview-$fileId")) {
-                Icon(painterResource(R.drawable.ic_eye), contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("View safely")
-            }
-            preview.running -> Text("Rendering in an isolated worker…", style = MaterialTheme.typography.bodySmall)
+            preview == null || preview.running -> Text("Rendering in an isolated worker…", style = MaterialTheme.typography.bodyMedium)
             bitmap != null -> {
                 val image = remember(bitmap) { bitmap.asImageBitmap() }
+                var scale by remember(fileId) { mutableFloatStateOf(1f) }
+                var offset by remember(fileId) { mutableStateOf(Offset.Zero) }
+                val zoom = rememberTransformableState { change, pan, _ ->
+                    scale = (scale * change).coerceIn(1f, MAX_ZOOM)
+                    offset = if (scale == 1f) Offset.Zero else offset + pan
+                }
                 Image(
                     image,
                     contentDescription = "Preview of $name",
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).clip(RoundedCornerShape(12.dp)).testTag("preview-image-$fileId"),
-                )
-                Text(
-                    "A picture drawn by an isolated worker: no scripts, links or network. ${bitmap.width}×${bitmap.height}.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                        .pointerInput(fileId) {
+                            detectTapGestures(onDoubleTap = {
+                                scale = 1f
+                                offset = Offset.Zero
+                            })
+                        }
+                        .transformable(zoom)
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = offset.x
+                            translationY = offset.y
+                        }
+                        .testTag("preview-image-$fileId"),
                 )
             }
-            preview.text != null -> {
-                Text(
-                    preview.text,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest).padding(12.dp)
-                        .verticalScroll(rememberScrollState()).testTag("preview-text-$fileId"),
-                )
-                preview.note?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-            else -> Text("Preview unavailable: ${preview.failure}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("preview-failure-$fileId"))
+            preview.text != null -> Text(
+                preview.text,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxSize().padding(12.dp).verticalScroll(rememberScrollState()).testTag("preview-text-$fileId"),
+            )
+            else -> Text(
+                "Preview unavailable: ${preview.failure}",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(24.dp).testTag("preview-failure-$fileId"),
+            )
         }
     }
 
@@ -833,6 +946,7 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val STATS_REFRESH_MS = 1_000L
         const val WATCH_SHOWN = 5
+        const val MAX_ZOOM = 6f
     }
 
     /**

@@ -6,6 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.content.ServiceConnection
+import android.content.ContentValues
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.provider.MediaStore
 import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
 import android.os.Bundle
@@ -18,6 +22,7 @@ import android.view.inputmethod.EditorInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
@@ -228,6 +233,64 @@ class SecurityTest {
         // A refused address loads nothing, so the session stays unused.
         assertFalse(Core.hasBrowsed(fourth))
         report("n5", "sessions $first -> $second -> $third -> $fourth; bar ${"%.1f".format(covered * 100)}% black; shared, backslash and linkless text handled")
+    }
+
+    @Test
+    fun n6_filesFromOtherAppsAreQuarantinedAndViewedSafely() {
+        val generation = activeGeneration()
+        // A picture in the shared media store, shared to Rift as a gallery
+        // would: a content URI with a read grant.
+        val picture = context.contentResolver.insert(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, "rift-n6.png")
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            },
+        ) ?: throw AssertionError("no media store item")
+        try {
+            val image = Bitmap.createBitmap(300, 200, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(200, 30, 160)) }
+            context.contentResolver.openOutputStream(picture)!!.use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            fromAnotherApp(Intent(Intent.ACTION_SEND).setType("image/png").putExtra(Intent.EXTRA_STREAM, picture)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            // Straight to the viewer, drawn by an isolated worker.
+            assertNotNull("the viewer", device.wait(Until.findObject(By.res("viewer")), UI_TIMEOUT_MS))
+            awaitCondition("the shared picture quarantined") { Core.downloads.value.any { it.file?.displayName == "rift-n6.png" } }
+            val file = Core.downloads.value.firstNotNullOf { it.file?.takeIf { f -> f.displayName == "rift-n6.png" } }
+            assertEquals("another app", file.source)
+            assertEquals(generation, activeGeneration())
+            val drawn = device.wait(Until.findObject(By.res("preview-image-${file.id}")), PAGE_TIMEOUT_MS)
+                ?: throw AssertionError("no preview: ${Core.previews.value[file.id]}")
+            val bitmap = Core.previews.value[file.id]?.bitmap ?: throw AssertionError("no bitmap")
+            assertEquals(300, bitmap.width)
+            val pink = shareOf("n6-viewer", drawn.visibleBounds) { r, g, b -> r > 180 && g < 60 && b > 140 }
+            assertTrue("the drawn picture ${"%.1f".format(pink * 100)}% its colour", pink > 0.3)
+            awaitCondition("a verdict for the shared picture") { Core.verdicts.value[file.id] != null }
+            // Back to the home screen, where the file is listed with the session's.
+            device.findObject(By.res("viewer-close")).click()
+            assertNotNull("the home screen", device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
+            val view = device.findObject(By.scrollable(true))?.scrollUntil(Direction.DOWN, Until.findObject(By.res("preview-${file.id}")))
+                ?: throw AssertionError("the file is not listed on the home screen")
+            // And "View safely" opens it again.
+            view.click()
+            assertNotNull(device.wait(Until.findObject(By.res("preview-image-${file.id}")), UI_TIMEOUT_MS))
+            device.pressBack()
+            assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
+
+            // Rift's own providers are not a source (a confused deputy could
+            // otherwise read Rift's state), and a bare path is not a file to take.
+            val before = Core.downloads.value.size
+            fromAnotherApp(Intent(Intent.ACTION_VIEW, Uri.parse("content://${context.packageName}.androidx-startup/rift/stats")))
+            awaitCondition("Rift's own provider refused") {
+                Core.downloads.value.drop(before).any { it.failure == "Rift does not take files from itself" }
+            }
+            fromAnotherApp(Intent(Intent.ACTION_VIEW, Uri.fromFile(File(context.filesDir, "rift/stats"))))
+            assertNotNull("a file path", device.wait(Until.findObject(By.textContains("\"file:\" links are blocked")), PAGE_TIMEOUT_MS))
+            assertTrue(Core.downloads.value.drop(before).all { it.file == null })
+            report("n6", "shared picture ${file.size} bytes quarantined from ${file.source}, drawn ${bitmap.width}x${bitmap.height} " +
+                "(${"%.1f".format(pink * 100)}% its colour); own provider and file path refused")
+        } finally {
+            context.contentResolver.delete(picture, null, null)
+        }
     }
 
     /** Hands `intent` to Rift's home screen as another app's link or share would. */
