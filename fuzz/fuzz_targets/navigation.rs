@@ -7,7 +7,9 @@
 use libfuzzer_sys::fuzz_target;
 use rift_core::heuristics::HeuristicConfig;
 use rift_core::intel::UrlTable;
-use rift_core::policy::{BlockReason, Decision, IntelState, NavigationContext, decide_navigation};
+use rift_core::policy::{
+    BlockReason, Decision, IntelState, NavigationContext, decide_navigation, engine_address,
+};
 use rift_core::urlcanon::canonicalize;
 
 fuzz_target!(|data: &[u8]| {
@@ -52,9 +54,13 @@ fuzz_target!(|data: &[u8]| {
             }
         );
     }
-    // A page loads without a prompt only if it was assessed and matched no indicator.
+    // A page loads without a prompt only if it was assessed, as the engine
+    // reads it, and matched no indicator.
     if matches!(decision, Decision::Proceed { .. }) {
-        let url = canonicalize(raw).expect("proceeded with a URL that does not canonicalize");
+        let address =
+            engine_address(raw).expect("proceeded with an address the engine cannot load");
+        let url = canonicalize(address.as_bytes())
+            .expect("proceeded with a URL that does not canonicalize");
         if let Some(table) = ctx.indicators {
             assert!(
                 table.matches(&url).is_empty(),

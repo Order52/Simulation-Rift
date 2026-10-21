@@ -8,6 +8,7 @@ use crate::heuristics::{self, Flag, HeuristicConfig, Severity};
 use crate::intel::UrlTable;
 use crate::text::escape_for_display;
 use crate::urlcanon::{self, CanonError};
+use url::Url;
 
 /// Freshness of the active intelligence snapshot, determined by the caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,6 +148,12 @@ pub fn decide_navigation(raw: &[u8], ctx: &NavigationContext<'_>) -> Decision {
         _ => {}
     }
 
+    // Judge the address the engine will load, not a looser reading of it.
+    let Some(address) = engine_address(raw) else {
+        return block(BlockReason::InvalidUrl);
+    };
+    let raw = address.as_bytes();
+
     let mut notes = match ctx.intel_state {
         IntelState::Current => Vec::new(),
         IntelState::Stale => vec![Note::IntelStale],
@@ -195,15 +202,109 @@ fn block(reason: BlockReason) -> Decision {
     }
 }
 
-/// The URL to load for text typed in the address bar: unchanged if it names
-/// a scheme (the decision then judges that scheme), otherwise an `https://`
-/// address. Only the decision says whether it may load.
+/// A web address as a browser engine parses it (the WHATWG URL standard,
+/// which Chromium and Qt WebEngine follow), serialized; `None` if it is not
+/// an `http` or `https` address the engine could load.
+///
+/// The Safe Browsing canonicalization the checks use is deliberately loose,
+/// and on its own it read some addresses differently from the engine:
+/// `https://evil.example\@good.example/` was checked as `good.example` and
+/// opened as `evil.example`, and a host with spaces was let through to an
+/// engine that then loaded nothing. Checking this form, and loading it,
+/// keeps the two readings the same.
+pub fn engine_address(raw: &[u8]) -> Option<String> {
+    let url = Url::parse(std::str::from_utf8(raw).ok()?).ok()?;
+    matches!(url.scheme(), "http" | "https").then(|| url.into())
+}
+
+/// The URL to load for text typed in the address bar or shared with Rift.
+/// The first `http(s)://` link in the text is used, so a message such as
+/// "look at this: https://…" opens its link; if there is none, the whole
+/// text is the address. Without a scheme it becomes an `https://` address,
+/// unless it holds spaces (then it is no address at all, and comes back
+/// unchanged for the decision to refuse). A web address comes back in the
+/// form the engine will load (see `engine_address`); any other scheme comes
+/// back unchanged for the decision to judge. Only the decision says whether
+/// it may load. Applying it again changes nothing, so the controller and
+/// the browser can both apply it.
 pub fn typed_address(input: &str) -> String {
-    let trimmed = input.trim();
-    if explicit_scheme(trimmed.as_bytes()).is_some() {
-        trimmed.to_owned()
-    } else {
-        format!("https://{trimmed}")
+    let link = link_in_text(input);
+    let address =
+        if explicit_scheme(link.as_bytes()).is_some() || link.contains(char::is_whitespace) {
+            link
+        } else {
+            format!("https://{link}")
+        };
+    engine_address(address.as_bytes()).unwrap_or(address)
+}
+
+/// The first `http://` or `https://` link in `text` (ending at whitespace,
+/// a quote or an angle bracket, without trailing punctuation), after undoing
+/// the "defanged" spellings that threat reports use so that a link cannot be
+/// clicked by accident (`hxxps://`, `example[.]com`, `[:]`). Otherwise the
+/// trimmed text.
+fn link_in_text(text: &str) -> String {
+    let text = text.trim();
+    let lower = text.to_ascii_lowercase();
+    // A link on its own is taken exactly as it is.
+    if (lower.starts_with("https://") || lower.starts_with("http://"))
+        && !text.contains(char::is_whitespace)
+    {
+        return text.to_owned();
+    }
+    let text = refang(text);
+    // ASCII lowercasing keeps every byte offset.
+    let lower = text.to_ascii_lowercase();
+    let start = [lower.find("https://"), lower.find("http://")]
+        .into_iter()
+        .flatten()
+        .min();
+    let Some(link) = start.and_then(|at| text.get(at..)) else {
+        return text;
+    };
+    let end = link
+        .find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"' | '\'' | '`'))
+        .unwrap_or(link.len());
+    trim_trailing_punctuation(link.get(..end).unwrap_or(link)).to_owned()
+}
+
+fn refang(text: &str) -> String {
+    let mut out = text
+        .replace("[.]", ".")
+        .replace("(.)", ".")
+        .replace("{.}", ".")
+        .replace("[:]", ":");
+    for (defanged, plain) in [("hxxps://", "https://"), ("hxxp://", "http://")] {
+        while let Some(at) = out.to_ascii_lowercase().find(defanged) {
+            out.replace_range(at..at.saturating_add(defanged.len()), plain);
+        }
+    }
+    out
+}
+
+/// Drops sentence punctuation after a link, and closing brackets that do
+/// not close one opened inside it ("(see https://example.org/a_(b))").
+fn trim_trailing_punctuation(mut link: &str) -> &str {
+    loop {
+        let Some(last) = link.chars().next_back() else {
+            return link;
+        };
+        let opener = match last {
+            ')' => Some('('),
+            ']' => Some('['),
+            '}' => Some('{'),
+            _ => None,
+        };
+        let strip = match opener {
+            Some(open) => link.matches(last).count() > link.matches(open).count(),
+            None => matches!(last, '.' | ',' | ';' | ':' | '!' | '?'),
+        };
+        if !strip {
+            return link;
+        }
+        link = link
+            .get(..link.len().saturating_sub(last.len_utf8()))
+            .unwrap_or_default();
     }
 }
 
@@ -292,12 +393,22 @@ mod tests {
             decide("https://example.org/", None, true),
             Decision::Proceed { .. }
         ));
-        assert!(matches!(
+        // Not an address the engine could load; typed text gets a scheme
+        // from typed_address first.
+        assert_eq!(
             decide("example.org", None, true),
+            Decision::Block {
+                reason: BlockReason::InvalidUrl,
+                inspect_anyway: false
+            }
+        );
+        assert!(matches!(
+            decide(&typed_address("example.org"), None, true),
             Decision::Proceed { .. }
         ));
+        // "host:port" is not read as a scheme.
         assert!(matches!(
-            decide("localhost:8080/x", None, true),
+            decide(&typed_address("localhost:8080/x"), None, true),
             Decision::Proceed { .. }
         ));
     }
@@ -314,6 +425,110 @@ mod tests {
             }
             other => panic!("expected block, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn checks_judge_the_host_the_engine_opens() {
+        // Browsers read '\\' as '/' in web addresses, so these open evil.example.
+        let bad = table(&["evil.example/"]);
+        for raw in [
+            "https://evil.example\\@good.example/",
+            "https://evil.example\\.good.example/",
+            "https://evil.example\\good.example",
+        ] {
+            assert!(
+                matches!(
+                    decide(raw, Some(&bad), true),
+                    Decision::Block {
+                        reason: BlockReason::KnownMalicious(_),
+                        ..
+                    }
+                ),
+                "{raw}"
+            );
+            assert!(
+                typed_address(raw).starts_with("https://evil.example/"),
+                "{raw}"
+            );
+        }
+        // The lookalike check sees the real host too.
+        assert!(matches!(
+            decide("https://paypa1.com\\.example.org/", None, true),
+            Decision::Confirm { reasons, .. }
+                if reasons.iter().any(|r| r.code() == "lookalike")
+        ));
+        // A host the engine cannot load is not "not flagged".
+        for raw in [
+            "https://exa mple.org/",
+            "https://Check this out: https://example.com/",
+            "https://example.org:99999/",
+        ] {
+            assert_eq!(
+                decide(raw, None, true),
+                Decision::Block {
+                    reason: BlockReason::InvalidUrl,
+                    inspect_anyway: false
+                },
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn shared_text_opens_its_link() {
+        for (text, expected) in [
+            ("https://example.org/a", "https://example.org/a"),
+            ("https://example.org/a.", "https://example.org/a."),
+            ("https://example.org/[.]", "https://example.org/[.]"),
+            (
+                "Check this out: https://example.com/a (from a friend)",
+                "https://example.com/a",
+            ),
+            (
+                "Example Domain\nhttps://example.org/",
+                "https://example.org/",
+            ),
+            (
+                "see https://en.wikipedia.org/wiki/Foo_(bar).",
+                "https://en.wikipedia.org/wiki/Foo_(bar)",
+            ),
+            ("(https://example.org/x)", "https://example.org/x"),
+            ("<https://example.org/x>", "https://example.org/x"),
+            (
+                "first http://a.example/ then https://b.example/",
+                "http://a.example/",
+            ),
+            ("HTTPS://Example.ORG/Path", "https://example.org/Path"),
+            // Defanged, as in threat reports.
+            ("hxxps://evil[.]example/x", "https://evil.example/x"),
+            (
+                "IOC: hXXp://198[.]51[.]100[.]7[:]8080/a, seen today",
+                "http://198.51.100.7:8080/a",
+            ),
+            ("evil(.)example/kit", "https://evil.example/kit"),
+            // Without a link, the text is the address.
+            (" example.org/a ", "https://example.org/a"),
+            ("javascript:alert(1)", "javascript:alert(1)"),
+        ] {
+            assert_eq!(typed_address(text), expected, "{text:?}");
+        }
+        assert_eq!(typed_address("no link in here"), "no link in here");
+        assert_eq!(
+            decide(&typed_address("just some words"), None, true),
+            Decision::Block {
+                reason: BlockReason::InvalidUrl,
+                inspect_anyway: false
+            }
+        );
+        // A link found in text is judged like any other.
+        assert!(matches!(
+            decide(
+                &typed_address("pay here: hxxps://paypa1[.]com/login"),
+                None,
+                true
+            ),
+            Decision::Confirm { .. }
+        ));
     }
 
     #[test]
@@ -443,6 +658,20 @@ mod tests {
                 Decision::Proceed { notes } => assert!(notes.contains(&note)),
                 other => panic!("expected proceed, got {other:?}"),
             }
+        }
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(4000))]
+        #[test]
+        fn typed_addresses_are_stable(
+            text in proptest::prop_oneof![
+                "\\PC{0,200}",
+                "[ a-zA-Z:]{0,12}(hxxps?|https?|HTTP)://[a-z0-9.:/@\\\\()\\[\\] ]{0,40}[ .,)]{0,3}",
+            ]
+        ) {
+            let address = typed_address(&text);
+            proptest::prop_assert_eq!(typed_address(&address), address);
         }
     }
 }
