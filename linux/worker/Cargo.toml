@@ -1,0 +1,35 @@
+[package]
+name = "rift-linux-worker"
+version = "0.1.0"
+description = "Simulation-Rift's Linux worker: rift-worker in a process confined by Landlock, seccomp and rlimits"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rift-worker"
+path = "src/main.rs"
+
+# The worker links the parsers, the protocol and the channel only: no
+# rift-core, so no session, vault or intelligence code is mapped next to
+# untrusted input. Confinement as in PoC L2 (poc/linux-worker-lockdown).
+[dependencies]
+landlock = "0.4.7"
+libc = "0.2.191"
+# Only for close(2) on inherited descriptor numbers, which nix exposes as a
+# safe function; nothing else of it is used.
+nix = { version = "0.31.3", default-features = false }
+rift-channel = { path = "../../crates/rift-channel" }
+rift-protocol = { path = "../../crates/rift-protocol" }
+rift-worker = { path = "../../crates/rift-worker" }
+rustix = { version = "1.1.5", features = ["fs", "process", "thread"] }
+seccompiler = "0.5.0"
+
+[dev-dependencies]
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+sha2 = "0.11.1"
