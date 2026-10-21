@@ -32,3 +32,9 @@ fuzz/corpus/
 
 # Python bytecode (PoC probes)
 __pycache__/
+
+# Linux app: crates vendored by CI for the offline Flatpak build
+/linux/vendor/
+/linux/vendor-config.toml
+/.cargo/config.toml
+/build-linux/

@@ -4,7 +4,7 @@
 # SDK's Rust extension (rust-version below).
 [workspace]
 resolver = "3"
-members = ["browser"]
+members = ["browser", "controller"]
 
 [workspace.package]
 edition = "2024"

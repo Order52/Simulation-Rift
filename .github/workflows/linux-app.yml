@@ -1,0 +1,57 @@
+name: linux-app
+
+# The Linux app (docs/architecture.md §9) built as a Flatpak on Flathub's
+# KDE runtime and Qt WebEngine BaseApp, its Rust tests run inside the SDK,
+# and the end-to-end test (linux/e2e/run-ci.sh) run against the installed
+# app, checked from the host.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - linux/**
+      - crates/**
+      - Cargo.lock
+      - .github/workflows/linux-app.yml
+
+permissions:
+  contents: read
+
+jobs:
+  flatpak-e2e:
+    name: Flatpak build and end-to-end test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q flatpak flatpak-builder xvfb dbus
+          flatpak --version
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - name: Vendor the crates
+        # The Flatpak build is offline and uses these only.
+        run: |
+          cargo vendor --locked --manifest-path linux/Cargo.toml linux/vendor > /dev/null
+          printf '%s\n' '[source.crates-io]' 'replace-with = "vendored-sources"' \
+            '[source.vendored-sources]' 'directory = "linux/vendor"' > linux/vendor-config.toml
+      - name: Build the Flatpak
+        run: |
+          flatpak-builder --user --install-deps-from=flathub --install --force-clean \
+            --disable-rofiles-fuse build-linux linux/flatpak/org.simulationrift.Rift.yml 2>&1 | tail -40
+          flatpak info --user org.simulationrift.Rift
+      - name: End-to-end test
+        run: |
+          mkdir -p out
+          { uname -a; flatpak --version; flatpak list --user; } > out/environment.txt
+          s=0
+          xvfb-run -a dbus-run-session -- sh linux/e2e/run-ci.sh out || s=$?
+          cat out/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          exit $s
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: linux-app-e2e
+          path: out/
+          if-no-files-found: ignore
