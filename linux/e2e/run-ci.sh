@@ -12,6 +12,10 @@
 #   download a download is refused to the engine, re-fetched by the controller
 #            into quarantine, and scanned by a confined worker, which finds
 #            the demo database's marker in it
+#   ui       driven through accessibility while that file is quarantined:
+#            create the vault, preview the file, keep it, open and cancel
+#            the export warning, allow a local host, lock, refuse a wrong
+#            passphrase, unlock, delete (ui-check.py)
 #   crash    killing the browser host ends and destroys the session
 #   recover  killing the controller leaves no browser host running, and the
 #            next start destroys the session it left
@@ -29,6 +33,8 @@ app=org.simulationrift.Rift
 appdir=$HOME/.var/app/$app
 page=https://example.com/
 
+# The accessibility bus, for ui-check.py (also started on demand).
+[ -x /usr/libexec/at-spi-bus-launcher ] && /usr/libexec/at-spi-bus-launcher --launch-immediately > /dev/null 2>&1 &
 python3 -I -m http.server --bind 127.0.0.1 8765 --directory "$here" > "$out/local-server.log" 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null' EXIT
@@ -110,13 +116,21 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
 
   echo "## download"
   # httpbin echoes the query into the body and sends it as an attachment.
-  launch download "https://httpbin.org/response-headers?Content-Disposition=attachment%3B%20filename%3Ddemo.txt&marker=RIFT-DEMO-MARKER"
-  wait_count "$out/download.log" "^rift: session [0-9]*: a download was quarantined" 1 150 \
-    || fail "download: nothing was quarantined"
+  launch download "https://httpbin.org/response-headers?Content-Disposition=attachment%3B%20filename%3Ddemo.txt&marker=RIFT-DEMO-MARKER" \
+    --env=QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+  if wait_count "$out/download.log" "^rift: session [0-9]*: a download was quarantined" 1 150; then
+    echo "### ui"
+    python3 -I -B "$here/ui-check.py" > "$out/ui.txt" 2>&1 || fail "ui: $(tail -1 "$out/ui.txt")"
+    cat "$out/ui.txt"
+  else
+    fail "download: nothing was quarantined"
+  fi
   finish
   grep -E "^rift(-browser)?:" "$out/download.log"
   grep -q "a download was quarantined; scan: \(Known malicious\|Suspicious\)" "$out/download.log" \
     || fail "download: the scan did not find the demo marker"
+  grep -q "^rift: vault: kept a [0-9]*-byte file" "$out/download.log" || fail "ui: nothing was kept"
+  grep -q "^rift: vault locked" "$out/download.log" || fail "ui: the vault was not locked"
   clean download
   echo
 

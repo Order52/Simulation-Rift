@@ -365,7 +365,20 @@ impl qobject::RiftController {
         });
         let spawned = thread::Builder::new()
             .name("rift-control".into())
-            .spawn(move || work(controller, notify));
+            .spawn(move || {
+                // A bug here must not leave the window waiting for an answer.
+                // The panic's message is on stderr; state it left behind is
+                // refused by rift-ffi as poisoned.
+                let report = Arc::clone(&notify);
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                    work(controller, notify);
+                }));
+                if outcome.is_err() {
+                    report(Event::Status(
+                        "Rift hit an internal error and did not finish this action.".into(),
+                    ));
+                }
+            });
         if spawned.is_err() {
             crate::session::log("could not start a worker thread");
         }

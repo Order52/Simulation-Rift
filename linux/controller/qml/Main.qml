@@ -109,6 +109,7 @@ ApplicationWindow {
                 id: address
                 Layout.fillWidth: true
                 placeholderText: "Address"
+                Accessible.name: placeholderText
                 text: rift.address
                 onAccepted: rift.open(text)
             }
@@ -153,6 +154,7 @@ ApplicationWindow {
             TextField {
                 id: localHost
                 placeholderText: "Host name"
+                Accessible.name: placeholderText
                 onAccepted: allowHost.clicked()
             }
             Button {
@@ -220,6 +222,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 echoMode: TextInput.Password
                 placeholderText: "Passphrase"
+                Accessible.name: placeholderText
                 onAccepted: vaultAction.clicked()
             }
             Button {
