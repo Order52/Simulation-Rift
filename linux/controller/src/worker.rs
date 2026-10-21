@@ -11,7 +11,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use rift_channel::{Channel, job};
-use rift_ffi::{IntelStatus, PendingIntel, ScanJob, ScanStart, Verdict};
+use rift_ffi::{IntelStatus, PendingIntel, PreviewBitmap, PreviewJob, ScanJob, ScanStart, Verdict};
 use rift_protocol::{LandlockStatus, Response};
 
 /// Starting and confining itself takes milliseconds; compiling a pack's
@@ -20,6 +20,10 @@ const HELLO_DEADLINE: Duration = Duration::from_secs(5);
 const RULES_DEADLINE: Duration = Duration::from_secs(60);
 /// The core's scan deadline (15 s) plus reading the input.
 const SCAN_DEADLINE: Duration = Duration::from_secs(20);
+/// The worker's own preview deadline (10 s) plus reading the input.
+const PREVIEW_DEADLINE: Duration = Duration::from_secs(15);
+/// The largest bitmap accepted, as RGBA: rift-protocol's own bound.
+const MAX_BITMAP_BYTES: u64 = rift_protocol::MAX_BITMAP_BYTES;
 
 #[derive(Debug, Clone)]
 pub struct Workers {
@@ -69,6 +73,29 @@ impl Workers {
         job.accept_load(reply).map_err(|e| e.to_string())?;
         let reply = worker.ask(&job.scan_frame(), Some(&job.input()), SCAN_DEADLINE)?;
         job.finish(reply).map_err(|e| e.to_string())
+    }
+
+    /// Renders an image preview in a fresh worker: its RGBA pixels, in rows
+    /// of `stride` bytes, read from the sealed memfd it returned.
+    pub fn preview(&self, job: &PreviewJob) -> Result<(PreviewBitmap, Vec<u8>), String> {
+        let mut worker = self.start()?;
+        let hello = job.hello_frame();
+        let reply = worker.ask(&hello, None, HELLO_DEADLINE)?;
+        require_landlock(&hello, &reply)?;
+        job.accept_hello(reply).map_err(|e| e.to_string())?;
+        let (reply, pixels) =
+            worker.exchange(&job.request_frame(), Some(&job.input()), PREVIEW_DEADLINE)?;
+        let bitmap = job
+            .accept(reply, MAX_BITMAP_BYTES)
+            .map_err(|e| e.to_string())?;
+        let pixels = pixels.ok_or("the worker sent no pixels")?;
+        let size = u64::from(bitmap.stride).saturating_mul(u64::from(bitmap.height));
+        let bytes = job::read_sealed(pixels, size)
+            .map_err(|e| format!("the worker's pixels were refused: {e}"))?;
+        if u64::try_from(bytes.len()).ok() != Some(size) {
+            return Err("the worker's pixels do not match its bitmap".into());
+        }
+        Ok((bitmap, bytes))
     }
 
     /// The install check for a verified threat database (§13.2): a fresh
@@ -127,7 +154,7 @@ struct WorkerProcess {
 impl WorkerProcess {
     /// Sends `frame`, with `input` in a sealed memfd, and returns the reply
     /// frame. A reply with a descriptor is refused here: only bitmaps carry
-    /// one, and this controller does not request them yet.
+    /// one, which [`Workers::preview`] takes with `exchange`.
     fn ask(
         &mut self,
         frame: &[u8],

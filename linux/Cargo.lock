@@ -2886,10 +2886,12 @@ dependencies = [
 name = "rift-linux"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",
  "cxx-qt-lib",
+ "png",
  "rift-channel",
  "rift-ffi",
  "rift-protocol",

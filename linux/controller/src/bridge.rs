@@ -29,6 +29,15 @@ pub mod qobject {
         #[qproperty(QString, vault)]
         #[qproperty(QStringList, kept)]
         #[qproperty(QString, vault_status)]
+        /// Changes with every preview shown.
+        #[qproperty(i32, preview_serial)]
+        #[qproperty(QString, preview_title)]
+        /// Escaped plain text, or empty.
+        #[qproperty(QString, preview_text)]
+        /// A `data:` URL of a PNG this process encoded, or empty.
+        #[qproperty(QString, preview_image)]
+        /// What was cut or replaced, or why there is no preview.
+        #[qproperty(QString, preview_note)]
         type RiftController = super::RiftControllerRust;
 
         /// Opens a new session at the typed address, ending any current one.
@@ -49,6 +58,9 @@ pub mod qobject {
         fn unlock_vault(self: Pin<&mut Self>, passphrase: &QString);
         #[qinvokable]
         fn lock_vault(self: Pin<&mut Self>);
+        /// Previews quarantined file `index` (as listed).
+        #[qinvokable]
+        fn preview(self: Pin<&mut Self>, index: i32);
         /// Copies quarantined file `index` (as listed) into the vault.
         #[qinvokable]
         fn keep(self: Pin<&mut Self>, index: i32);
@@ -65,13 +77,15 @@ pub mod qobject {
 }
 
 use std::pin::Pin;
+
+use base64::Engine as _;
 use std::sync::{Arc, OnceLock};
 use std::thread;
 
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QList, QString, QStringList, QUrl};
 
-use crate::session::{Controller, Event, Notify};
+use crate::session::{Controller, Event, Notify, Shown};
 use crate::vault::State;
 
 /// Set once by `main` before QML is loaded.
@@ -100,6 +114,11 @@ pub struct RiftControllerRust {
     vault: QString,
     kept: QStringList,
     vault_status: QString,
+    preview_serial: i32,
+    preview_title: QString,
+    preview_text: QString,
+    preview_image: QString,
+    preview_note: QString,
     /// The quarantined files listed, as (generation, id, text).
     files: Vec<(u64, String, String)>,
     /// The kept files' ids, in the order listed.
@@ -127,6 +146,11 @@ impl Default for RiftControllerRust {
             vault: QString::from(vault),
             kept: QStringList::default(),
             vault_status: QString::default(),
+            preview_serial: 0,
+            preview_title: QString::default(),
+            preview_text: QString::default(),
+            preview_image: QString::default(),
+            preview_note: QString::default(),
             files: Vec::new(),
             kept_ids: Vec::new(),
         }
@@ -227,6 +251,20 @@ impl qobject::RiftController {
         }
         let event = controller.vault_event(Some("The vault is locked.".into()));
         self.apply(event);
+    }
+
+    pub fn preview(self: Pin<&mut Self>, index: i32) {
+        let Some((generation, id, title)) = usize::try_from(index)
+            .ok()
+            .and_then(|i| self.rust().files.get(i).cloned())
+        else {
+            return;
+        };
+        self.run(move |controller, notify| {
+            notify(Event::Status("Previewing in an isolated worker…".into()));
+            let shown = controller.preview(generation, &id);
+            notify(Event::Previewed { title, shown });
+        });
     }
 
     pub fn keep(self: Pin<&mut Self>, index: i32) {
@@ -335,6 +373,29 @@ impl qobject::RiftController {
                     list(rust.files.iter().map(|(_, _, text)| text.as_str()))
                 };
                 self.set_quarantine(files);
+            }
+            Event::Previewed { title, shown } => {
+                let (text, image, note) = match shown {
+                    Ok(Shown::Text { text, note }) => (text, String::new(), note),
+                    Ok(Shown::Image { png, width, height }) => (
+                        String::new(),
+                        format!(
+                            "data:image/png;base64,{}",
+                            base64::engine::general_purpose::STANDARD.encode(png)
+                        ),
+                        format!("{width} × {height} pixels, decoded by an isolated worker"),
+                    ),
+                    Err(error) => (String::new(), String::new(), format!("No preview: {error}")),
+                };
+                self.as_mut().set_status(QString::default());
+                self.as_mut()
+                    .set_preview_title(QString::from(title.as_str()));
+                self.as_mut().set_preview_text(QString::from(text.as_str()));
+                self.as_mut()
+                    .set_preview_image(QString::from(image.as_str()));
+                self.as_mut().set_preview_note(QString::from(note.as_str()));
+                let serial = self.preview_serial().wrapping_add(1);
+                self.set_preview_serial(serial);
             }
             Event::Vault {
                 state,

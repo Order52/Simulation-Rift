@@ -19,6 +19,10 @@ path = "src/main.rs"
 cxx = "1.0.205"
 cxx-qt = "0.10.0"
 cxx-qt-lib = { version = "0.10.0", features = ["qt_gui", "qt_qml"] }
+# The preview's PNG for QML, encoded here from the worker's RGBA pixels;
+# nothing untrusted is decoded in the controller.
+base64 = "0.22.1"
+png = "0.18.1"
 rift-channel = { path = "../../crates/rift-channel" }
 rift-ffi = { path = "../../crates/rift-ffi" }
 rift-protocol = { path = "../../crates/rift-protocol" }

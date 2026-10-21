@@ -17,8 +17,8 @@ use crate::vault::{Locker, State};
 use crate::worker::Workers;
 use rift_channel::Channel;
 use rift_ffi::{
-    DownloadInfo, EgressStats, ForwardedEgress, Intel, IntelStatus, Navigation, Navigator,
-    Recovery, Sessions, VaultEntry, Verdict, display_safe, typed_address,
+    DownloadInfo, EgressStats, ForwardedEgress, Intel, IntelStatus, Navigation, Navigator, Preview,
+    PreviewKind, Recovery, Sessions, VaultEntry, Verdict, display_safe, typed_address,
 };
 use rift_protocol::session::{
     Decision, Fact, FromBrowser, MAX_FACT_CODE_BYTES, MAX_FACT_TEXT_BYTES, MAX_FACTS,
@@ -51,6 +51,23 @@ const SHORTENERS: [&str; 7] = [
     "buff.ly",
 ];
 
+/// The box a preview is fitted into.
+const PREVIEW_WIDTH: u32 = 960;
+const PREVIEW_HEIGHT: u32 = 720;
+
+/// A preview, for display.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Shown {
+    /// Escaped plain text, with a note on what was cut or replaced.
+    Text { text: String, note: String },
+    /// A PNG this process encoded from a worker's pixels.
+    Image {
+        png: Vec<u8>,
+        width: u32,
+        height: u32,
+    },
+}
+
 /// Downloads fetched at once per controller; more are refused, so that a
 /// page cannot start an unbounded number of transfers.
 const MAX_DOWNLOADS: usize = 4;
@@ -67,6 +84,11 @@ pub enum Event {
         generation: u64,
         id: String,
         text: String,
+    },
+    /// A preview of a quarantined file, titled with its listing.
+    Previewed {
+        title: String,
+        shown: Result<Shown, String>,
     },
     /// The vault's state, its kept files (id and text) while unlocked, and
     /// what the last vault action did.
@@ -231,6 +253,45 @@ impl Controller {
             "Kept {} in the vault. It is the original file and is still untrusted.",
             entry.display_name
         ))
+    }
+
+    /// Previews quarantined file `id` of `generation` (§11.2): images are
+    /// decoded by a fresh confined worker, text is escaped by rift-core.
+    /// Blocks: call it off the UI thread.
+    pub fn preview(&self, generation: u64, id: &str) -> Result<Shown, String> {
+        let prepared = Arc::clone(&self.sessions)
+            .preview(generation, id.to_owned(), PREVIEW_WIDTH, PREVIEW_HEIGHT)
+            .map_err(|e| e.to_string())?;
+        match prepared {
+            Preview::Text {
+                text,
+                truncated,
+                replaced,
+            } => {
+                let mut notes = Vec::new();
+                if truncated {
+                    notes.push("only the start of the file is shown");
+                }
+                if replaced {
+                    notes.push("invisible or control characters are shown as escapes");
+                }
+                Ok(Shown::Text {
+                    text,
+                    note: notes.join("; "),
+                })
+            }
+            Preview::Rendered { job } if job.kind() == PreviewKind::Image => {
+                let (bitmap, pixels) = self.workers.preview(&job)?;
+                Ok(Shown::Image {
+                    png: encode_png(bitmap.width, bitmap.height, &pixels)?,
+                    width: bitmap.width,
+                    height: bitmap.height,
+                })
+            }
+            Preview::Rendered { .. } => Err(
+                "PDF files are not previewed on Linux yet: the worker has no PDF renderer".into(),
+            ),
+        }
     }
 
     /// Starts a new session at `input` (as typed), ending any current one.
@@ -507,6 +568,19 @@ fn describe(verdict: &Verdict) -> String {
     parts.join("; ")
 }
 
+/// Encodes RGBA8 pixels, `width * 4` bytes a row, as a PNG.
+fn encode_png(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>, String> {
+    let mut png = Vec::new();
+    let mut encoder = png::Encoder::new(&mut png, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder
+        .write_header()
+        .and_then(|mut writer| writer.write_image_data(pixels))
+        .map_err(|e| format!("the preview could not be encoded: {e}"))?;
+    Ok(png)
+}
+
 /// A kept file in one line. rift-ffi escapes every text in it.
 fn kept_text(entry: &VaultEntry) -> String {
     let scan = entry.scan.as_ref().map_or_else(
@@ -588,6 +662,21 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
     use super::*;
+
+    #[test]
+    fn a_preview_png_holds_exactly_the_workers_pixels() {
+        let pixels = [255, 0, 0, 255, 0, 0, 255, 128];
+        let png = encode_png(2, 1, &pixels).unwrap();
+        let mut reader = png::Decoder::new(std::io::Cursor::new(png))
+            .read_info()
+            .unwrap();
+        let mut decoded = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut decoded).unwrap();
+        assert_eq!((info.width, info.height), (2, 1));
+        assert_eq!(&decoded[..info.buffer_size()], &pixels);
+        // Pixels that do not fill the image are refused.
+        assert!(encode_png(2, 2, &pixels).is_err());
+    }
 
     fn ffi_fact(code: &str, text: &str) -> rift_ffi::Fact {
         rift_ffi::Fact {

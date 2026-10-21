@@ -53,6 +53,51 @@ ApplicationWindow {
         }
         onAccepted: exportTarget.open()
     }
+    // Previews show only what Rift made: escaped text, or a PNG encoded
+    // from the pixels an isolated worker decoded.
+    Connections {
+        target: rift
+        function onPreviewSerialChanged() { preview.open() }
+    }
+    Dialog {
+        id: preview
+        title: rift.previewTitle
+        modal: true
+        anchors.centerIn: parent
+        width: parent.width - 32
+        height: parent.height - 32
+        standardButtons: Dialog.Close
+        ColumnLayout {
+            anchors.fill: parent
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                text: rift.previewNote
+                visible: text !== ""
+            }
+            Image {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: rift.previewImage !== ""
+                source: rift.previewImage
+                fillMode: Image.PreserveAspectFit
+                cache: false
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: rift.previewText !== ""
+                TextArea {
+                    readOnly: true
+                    textFormat: TextEdit.PlainText
+                    wrapMode: TextEdit.Wrap
+                    font.family: "monospace"
+                    text: rift.previewText
+                }
+            }
+        }
+    }
     FileDialog {
         id: exportTarget
         title: "Export to"
@@ -137,6 +182,10 @@ ApplicationWindow {
                     wrapMode: Text.Wrap
                     textFormat: Text.PlainText
                     text: row.modelData
+                }
+                Button {
+                    text: "Preview"
+                    onClicked: rift.preview(row.index)
                 }
                 Button {
                     text: "Keep in vault"
