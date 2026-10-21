@@ -115,6 +115,11 @@ pub struct Paths<'a> {
     /// A demo threat database the build carries (`root.json` and `repo/`),
     /// installed when none is.
     pub demo_intel: Option<&'a Path>,
+    /// The root a release build verifies updates against (`root.json`), and
+    /// where it checks for them (`update-url.txt`, an https base with
+    /// `metadata/` and `targets/`). A test build has none and uses the demo
+    /// database's root.
+    pub intel_root: Option<&'a Path>,
 }
 
 #[derive(Debug)]
@@ -127,6 +132,7 @@ pub struct Controller {
     launcher: Launcher,
     workers: Workers,
     demo_intel: Option<PathBuf>,
+    intel_root: Option<PathBuf>,
     locker: Locker,
     /// Serializes starting and ending sessions, so that ending one never
     /// ends its successor.
@@ -158,6 +164,7 @@ impl Controller {
             launcher,
             workers: Workers::new(paths.worker),
             demo_intel: paths.demo_intel.map(Path::to_owned),
+            intel_root: paths.intel_root.map(Path::to_owned),
             locker: Locker::new(&paths.data.join("vault")),
             lifecycle: Mutex::new(()),
             downloads: Arc::new(AtomicUsize::new(0)),
@@ -211,6 +218,70 @@ impl Controller {
             )),
         }
         Some(result)
+    }
+
+    /// The root updates are verified against: the release's, or in a test
+    /// build the demo database's.
+    fn trusted_root(&self) -> Result<Vec<u8>, String> {
+        let path = match (&self.intel_root, &self.demo_intel) {
+            (Some(root), _) => root.join("root.json"),
+            (None, Some(demo)) => demo.join("root.json"),
+            (None, None) => {
+                return Err("This build has no trusted root, so it cannot install updates.".into());
+            }
+        };
+        std::fs::read(&path).map_err(|e| format!("the trusted root could not be read: {e}"))
+    }
+
+    /// Where this build checks for updates, if it was given an address.
+    pub fn update_source(&self) -> Option<String> {
+        let root = self.intel_root.as_ref()?;
+        let url = std::fs::read_to_string(root.join("update-url.txt")).ok()?;
+        let url = url.trim();
+        url.starts_with("https://")
+            .then(|| url.trim_end_matches('/').to_owned())
+    }
+
+    /// Verifies the update in folder `dir`, has a fresh worker compile its
+    /// rules, then installs it; on any failure the current database stays.
+    /// Blocks: call it off the UI thread.
+    pub fn import_intel(&self, dir: &Path) -> Result<String, String> {
+        let intel = self
+            .intel
+            .as_ref()
+            .ok_or("The threat database could not be opened.")?;
+        let pending = Arc::clone(intel)
+            .verify_offline(self.trusted_root()?, utf8(dir)?)
+            .map_err(|e| e.to_string())?;
+        self.workers.install(&pending, now_unix())?;
+        log(&format!("threat database {} imported", pending.snapshot()));
+        Ok(format!("Installed {}.", pending.snapshot()))
+    }
+
+    /// The same for the update at this build's address, fetched by the
+    /// core's checked fetcher. Blocks for the whole download.
+    pub fn check_for_update(&self) -> Result<String, String> {
+        let intel = self
+            .intel
+            .as_ref()
+            .ok_or("The threat database could not be opened.")?;
+        let base = self
+            .update_source()
+            .ok_or("This build has no update address.")?;
+        let pending = Arc::clone(intel)
+            .verify_online(
+                self.trusted_root()?,
+                format!("{base}/metadata/"),
+                format!("{base}/targets/"),
+                Vec::new(),
+            )
+            .map_err(|e| e.to_string())?;
+        self.workers.install(&pending, now_unix())?;
+        log(&format!(
+            "threat database {} downloaded and installed",
+            pending.snapshot()
+        ));
+        Ok(format!("Installed {}.", pending.snapshot()))
     }
 
     pub fn locker(&self) -> &Locker {
@@ -684,6 +755,90 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
     use super::*;
+
+    /// The workspace's `rift-worker`, built next to this test binary.
+    fn built_worker() -> PathBuf {
+        let exe = std::env::current_exe().unwrap();
+        let worker = exe.parent().unwrap().parent().unwrap().join("rift-worker");
+        assert!(
+            worker.is_file(),
+            "build rift-worker first: {}",
+            worker.display()
+        );
+        worker
+    }
+
+    fn controller_with(name: &str, worker: &Path, demo: &Path) -> (Arc<Controller>, PathBuf) {
+        let root = std::env::temp_dir().join(format!("rift-intel-{name}-{}", std::process::id()));
+        let _fresh = std::fs::remove_dir_all(&root);
+        let (data, sandbox) = (root.join("data"), root.join("sandbox"));
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&sandbox).unwrap();
+        let paths = Paths {
+            data: &data,
+            sandbox: &sandbox,
+            browser: Path::new("/nonexistent/rift-browser"),
+            worker,
+            demo_intel: Some(demo),
+            intel_root: None,
+        };
+        (Controller::open(&paths).unwrap().0, root)
+    }
+
+    /// Needs `rift-worker` built and the test build's demo database in
+    /// `linux/intel-demo` (`linux/flatpak/demo-intel.sh`): the Flatpak test
+    /// build runs it with `--ignored`.
+    #[test]
+    #[ignore = "needs rift-worker built and linux/intel-demo"]
+    fn a_threat_database_is_installed_only_after_a_confined_worker_compiles_it() {
+        let demo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../intel-demo");
+        assert!(
+            demo.join("root.json").is_file(),
+            "no demo database in {}",
+            demo.display()
+        );
+
+        // A "worker" that ends without answering installs nothing.
+        let (refused, scratch) = controller_with("fake", Path::new("/bin/true"), &demo);
+        assert!(refused.install_demo_intel().unwrap().is_err());
+        assert!(refused.intel_summary().starts_with("No threat database"));
+        let _cleaned = std::fs::remove_dir_all(scratch);
+
+        let (controller, scratch) = controller_with("real", &built_worker(), &demo);
+        let snapshot = controller.install_demo_intel().unwrap().unwrap();
+        assert!(controller.intel_summary().contains(&snapshot));
+        // Installed once only.
+        assert!(controller.install_demo_intel().is_none());
+
+        // A tampered copy is refused, and the installed database stays.
+        let tampered = scratch.join("tampered");
+        copy_dir(&demo.join("repo"), &tampered);
+        let target = std::fs::read_dir(tampered.join("targets"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .find(|p| p.to_string_lossy().ends_with(".rules.yar"))
+            .unwrap();
+        let mut rules = std::fs::read(&target).unwrap();
+        rules.extend_from_slice(b"\nrule injected { condition: true }\n");
+        std::fs::write(&target, rules).unwrap();
+        assert!(controller.import_intel(&tampered).is_err());
+        assert!(controller.intel_summary().contains(&snapshot));
+        assert!(controller.import_intel(&scratch.join("missing")).is_err());
+        let _cleaned = std::fs::remove_dir_all(scratch);
+    }
+
+    fn copy_dir(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            let target = to.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy_dir(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), target).unwrap();
+            }
+        }
+    }
 
     #[test]
     fn a_preview_png_holds_exactly_the_workers_pixels() {

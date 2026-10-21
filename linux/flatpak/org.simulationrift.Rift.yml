@@ -12,7 +12,10 @@
 # The build is offline: the crates are vendored first (see
 # .github/workflows/linux-app.yml), and Cargo is told to use them only. A
 # test build also carries linux/intel-demo (linux/flatpak/demo-intel.sh), a
-# demo threat database; a release build carries none.
+# demo threat database whose root also verifies imported updates; a release
+# build carries none, and instead linux/intel-root: the production
+# repository's public root.json and, optionally, update-url.txt (an https
+# base with metadata/ and targets/).
 app-id: org.simulationrift.Rift
 runtime: org.kde.Platform
 runtime-version: '6.10'
@@ -48,6 +51,10 @@ modules:
         cargo build --offline --release --locked --manifest-path linux/Cargo.toml
         # The Linux crates' tests, in the SDK the app is built with.
         cargo test --offline --release --locked --manifest-path linux/Cargo.toml
+        # A test build also installs its demo database through a real worker.
+        if [ -d linux/intel-demo ]; then
+          cargo test --offline --release --locked --manifest-path linux/Cargo.toml -p rift-linux -- --ignored
+        fi
       - install -Dm755 linux/target/release/rift /app/bin/rift
       - install -Dm755 linux/target/release/rift-browser /app/bin/rift-browser
       - install -Dm755 linux/target/release/rift-worker /app/bin/rift-worker
@@ -55,6 +62,10 @@ modules:
         if [ -d linux/intel-demo ]; then
           mkdir -p /app/share/rift
           cp -R linux/intel-demo /app/share/rift/intel-demo
+        fi
+        if [ -d linux/intel-root ]; then
+          mkdir -p /app/share/rift
+          cp -R linux/intel-root /app/share/rift/intel-root
         fi
     sources:
       # The repository root: the shared crates are path dependencies.

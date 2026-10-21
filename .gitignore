@@ -37,5 +37,6 @@ __pycache__/
 /linux/vendor/
 /linux/vendor-config.toml
 /linux/intel-demo/
+/linux/intel-root/
 /.cargo/config.toml
 /build-linux/

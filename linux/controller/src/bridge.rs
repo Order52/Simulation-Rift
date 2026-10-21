@@ -27,6 +27,8 @@ pub mod qobject {
         #[qproperty(QStringList, quarantine)]
         #[qproperty(QString, address)]
         #[qproperty(bool, active)]
+        /// This build has an address to check for database updates.
+        #[qproperty(bool, can_update)]
         /// "missing", "locked", "unlocked" or "unusable".
         #[qproperty(QString, vault)]
         #[qproperty(QStringList, kept)]
@@ -62,6 +64,12 @@ pub mod qobject {
         fn unlock_vault(self: Pin<&mut Self>, passphrase: &QString);
         #[qinvokable]
         fn lock_vault(self: Pin<&mut Self>);
+        /// Installs the threat database update in `folder`, chosen by the user.
+        #[qinvokable]
+        fn import_intel(self: Pin<&mut Self>, folder: &QUrl);
+        /// Downloads and installs an update from this build's address.
+        #[qinvokable]
+        fn check_for_update(self: Pin<&mut Self>);
         /// Lets `host` reach local or private addresses in this session.
         #[qinvokable]
         fn allow_local_host(self: Pin<&mut Self>, host: &QString);
@@ -118,6 +126,7 @@ pub struct RiftControllerRust {
     quarantine: QStringList,
     address: QString,
     active: bool,
+    can_update: bool,
     vault: QString,
     kept: QStringList,
     vault_status: QString,
@@ -136,12 +145,13 @@ pub struct RiftControllerRust {
 impl Default for RiftControllerRust {
     fn default() -> Self {
         let startup = STARTUP.get();
-        let (intel, vault) = match startup.map(|s| &s.controller) {
+        let (intel, vault, can_update) = match startup.map(|s| &s.controller) {
             Some(Ok(controller)) => (
                 controller.intel_summary(),
                 state_name(controller.locker().state()),
+                controller.update_source().is_some(),
             ),
-            _ => (String::new(), state_name(State::Unusable)),
+            _ => (String::new(), state_name(State::Unusable), false),
         };
         Self {
             status: QString::from(startup.map_or("", |s| s.status.as_str())),
@@ -151,6 +161,7 @@ impl Default for RiftControllerRust {
             quarantine: QStringList::default(),
             address: QString::from(startup.and_then(|s| s.address.as_deref()).unwrap_or("")),
             active: false,
+            can_update,
             vault: QString::from(vault),
             kept: QStringList::default(),
             vault_status: QString::default(),
@@ -260,6 +271,33 @@ impl qobject::RiftController {
         }
         let event = controller.vault_event(Some("The vault is locked.".into()));
         self.apply(event);
+    }
+
+    pub fn import_intel(self: Pin<&mut Self>, folder: &QUrl) {
+        let Some(dir) = folder
+            .to_local_file()
+            .map(|p| std::path::PathBuf::from(String::from(&p)))
+        else {
+            self.set_status(QString::from("Choose a local folder."));
+            return;
+        };
+        self.run(move |controller, notify| {
+            notify(Event::Status("Checking the update…".into()));
+            let message = controller
+                .import_intel(&dir)
+                .unwrap_or_else(|error| format!("The update was not installed: {error}"));
+            notify(Event::Status(message));
+        });
+    }
+
+    pub fn check_for_update(self: Pin<&mut Self>) {
+        self.run(|controller, notify| {
+            notify(Event::Status("Downloading the update…".into()));
+            let message = controller
+                .check_for_update()
+                .unwrap_or_else(|error| format!("The update was not installed: {error}"));
+            notify(Event::Status(message));
+        });
     }
 
     pub fn allow_local_host(mut self: Pin<&mut Self>, host: &QString) {

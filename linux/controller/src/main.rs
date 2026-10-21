@@ -37,6 +37,8 @@ const BROWSER: &str = "/app/bin/rift-browser";
 const WORKER: &str = "/app/bin/rift-worker";
 /// The demo threat database a test build carries; a release carries none.
 const DEMO_INTEL: &str = "/app/share/rift/intel-demo";
+/// A release build's trusted root and update address.
+const INTEL_ROOT: &str = "/app/share/rift/intel-root";
 const MAIN_QML: &str = "qrc:/qt/qml/org/simulationrift/app/qml/Main.qml";
 
 fn main() -> ExitCode {
@@ -104,6 +106,9 @@ fn start(data: &Path, sandbox: &Path, address: Option<String>) -> Startup {
         browser: Path::new(BROWSER),
         worker: Path::new(WORKER),
         demo_intel: demo.is_dir().then_some(demo),
+        intel_root: Path::new(INTEL_ROOT)
+            .is_dir()
+            .then_some(Path::new(INTEL_ROOT)),
     };
     match Controller::open(&paths) {
         Ok((controller, recovery)) => {

@@ -85,6 +85,11 @@ ApplicationWindow {
             }
         }
     }
+    FolderDialog {
+        id: importFrom
+        title: "Import a threat database update"
+        onAccepted: rift.importIntel(selectedFolder)
+    }
     FileDialog {
         id: exportTarget
         title: "Export to"
@@ -130,11 +135,23 @@ ApplicationWindow {
             textFormat: Text.PlainText
             text: rift.status
         }
-        Label {
+        RowLayout {
             Layout.fillWidth: true
-            wrapMode: Text.Wrap
-            textFormat: Text.PlainText
-            text: rift.intel
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                text: rift.intel
+            }
+            Button {
+                text: "Import an update…"
+                onClicked: importFrom.open()
+            }
+            Button {
+                text: "Check for an update"
+                visible: rift.canUpdate
+                onClicked: rift.checkForUpdate()
+            }
         }
         Label {
             Layout.fillWidth: true
