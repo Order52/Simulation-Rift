@@ -16,6 +16,15 @@ use rustix::net::{
     sendmsg, socketpair,
 };
 
+/// The largest datagram either kind of channel carries: a session message,
+/// or a worker frame with its 4-byte length prefix. Each side's decoder
+/// applies its own, tighter bound.
+const MAX_DATAGRAM_BYTES: usize = if MAX_MESSAGE_BYTES > rift_protocol::MAX_FRAME_BYTES + 4 {
+    MAX_MESSAGE_BYTES
+} else {
+    rift_protocol::MAX_FRAME_BYTES + 4
+};
+
 /// One end of a session channel.
 #[derive(Debug)]
 pub struct Channel {
@@ -71,24 +80,36 @@ impl Channel {
     /// every process that held a handle to it, or by their ending. True if
     /// it has been; messages still queued here do not count against that.
     pub fn peer_closed(&self, timeout: Duration) -> io::Result<bool> {
+        // No events requested: a hang-up is always reported.
+        self.wait(PollFlags::empty(), timeout)
+            .map(|events| events.contains(PollFlags::HUP))
+    }
+
+    /// Waits up to `timeout` until [`recv`](Self::recv) would not block: a
+    /// datagram is queued, or the other end has closed. False at the deadline.
+    pub fn readable(&self, timeout: Duration) -> io::Result<bool> {
+        self.wait(PollFlags::IN, timeout)
+            .map(|events| !events.is_empty())
+    }
+
+    /// Polls for `wanted` (hang-ups and errors are always reported) until
+    /// something is reported or `timeout` passes; what was reported.
+    fn wait(&self, wanted: PollFlags, timeout: Duration) -> io::Result<PollFlags> {
         let deadline = Instant::now().checked_add(timeout);
         loop {
             let remaining =
                 deadline.map_or(timeout, |d| d.saturating_duration_since(Instant::now()));
             let wait = Timespec::try_from(remaining).map_err(io::Error::other)?;
-            // No events requested: a hang-up is always reported.
-            let mut fds = [PollFd::new(&self.fd, PollFlags::empty())];
+            let mut fds = [PollFd::new(&self.fd, wanted)];
             match poll(&mut fds, Some(&wait)) {
                 Ok(_) => {}
                 Err(rustix::io::Errno::INTR) => continue,
                 Err(error) => return Err(error.into()),
             }
             let [polled] = &fds;
-            if polled.revents().contains(PollFlags::HUP) {
-                return Ok(true);
-            }
-            if remaining.is_zero() {
-                return Ok(false);
+            let events = polled.revents();
+            if !events.is_empty() || remaining.is_zero() {
+                return Ok(events);
             }
         }
     }
@@ -124,7 +145,7 @@ impl Channel {
     /// descriptor, is an error (the kernel closes any descriptor that did
     /// not fit).
     pub fn recv(&self) -> io::Result<Option<Received>> {
-        let mut bytes = vec![0u8; MAX_MESSAGE_BYTES.saturating_add(1)];
+        let mut bytes = vec![0u8; MAX_DATAGRAM_BYTES.saturating_add(1)];
         let mut space = [MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(1))];
         let mut control = RecvAncillaryBuffer::new(&mut space);
         let received = recvmsg(
@@ -142,7 +163,7 @@ impl Channel {
         if received
             .flags
             .intersects(ReturnFlags::TRUNC | ReturnFlags::CTRUNC)
-            || received.bytes > MAX_MESSAGE_BYTES
+            || received.bytes > MAX_DATAGRAM_BYTES
         {
             return Err(invalid("the datagram or its descriptors were cut short"));
         }
@@ -299,6 +320,20 @@ mod tests {
     }
 
     #[test]
+    fn readable_waits_for_a_datagram_or_the_deadline() {
+        let (controller, theirs) = Channel::pair().unwrap();
+        let browser = Channel { fd: theirs };
+        assert!(!controller.readable(Duration::from_millis(20)).unwrap());
+        browser.send(b"x", None).unwrap();
+        assert!(controller.readable(Duration::from_secs(5)).unwrap());
+        assert_eq!(controller.recv().unwrap().unwrap().bytes, b"x");
+        drop(browser);
+        // A hang-up also makes recv return at once, with None.
+        assert!(controller.readable(Duration::from_secs(5)).unwrap());
+        assert!(controller.recv().unwrap().is_none());
+    }
+
+    #[test]
     fn descriptors_go_only_with_connections() {
         let (controller, theirs) = Channel::pair().unwrap();
         let browser = Channel { fd: theirs };
@@ -335,12 +370,17 @@ mod tests {
         let (controller, theirs) = Channel::pair().unwrap();
         let browser = Channel { fd: theirs };
         browser
-            .send(&vec![0u8; MAX_MESSAGE_BYTES + 1], None)
+            .send(&vec![0u8; MAX_DATAGRAM_BYTES + 1], None)
             .unwrap();
         assert_eq!(
             controller.recv().unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
+        // Within the datagram limit but over the session message's.
+        browser
+            .send(&vec![0u8; MAX_MESSAGE_BYTES + 1], None)
+            .unwrap();
+        assert!(controller.recv_from_browser().is_err());
         browser.send(&[0xff, 0xff, 0xff], None).unwrap();
         assert!(controller.recv_from_browser().is_err());
         // The channel still works after a refused datagram.

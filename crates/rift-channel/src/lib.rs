@@ -8,8 +8,14 @@
 //! with a duplicate ([`Channel::from_stdin`]), so neither side adopts a raw
 //! descriptor number and no unsafe code is needed.
 //!
+//! Workers use the same channel, one per job: request and response frames
+//! as datagrams, with the job's input and a bitmap's pixels as sealed
+//! memfds ([`job`]).
+//!
 //! Linux only: elsewhere the crate is empty.
 
+#[cfg(target_os = "linux")]
+pub mod job;
 #[cfg(target_os = "linux")]
 mod linux;
 
