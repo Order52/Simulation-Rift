@@ -1,11 +1,13 @@
 use std::io::{self, IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::time::{Duration, Instant};
 
 use rift_protocol::session::{
     FromBrowser, MAX_MESSAGE_BYTES, ToBrowser, decode_from_browser, decode_to_browser,
     encode_message,
 };
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fs::{Mode, OFlags};
 use rustix::io::fcntl_dupfd_cloexec;
 use rustix::net::{
@@ -63,6 +65,32 @@ impl Channel {
         Ok(Self {
             fd: self.fd.try_clone()?,
         })
+    }
+
+    /// Waits up to `timeout` for the other end to be closed everywhere: by
+    /// every process that held a handle to it, or by their ending. True if
+    /// it has been; messages still queued here do not count against that.
+    pub fn peer_closed(&self, timeout: Duration) -> io::Result<bool> {
+        let deadline = Instant::now().checked_add(timeout);
+        loop {
+            let remaining =
+                deadline.map_or(timeout, |d| d.saturating_duration_since(Instant::now()));
+            let wait = Timespec::try_from(remaining).map_err(io::Error::other)?;
+            // No events requested: a hang-up is always reported.
+            let mut fds = [PollFd::new(&self.fd, PollFlags::empty())];
+            match poll(&mut fds, Some(&wait)) {
+                Ok(_) => {}
+                Err(rustix::io::Errno::INTR) => continue,
+                Err(error) => return Err(error.into()),
+            }
+            let [polled] = &fds;
+            if polled.revents().contains(PollFlags::HUP) {
+                return Ok(true);
+            }
+            if remaining.is_zero() {
+                return Ok(false);
+            }
+        }
     }
 
     /// Sends one datagram, with `attached` passed along if given.
@@ -252,6 +280,22 @@ mod tests {
         );
         drop(browser);
         assert!(controller.recv_from_browser().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_hang_up_is_seen_only_once_the_other_end_is_closed() {
+        let (controller, theirs) = Channel::pair().unwrap();
+        let browser = Channel { fd: theirs };
+        let held = browser.try_clone().unwrap();
+        browser
+            .send_from_browser(&FromBrowser::Closing, None)
+            .unwrap();
+        assert!(!controller.peer_closed(Duration::from_millis(20)).unwrap());
+        drop(browser);
+        // Another handle still holds it open.
+        assert!(!controller.peer_closed(Duration::from_millis(20)).unwrap());
+        drop(held);
+        assert!(controller.peer_closed(Duration::from_secs(5)).unwrap());
     }
 
     #[test]

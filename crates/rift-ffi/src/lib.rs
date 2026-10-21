@@ -22,6 +22,8 @@ mod egress;
 mod scan;
 mod vault;
 pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressStats};
+/// The Linux controller's proxy, from [`Sessions::forwarded_egress`].
+pub use rift_core::egress::ForwardedEgress;
 pub use scan::{
     Intel, IntelFailure, IntelStatus, PendingIntel, ScanFailure, ScanFinding, ScanJob, ScanStart,
     ScanStatus, Verdict,
