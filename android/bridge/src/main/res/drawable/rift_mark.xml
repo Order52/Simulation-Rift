@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The logo inside the apps: the launcher icon's layers on a rounded square. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M28,0H80A28,28 0,0 1,108 28V80A28,28 0,0 1,80 108H28A28,28 0,0 1,0 80V28A28,28 0,0 1,28 0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108"
+                android:startColor="#FF1E1450"
+                android:endColor="#FF5B3FD9" />
+        </aapt:attr>
+    </path>
+    <path android:pathData="M54,17L83,27V51C83,70 70.5,84 54,91C37.5,84 25,70 25,51V27Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="25"
+                android:startY="17"
+                android:endX="83"
+                android:endY="91"
+                android:startColor="#FFFFFFFF"
+                android:endColor="#FFDCD3FF" />
+        </aapt:attr>
+    </path>
+    <!-- The rift: a dark gap with a glowing core, cut only into the shield. -->
+    <group>
+        <clip-path android:pathData="M54,17L83,27V51C83,70 70.5,84 54,91C37.5,84 25,70 25,51V27Z" />
+        <path
+            android:strokeColor="#FF2A1C70"
+            android:strokeWidth="9"
+            android:strokeLineJoin="miter"
+            android:pathData="M57,15L48,40L60,52L50,93" />
+        <path
+            android:strokeWidth="3.5"
+            android:strokeLineJoin="miter"
+            android:pathData="M57,15L48,40L60,52L50,93">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="54"
+                    android:startY="17"
+                    android:endX="54"
+                    android:endY="91"
+                    android:startColor="#FF7DF9E4"
+                    android:endColor="#FF38BDF8" />
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

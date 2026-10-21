@@ -233,7 +233,7 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
          * docs/reports/phase-2.md for where each one comes from.
          */
         private val ALLOWED = listOf(
-            Regex("files/rift/.*"), // rift-core: session marker, intel, vault (sessions/<gen> is deleted by the core)
+            Regex("files/rift/.*"), // rift-core: session marker, intel (sessions/<gen> is deleted by the core)
             // androidx.profileinstaller (via Compose): an empty marker that the
             // ART baseline profile was installed, and (release builds) the APK
             // update time it was written for. Neither holds browsing data.

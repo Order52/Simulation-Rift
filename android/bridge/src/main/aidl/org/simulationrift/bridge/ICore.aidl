@@ -4,8 +4,8 @@ import org.simulationrift.bridge.IBrowser;
 
 /**
  * The controller's interface for the browser app (§8.3). It offers
- * navigation decisions and session requests only: nothing here reaches the
- * vault, keys, files or export. The service requires the signature
+ * navigation decisions and session requests only: nothing here reaches
+ * quarantined files or the threat database. The service requires the signature
  * permission, and every call is checked for the browser app's UID and
  * signer. Every call names the caller's generation, and the core ignores or
  * blocks anything from a generation that is not current.

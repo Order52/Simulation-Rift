@@ -1,8 +1,8 @@
 #!/bin/sh
-# Power-loss rounds (Phase 7), in the manner of F1–F4 in run-tests.sh: the
+# Power-loss rounds (Phase 7), in the manner of F3/F4 in run-tests.sh: the
 # emulator's qemu is killed (SIGKILL) at a random moment while the controller
-# keeps files into the vault (P2) or installs the threat database (P4), and
-# after a cold boot f2 or f4 checks what is left.
+# installs the threat database (P4), and after a cold boot f4 checks what is
+# left.
 #   android/power-loss.sh <out-dir> <avd>
 # Unlike a kill of the controller, this loses whatever the guest kernel had
 # not yet handed to its disk, as a power cut would. The emulator's drives use
@@ -12,7 +12,7 @@
 #
 # Needs the APKs built (android/build.sh), a debuggable image (adb root) and
 # no emulator or device attached. Each round cold-boots the emulator (about a
-# minute); RIFT_POWER_ROUNDS sets the rounds of each kind (default 4). The
+# minute); RIFT_POWER_ROUNDS sets the rounds (default 4). The
 # rounds change the AVD's data disk; copy it first to keep it as it was.
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -91,52 +91,6 @@ ready
 : > "$out/power.log"
 # Appends the step results of the boot so far to power.log.
 save_power_log() { "$adb" logcat -d -s Rift:I | tr -d '\r' | grep -E "result f[0-9]" >> "$out/power.log" || true; }
-
-echo "== P1/P2: power cut while keeping into the vault ($rounds rounds)"
-fault_step f0_prepareTheVault prepare > "$out/p-prepare.txt"
-if passed "$out/p-prepare.txt"; then
-  round=1 failures=0 summary=""
-  while [ $round -le $rounds ]; do
-    "$adb" logcat -c
-    # Streamed, so the host holds every line logged before the cut.
-    "$adb" logcat -s Rift:I > "$out/p-keep-log-$round.txt" 2>&1 &
-    stream=$!
-    fault_step f1_keepUntilKilled keep > "$out/p-keep-$round.txt" 2>&1 &
-    runner=$!
-    if wait_log "result f1: keeping from" 120; then
-      delay="$(random_delay 3000)"
-      sleep "$delay"
-      cut_power
-      wait $runner || true
-      # The stream ends with the device; it is stopped in case it did not.
-      sleep 1
-      kill $stream 2>/dev/null || true
-      wait $stream || true
-      log="$(tr -d '\r' < "$out/p-keep-log-$round.txt")"
-      from="$(echo "$log" | sed -n 's/.*result f1: keeping from \([0-9]*\).*/\1/p' | tail -1)"
-      kept="$(echo "$log" | sed -n 's/.*result f1: kept \([0-9]*\).*/\1/p' | tail -1)"
-      kept="${kept:-$from}"
-      echo "round $round: cut ${delay}s in, $kept keeps seen" >> "$out/power.log"
-      boot
-      # A keep logged after the cut's moment could not reach the host: one more unseen.
-      fault_step f2_theVaultIsWholeAfterTheKill check-vault kept "$kept" unseen 2 > "$out/p-check-vault-$round.txt"
-      save_power_log
-      if passed "$out/p-check-vault-$round.txt"; then
-        summary="$summary $round:cut-${delay}s,kept-$kept"
-      else
-        failures=$((failures + 1)); summary="$summary $round:CHECK-FAILED"
-      fi
-    else
-      wait $runner || true
-      kill $stream 2>/dev/null || true
-      failures=$((failures + 1)); summary="$summary $round:NOT-STARTED"
-    fi
-    round=$((round + 1))
-  done
-  if [ $failures -eq 0 ]; then result P2 PASS "$rounds power cuts while keeping;$summary"; else result P2 FAIL "$failures of $rounds rounds;$summary"; fi
-else
-  result P2 FAIL "the vault could not be prepared; see p-prepare.txt"
-fi
 
 echo "== P3/P4: power cut while installing the threat database ($rounds rounds)"
 # The first round is cut as soon as the install reports success: the database

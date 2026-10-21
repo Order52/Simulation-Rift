@@ -49,7 +49,6 @@ import org.simulationrift.bridge.Rift
 import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
-import org.simulationrift.core.VaultEntry
 import org.simulationrift.core.Verdict
 
 /**
@@ -121,7 +120,7 @@ class SecurityTest {
         }
         assertEquals(emptyList<String>(), dangerous)
         assertTrue("android.permission.INTERNET" in requested)
-        assertTrue("android.permission.USE_BIOMETRIC" in requested) // the vault prompt (§8.7)
+        assertFalse("android.permission.USE_BIOMETRIC" in requested) // nothing to unlock
         // Both apps hide other apps' overlays over their windows (§10.7): a normal permission.
         assertTrue("android.permission.HIDE_OVERLAY_WINDOWS" in requested)
         if (android.os.Build.VERSION.SDK_INT >= 31) { // the permission is new in API 31
@@ -799,280 +798,9 @@ class SecurityTest {
         throw AssertionError("no install outcome: ${Core.intelMessage.value}")
     }
 
-    // ---- Phase 4: the Rift Vault (§14, S18 on the device) ---------------------------
-
-    @Test
-    fun v1_keptFileOutlivesTheSessionAndNoPlaintextIsOnDisk() {
-        destroyVault()
-        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-        awaitVault<Locker.State.Unlocked>()
-        allowFixtureHost()
-        val file = submit(activeGeneration(), fixture("/files/notes.txt")).file!!
-        Core.keep(file.id)
-        awaitCondition("kept") { file.id in Locker.kept.value }
-        val entry = (Locker.state.value as Locker.State.Unlocked).entries.single()
-        assertEquals(file.sha256, entry.sha256)
-        assertEquals("notes.txt", entry.displayName)
-
-        // On disk: the scrypt-wrapped identity, the index (and the one before,
-        // for crash recovery) and one sealed object, nothing readable.
-        val vault = File(context.filesDir, "rift/vault")
-        val stored = vault.walkTopDown().filter { it.isFile }.map { it.relativeTo(vault).path }.sorted().toList()
-        assertEquals(listOf("identity.pass", "index.age", "index.age.prev", "objects/${entry.id}.age"), stored)
-        assertEquals(emptyList<String>(), filesContaining(MARKER) + filesContaining("AGE-SECRET-KEY-".toByteArray()))
-
-        // The session ends; the kept copy does not, and the reset's leftover check accepts it.
-        val next = resetAndAwait(activeGeneration())
-        assertTrue(Locker.kept.value.isEmpty())
-        Locker.lock()
-        awaitVault<Locker.State.Locked>()
-        val wrong = vaultMessageOf { Locker.unlockWithPassphrase("not the passphrase".toByteArray()) }
-        assertEquals("The vault was not unlocked: the passphrase or key does not open this vault", wrong)
-        assertTrue(Locker.state.value is Locker.State.Locked)
-        Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
-        val reopened = awaitVault<Locker.State.Unlocked>()
-        assertEquals(listOf(entry), reopened.entries)
-
-        // Export writes the original bytes where the user chose; then the file is removed.
-        val exported = File(context.cacheDir, "v1-export").apply { delete() }
-        assertEquals(
-            "Exported. The copy is outside Rift's protection now, and was not made safe.",
-            vaultMessageOf { Locker.export(entry.id, android.net.Uri.fromFile(exported)) },
-        )
-        assertTrue(contains(exported.readBytes(), MARKER))
-        exported.delete()
-        assertEquals("Removed from the vault.", vaultMessageOf { Locker.remove(entry.id) })
-        assertTrue((Locker.state.value as Locker.State.Unlocked).entries.isEmpty())
-        assertFalse(File(vault, "objects/${entry.id}.age").exists())
-        report("v1", "stored=$stored; after reset to $next: wrong passphrase -> \"$wrong\"; reopened ${reopened.entries.size} entry")
-        destroyVault()
-    }
-
-    @Test
-    fun v2_vaultLocksInTheBackgroundAndWhenIdle() {
-        destroyVault()
-        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-        awaitVault<Locker.State.Unlocked>()
-        val home = openHome()
-        assertTrue(Locker.state.value is Locker.State.Unlocked)
-        device.pressHome()
-        awaitVault<Locker.State.Locked>()
-        home.finish()
-
-        val idle = Locker.inactivityMs
-        try {
-            Locker.inactivityMs = 1_500
-            Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
-            awaitVault<Locker.State.Unlocked>()
-            val started = SystemClock.elapsedRealtime()
-            awaitVault<Locker.State.Locked>()
-            report("v2", "locked on Home; idle lock after ${SystemClock.elapsedRealtime() - started} ms (limit 1500)")
-        } finally {
-            Locker.inactivityMs = idle
-        }
-        destroyVault()
-    }
-
-    /**
-     * The Keystore key (§8.7) through the real BiometricPrompt: a PIN set by
-     * the shell, typed into the system's credential screen. Removing the PIN
-     * deletes the key, and the vault says so instead of opening; the recovery
-     * passphrase opens it, and a new PIN's key protects it again.
-     */
-    @Test
-    fun v3_keystoreVaultNeedsTheScreenLockAndRecoversWithItsPassphrase() {
-        destroyVault()
-        device.executeShellCommand("locksettings set-pin $PIN")
-        try {
-            awaitCondition("secure lock screen") { VaultKeystore.deviceSecure(context) }
-            Locker.open(context) // refreshes the state, which now offers the keystore
-            awaitCondition("keystore offered") { (Locker.state.value as? Locker.State.Absent)?.deviceSecure == true }
-            val home = openHome()
-            Locker.createWithDeviceLock(home)
-            enterPin()
-            val created = awaitVault<Locker.State.Unlocked>()
-            assertNotNull(created.keyLevel)
-            assertFalse(created.recovery)
-            val wrapped = File(context.filesDir, "rift/vault/identity.platform").readBytes()
-            assertFalse(contains(wrapped, "AGE-SECRET-KEY-".toByteArray()))
-            Locker.setRecoveryPassphrase(RECOVERY.toByteArray())
-            awaitCondition("recovery set") { (Locker.state.value as? Locker.State.Unlocked)?.recovery == true }
-
-            Locker.lock()
-            awaitVault<Locker.State.Locked>()
-            Locker.unlockWithDeviceLock(home)
-            enterPin()
-            awaitVault<Locker.State.Unlocked>()
-            Locker.lock()
-            awaitVault<Locker.State.Locked>()
-            home.finish()
-
-            device.executeShellCommand("locksettings clear --old $PIN")
-            awaitCondition("lock screen removed") { !VaultKeystore.deviceSecure(context) }
-            val again = openHome()
-            val invalidated = vaultMessageOf { Locker.unlockWithDeviceLock(again) }
-            assertEquals(VaultKeystore.INVALIDATED_RECOVERABLE, invalidated)
-            val wrong = vaultMessageOf { Locker.unlockWithRecovery("not the recovery passphrase".toByteArray()) }
-            assertEquals("The vault was not unlocked: the passphrase or key does not open this vault", wrong)
-            Locker.unlockWithRecovery(RECOVERY.toByteArray())
-            val recovered = awaitVault<Locker.State.Unlocked>()
-            assertNull("the old key is gone", recovered.keyLevel)
-
-            // A new screen lock, a new key: the same vault opens through the prompt again.
-            device.executeShellCommand("locksettings set-pin $PIN")
-            awaitCondition("secure lock screen again") { VaultKeystore.deviceSecure(context) }
-            Locker.protectAgain(again)
-            enterPin()
-            awaitCondition("protected again") { (Locker.state.value as? Locker.State.Unlocked)?.keyLevel != null }
-            Locker.lock()
-            awaitVault<Locker.State.Locked>()
-            Locker.unlockWithDeviceLock(again)
-            enterPin()
-            awaitVault<Locker.State.Unlocked>()
-            again.finish()
-            report(
-                "v3",
-                "key in ${created.keyLevel}; ${wrapped.size}-byte wrapped identity; after the PIN was removed: $invalidated; " +
-                    "recovered with the recovery passphrase, protected by a new key and unlocked through the prompt again",
-            )
-        } finally {
-            device.executeShellCommand("locksettings clear --old $PIN")
-            destroyVault()
-        }
-    }
-
-    @Test
-    fun v4_keptFilesPreviewInAnIsolatedWorkerUntilLocked() {
-        destroyVault()
-        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-        awaitVault<Locker.State.Unlocked>()
-        allowFixtureHost()
-        val file = submit(activeGeneration(), fixture("/files/picture.png")).file!!
-        Core.keep(file.id)
-        awaitCondition("kept") { file.id in Locker.kept.value }
-        val entry = (Locker.state.value as Locker.State.Unlocked).entries.single()
-        resetAndAwait(activeGeneration())
-
-        // After the session: rendered from the vault's copy, by a fresh worker.
-        Locker.preview(entry.id)
-        val deadline = SystemClock.elapsedRealtime() + PREVIEW_TIMEOUT_MS
-        var preview = Locker.previews.value[entry.id]
-        while ((preview == null || preview.running) && SystemClock.elapsedRealtime() < deadline) {
-            SystemClock.sleep(50)
-            preview = Locker.previews.value[entry.id]
-        }
-        val bitmap = preview?.bitmap
-        assertNotNull("${preview?.failure}", bitmap)
-        assertEquals(emptyList<String>(), filesContaining(MARKER))
-
-        // Locking clears what is shown.
-        Locker.lock()
-        awaitVault<Locker.State.Locked>()
-        assertTrue(Locker.previews.value.isEmpty())
-        report("v4", "vault preview ${bitmap!!.width}x${bitmap.height} after the session ended; cleared on lock")
-        destroyVault()
-    }
-
-    @Test
-    fun v5_keptFilesKeepTheVerdictTheyHadAsHistory() {
-        destroyVault()
-        Core.installDemoIntel()
-        assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
-        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-        awaitVault<Locker.State.Unlocked>()
-        allowFixtureHost()
-        val file = submit(activeGeneration(), fixture("/files/demo-file.txt")).file!!
-        val verdict = verdictOf(file.id)
-        assertEquals(ScanStatus.KNOWN_MALICIOUS, verdict.status)
-        Core.keep(file.id)
-        awaitCondition("kept") { file.id in Locker.kept.value }
-        resetAndAwait(activeGeneration())
-
-        val scan = (Locker.state.value as Locker.State.Unlocked).entries.single().scan
-        assertNotNull("no verdict kept", scan)
-        assertEquals("Known malicious", scan!!.label)
-        assertEquals(verdict.snapshot, scan.snapshot)
-        assertTrue(scan.demo)
-        assertEquals(verdict.findings.map { "${it.check}:${it.id}" }, scan.findings)
-        report("v5", "kept with: ${scan.label} ${scan.findings} database ${scan.snapshot}")
-        destroyVault()
-    }
-
-    @Test
-    fun v6_keptFilesAreScannedAgainWithTheCurrentDatabase() {
-        destroyVault()
-        Core.installDemoIntel()
-        assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
-        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-        awaitVault<Locker.State.Unlocked>()
-        allowFixtureHost()
-        val file = submit(activeGeneration(), fixture("/files/demo-file.txt")).file!!
-        Core.keep(file.id)
-        awaitCondition("kept") { file.id in Locker.kept.value }
-        // The session and its quarantined copy end; the vault's copy is scanned.
-        resetAndAwait(activeGeneration())
-        val id = (Locker.state.value as Locker.State.Unlocked).entries.single().id
-        val started = System.currentTimeMillis() / 1000
-
-        val message = vaultMessageOf { Locker.rescan(id) }
-        assertTrue(message, message.startsWith("Scanned again: Known malicious"))
-        val scan = (Locker.state.value as Locker.State.Unlocked).entries.single().scan
-        assertNotNull("no scan recorded", scan)
-        assertEquals(ScanStatus.KNOWN_MALICIOUS, scan!!.status)
-        assertTrue("scanned at ${scan.scannedUnix}, rescan started at $started", scan.scannedUnix.toLong() >= started)
-        assertTrue(scan.demo)
-        assertTrue("${scan.findings}", scan.findings.any { it.startsWith("file hash:") })
-        // Recorded in the vault: it is still there after a lock and unlock.
-        Locker.lock()
-        awaitVault<Locker.State.Locked>()
-        Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
-        assertEquals(scan, awaitVault<Locker.State.Unlocked>().entries.single().scan)
-        report("v6", "scanned again: ${scan.label} ${scan.findings} database ${scan.snapshot} at ${scan.scannedUnix}")
-        destroyVault()
-    }
-
-    @Test
-    fun v7_theLockPolicyIsTheUsersAndStaysBounded() {
-        destroyVault()
-        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-        awaitVault<Locker.State.Unlocked>()
-        val stored = File(context.filesDir, "rift/vault-lock")
-        try {
-            val message = vaultMessageOf { Locker.setPolicy(Locker.LockPolicy(onBackground = false, idleMinutes = 1)) }
-            assertTrue(message, message.contains("stays unlocked when Rift goes to the background"))
-            assertEquals(Locker.LockPolicy(onBackground = false, idleMinutes = 1), Locker.policy.value)
-            assertEquals(60_000L, Locker.inactivityMs)
-            assertEquals("background=false\nidle-minutes=1\n", stored.readText())
-            // Home no longer locks it; the inactivity limit still applies.
-            val home = openHome()
-            device.pressHome()
-            SystemClock.sleep(2_000)
-            assertTrue("${Locker.state.value}", Locker.state.value is Locker.State.Unlocked)
-            home.finish()
-            // Only the offered limits exist: there is no "never".
-            assertThrows(IllegalArgumentException::class.java) { Locker.LockPolicy(idleMinutes = 0) }
-            assertThrows(IllegalArgumentException::class.java) { Locker.LockPolicy(idleMinutes = 24 * 60) }
-            // Changing it needs the vault unlocked.
-            Locker.lock()
-            awaitVault<Locker.State.Locked>()
-            Locker.setPolicy(Locker.LockPolicy())
-            SystemClock.sleep(500)
-            assertEquals(Locker.LockPolicy(onBackground = false, idleMinutes = 1), Locker.policy.value)
-            report("v7", "background lock off: still unlocked after Home; idle 1 min; stored ${stored.readText().replace("\n", " ")}")
-        } finally {
-            if (Locker.state.value !is Locker.State.Unlocked) {
-                Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
-                awaitVault<Locker.State.Unlocked>()
-            }
-            vaultMessageOf { Locker.setPolicy(Locker.LockPolicy()) }
-            assertEquals(Locker.LockPolicy(), Locker.policy.value)
-            destroyVault()
-        }
-    }
-
     // ---- Fault injection (Phase 7) ----------------------------------------------------
     // run-tests.sh runs these one at a time with `-e fault <step>` and kills
-    // the controller (this process) at a random moment while f1 or f3 runs.
+    // the controller (this process) at a random moment while f3 runs.
     // In the normal suite they are skipped.
 
     /** Skips the test unless the host asked for fault-injection step `step`. */
@@ -1080,88 +808,6 @@ class SecurityTest {
         "a fault-injection step, run by run-tests.sh",
         InstrumentationRegistry.getArguments().getString("fault") == step,
     )
-
-    private fun keptEntries() = (Locker.state.value as Locker.State.Unlocked).entries
-
-    /** f0: a new, unlocked vault for the keep rounds. */
-    @Test
-    fun f0_prepareTheVault() {
-        faultStep("prepare")
-        destroyVault()
-        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-        awaitVault<Locker.State.Unlocked>()
-        report("f0", "vault created")
-    }
-
-    /** f1: keeps one downloaded file again and again until the host kills this process. */
-    @Test
-    fun f1_keepUntilKilled() {
-        faultStep("keep")
-        if (Locker.state.value !is Locker.State.Unlocked) {
-            Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
-            awaitVault<Locker.State.Unlocked>()
-        }
-        // After a kill, the restarted core recovers before a session is active.
-        val generation = activeGeneration()
-        allowFixtureHost()
-        val file = submit(generation, fixture("/files/notes.txt")).file!!
-        var kept = keptEntries().size
-        // The host starts its timer at this line.
-        report("f1", "keeping from $kept")
-        val deadline = SystemClock.elapsedRealtime() + FAULT_WINDOW_MS
-        while (SystemClock.elapsedRealtime() < deadline) {
-            Core.keep(file.id)
-            awaitCondition("kept") { keptEntries().size > kept }
-            kept = keptEntries().size
-            report("f1", "kept $kept")
-        }
-        throw AssertionError("not killed within ${FAULT_WINDOW_MS} ms")
-    }
-
-    /**
-     * f2, after a kill during f1: the vault opens, holds every keep that
-     * completed (`-e kept N`, from f1's log) and at most `-e unseen` more,
-     * stores nothing but its own files, and every entry decrypts to the
-     * bytes its index recorded; no plaintext is on disk.
-     */
-    @Test
-    fun f2_theVaultIsWholeAfterTheKill() {
-        faultStep("check-vault")
-        val completed = InstrumentationRegistry.getArguments().getString("kept")!!.toInt()
-        // Keeps that may have finished unseen: the one in flight, and after a
-        // power cut (power-loss.sh) also one whose log line was lost with it.
-        val unseen = InstrumentationRegistry.getArguments().getString("unseen")?.toInt() ?: 1
-        Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
-        val entries = awaitVault<Locker.State.Unlocked>().entries
-        assertTrue("${entries.size} entries after $completed completed keeps", entries.size in completed..completed + unseen)
-        val stored = assertVaultWhole(entries)
-        assertEquals(emptyList<String>(), filesContaining(MARKER))
-        Locker.lock()
-        awaitVault<Locker.State.Locked>()
-        report("f2", "${entries.size} entries after $completed completed keeps; stored $stored files; every entry decrypted to its recorded hash")
-    }
-
-    /**
-     * The unlocked vault stores nothing but its own files for `entries`, and
-     * every entry decrypts to the bytes its index recorded. Returns the
-     * number of files stored.
-     */
-    private fun assertVaultWhole(entries: List<VaultEntry>): Int {
-        val vault = File(context.filesDir, "rift/vault")
-        val stored = vault.walkTopDown().filter { it.isFile }.map { it.relativeTo(vault).path }.toSet()
-        assertEquals(setOf("identity.pass", "index.age") + entries.map { "objects/${it.id}.age" }, stored - "index.age.prev")
-        val exported = File(context.cacheDir, "vault-export")
-        for (entry in entries) {
-            exported.delete()
-            // Each export shows the same message, so its file is what is awaited.
-            Locker.export(entry.id, android.net.Uri.fromFile(exported))
-            awaitCondition("exported ${entry.id}") { exported.length() == entry.size.toLong() }
-            val digest = java.security.MessageDigest.getInstance("SHA-256").digest(exported.readBytes())
-            assertEquals(entry.sha256, digest.joinToString("") { "%02x".format(it) })
-        }
-        exported.delete()
-        return stored.size
-    }
 
     /** f3: installs the demo database, then waits for the host to kill this process. */
     @Test
@@ -1204,10 +850,10 @@ class SecurityTest {
     }
 
     /**
-     * f5: what Rift does when the disk fills. Prepares a vault holding one
-     * file, the demo database and a quarantined download, then waits while
-     * the host fills /data up to what apps may use. A keep, a database
-     * install and a download must then each fail with a message, and a
+     * f5: what Rift does when the disk fills. Prepares the demo database
+     * and a quarantined download, then waits while the host fills /data up
+     * to what apps may use. A database install and a download must then
+     * each fail with a message, and a
      * reset must end in a new session or a stated failure, not hang. Once
      * the host frees the space, "Retry cleanup" starts a session in the same
      * process; f6 then checks what is left after a restart.
@@ -1215,25 +861,17 @@ class SecurityTest {
     @Test
     fun f5_aFullDiskFailsCleanly() {
         faultStep("full")
-        destroyVault()
-        Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-        awaitVault<Locker.State.Unlocked>()
         val installed = intelMessageOf { Core.installDemoIntel() }
         assertTrue(installed, installed.startsWith("Installed"))
         val generation = activeGeneration()
         allowFixtureHost()
         val file = submit(generation, fixture("/files/picture.png")).file!!
         assertTrue("${file.size} bytes, which would fit", file.size.toLong() > FULL_BYTES)
-        val first = vaultMessageOf { Core.keep(file.id) }
-        assertTrue(first, first.startsWith("Kept"))
         // The host starts filling at this line.
         report("f5", "ready")
         awaitCondition("the host's fill", HOST_CAPTURE_MS) { context.filesDir.usableSpace < FULL_BYTES }
         report("f5", "full: ${context.filesDir.usableSpace} bytes usable")
 
-        val keep = vaultMessageOf { Core.keep(file.id) }
-        report("f5", "keep: $keep")
-        val entries = keptEntries().size
         val install = intelMessageOf { Core.installDemoIntel() }
         report("f5", "install: $install; database ${Core.intel.value}")
         val download = submit(generation, fixture("/files/picture.png"))
@@ -1260,8 +898,6 @@ class SecurityTest {
         val retried = activeGenerationAfter(generation)
         report("f5", "after freeing the space: session $retried")
 
-        assertTrue(keep, keep.startsWith("The file was not kept"))
-        assertEquals("entries after the failed keep", 1, entries)
         // Said as it is: the copy failed, not that the build has no database.
         assertTrue(install, install.startsWith("the demo database could not be copied"))
         assertTrue("database ${Core.intel.value}", Core.intel.value is IntelStatus.Installed)
@@ -1273,9 +909,8 @@ class SecurityTest {
     /**
      * f6, after f5 with the space freed: a session starts, the database
      * installed before the disk filled is still there and finds the demo
-     * file, the failed install left no copy, the vault holds exactly the
-     * one file kept before and it decrypts to its recorded hash, and
-     * keeping works again.
+     * file, the failed install left no copy, and downloads are stored
+     * again.
      */
     @Test
     fun f6_wholeAfterTheFullDisk() {
@@ -1287,15 +922,9 @@ class SecurityTest {
         assertTrue("$status", status is IntelStatus.Installed)
         allowFixtureHost()
         assertEquals(ScanStatus.KNOWN_MALICIOUS, verdictOf(submit(generation, fixture("/files/demo-file.txt")).file!!.id).status)
-        Locker.unlockWithPassphrase(PASSPHRASE.toByteArray())
-        val entries = awaitVault<Locker.State.Unlocked>().entries
-        assertEquals(1, entries.size)
-        val stored = assertVaultWhole(entries)
-        val file = submit(generation, fixture("/files/picture.png")).file!!
-        val kept = vaultMessageOf { Core.keep(file.id) }
-        assertTrue(kept, kept.startsWith("Kept"))
-        destroyVault()
-        report("f6", "session $generation; database $status; ${entries.size} entry, $stored files, decrypted to its recorded hash; keeping works again")
+        val file = submit(generation, fixture("/files/picture.png")).file
+        assertNotNull("a download after the space was freed", file)
+        report("f6", "session $generation; database $status; downloads stored again")
     }
 
     /**
@@ -1509,8 +1138,7 @@ class SecurityTest {
 
     /**
      * h3: another app cannot draw over Rift's windows or have autofill read
-     * them, and an unlocked vault stays out of screenshots (WindowGuard,
-     * INV-12). The outsider draws magenta at half opacity over the whole
+     * them (WindowGuard). The outsider draws magenta at half opacity over the whole
      * screen and is made the device's autofill service; its own window is
      * the control, where both must work. Screenshots are UiAutomation's, as
      * the display shows it.
@@ -1572,27 +1200,6 @@ class SecurityTest {
             else device.executeShellCommand("settings put secure autofill_service $autofill")
         }
 
-        // INV-12: an unlocked vault blanks the home screen in screenshots, and only then.
-        destroyVault()
-        val home = openHome()
-        try {
-            assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
-            val absent = dark("h3-vault-absent")
-            Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-            awaitVault<Locker.State.Unlocked>()
-            SystemClock.sleep(SETTLE_MS)
-            val unlocked = dark("h3-vault-unlocked")
-            Locker.lock()
-            awaitVault<Locker.State.Locked>()
-            SystemClock.sleep(SETTLE_MS)
-            val locked = dark("h3-vault-locked")
-            report("h3", "black in screenshots: ${percent(absent)} with no vault, ${percent(unlocked)} unlocked, ${percent(locked)} locked")
-            assertTrue("only ${percent(unlocked)} of the screenshot is black while the vault is unlocked", unlocked > 0.85)
-            assertTrue("${percent(locked)} is black once it is locked", locked < 0.5)
-            assertTrue("${percent(absent)} is black with no vault", absent < 0.5)
-        } finally {
-            home.finish()
-        }
     }
 
     /**
@@ -1608,9 +1215,6 @@ class SecurityTest {
 
     /** The share of a screenshot's pixels the outsider's overlay tints (red and blue well above green). */
     private fun overlaid(name: String): Double = shareOf(name) { r, g, b -> r - g > 60 && b - g > 60 }
-
-    /** The share of a screenshot's pixels that are black, as a secure window is in it. */
-    private fun dark(name: String): Double = shareOf(name) { r, g, b -> r < 12 && g < 12 && b < 12 }
 
     /** The share of a screenshot's pixels (within `area`, or all) for which `counts` holds. */
     private fun shareOf(name: String, area: android.graphics.Rect? = null, counts: (Int, Int, Int) -> Boolean): Double {
@@ -1697,7 +1301,6 @@ class SecurityTest {
             "controller" to android.os.Process.myUid(),
             "browser" to context.packageManager.getPackageUid(Rift.BROWSER_PACKAGE, 0),
         )
-        destroyVault()
         resetAndAwait(activeGeneration())
         allowFixtureHost()
         val served = File(context.cacheDir, "x1").apply { deleteRecursively() }
@@ -1711,20 +1314,10 @@ class SecurityTest {
             Core.updateIntelOnline("http://localhost:${server.localPort}")
             val installed = awaitIntelMessage()
             assertTrue(installed, installed.startsWith("Installed demo-"))
-            // (a) Local work: a download from the fixture, its scan and preview,
-            // keeping it, scanning the vault's copy, locking and unlocking.
+            // (a) Local work: a download from the fixture, its scan and preview.
             val file = download("/files/picture.png").file!!
             verdictOf(file.id)
             assertNotNull(previewOf(file.id).bitmap)
-            Locker.createWithPassphrase(PASSPHRASE.toByteArray())
-            awaitVault<Locker.State.Unlocked>()
-            Core.keep(file.id)
-            awaitCondition("kept") { file.id in Locker.kept.value }
-            val id = (Locker.state.value as Locker.State.Unlocked).entries.single().id
-            val rescanned = vaultMessageOf { Locker.rescan(id) }
-            assertTrue(rescanned, rescanned.startsWith("Scanned again"))
-            Locker.lock()
-            awaitVault<Locker.State.Locked>()
             // Idle with a session open (§18: no polling).
             SystemClock.sleep(IDLE_MS)
         } finally {
@@ -1754,7 +1347,6 @@ class SecurityTest {
             "alarm and job lines ${scheduled.mapValues { it.value.size }}; $control")
         assertEquals("bytes on real networks", before, after)
         assertEquals(emptyMap<String, List<String>>(), scheduled.filterValues { it.isNotEmpty() })
-        destroyVault()
     }
 
     /**
@@ -1818,34 +1410,7 @@ class SecurityTest {
         return total
     }
 
-    private fun destroyVault() {
-        Locker.destroy()
-        awaitVault<Locker.State.Absent>()
-        Locker.holding = false
-    }
-
-    private inline fun <reified T : Locker.State> awaitVault(): T {
-        val deadline = SystemClock.elapsedRealtime() + VAULT_TIMEOUT_MS
-        while (SystemClock.elapsedRealtime() < deadline) {
-            (Locker.state.value as? T)?.let { return it }
-            SystemClock.sleep(50)
-        }
-        throw AssertionError("vault not ${T::class.simpleName}: ${Locker.state.value}; ${Locker.message.value}")
-    }
-
-    /** The message of vault action `start` (each test's consecutive messages differ). */
-    private fun vaultMessageOf(start: () -> Unit): String {
-        val before = Locker.message.value
-        start()
-        val deadline = SystemClock.elapsedRealtime() + VAULT_TIMEOUT_MS
-        while (SystemClock.elapsedRealtime() < deadline) {
-            Locker.message.value?.takeIf { it != before }?.let { return it }
-            SystemClock.sleep(50)
-        }
-        throw AssertionError("no vault message after: $before")
-    }
-
-    private fun awaitCondition(what: String, timeoutMs: Long = VAULT_TIMEOUT_MS, condition: () -> Boolean) {
+    private fun awaitCondition(what: String, timeoutMs: Long = CONDITION_TIMEOUT_MS, condition: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (!condition()) {
             if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("timed out waiting for: $what")
@@ -1935,14 +1500,6 @@ class SecurityTest {
         if (android.os.Build.VERSION.SDK_INT >= 34) {
             assertTrue("the accessibility cache could not be cleared", instrumentation.uiAutomation.clearCache())
         }
-    }
-
-    /** Types the PIN into the system's credential screen once BiometricPrompt shows it. */
-    private fun enterPin() {
-        assertTrue("no credential screen", device.wait(Until.hasObject(By.pkg("com.android.systemui").clazz("android.widget.EditText")), UI_TIMEOUT_MS))
-        SystemClock.sleep(500)
-        device.executeShellCommand("input text $PIN")
-        device.executeShellCommand("input keyevent 66")
     }
 
     private fun filesContaining(needle: ByteArray): List<String> =
@@ -2242,20 +1799,15 @@ class SecurityTest {
         const val SCAN_TIMEOUT_MS = 40_000L
         // DNS through the lock fails only after the resolver's own timeouts.
         const val ESCAPE_TIMEOUT_MS = 90_000L
-        const val VAULT_TIMEOUT_MS = 20_000L
-        /** How long f1 and f3 wait to be killed before they fail. */
+        const val CONDITION_TIMEOUT_MS = 20_000L
+        /** How long f3 waits to be killed before they fail. */
         const val FAULT_WINDOW_MS = 60_000L
         const val HOST_CAPTURE_MS = 60_000L
         /** How long a focused field is given for an autofill request to arrive. */
         const val AUTOFILL_WAIT_MS = 3_000L
-        /** For a window flag change to reach the display. */
-        const val SETTLE_MS = 1_000L
 
         /** Below this many usable bytes the disk counts as full; f5's files are larger. */
         const val FULL_BYTES = 64L * 1024
-        const val PASSPHRASE = "correct horse battery"
-        const val PIN = "1111"
-        const val RECOVERY = "recovery passphrase of the test"
         val MARKER = "RIFT-PREVIEW-PLAINTEXT-MARKER".toByteArray()
         val STORES = listOf("cookie", "server_cookie", "localStorage", "indexedDB", "cacheStorage", "serviceWorker")
     }

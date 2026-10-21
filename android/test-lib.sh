@@ -17,8 +17,8 @@ wait_log() { # pattern timeout_s
 result() { echo "$1 $2${3:+ ($3)}" | tee -a "$out/host-results.txt"; }
 
 # A slow emulator can show "System UI isn't responding" at boot, which covers
-# every window the tests look at. The screen must be awake and open; the
-# vault test (v3) sets and clears a screen-lock PIN, so any keyguard goes too.
+# every window the tests look at. The screen must be awake and open, so any
+# keyguard goes too.
 close_dialogs() {
   "$adb" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
   "$adb" shell wm dismiss-keyguard >/dev/null 2>&1 || true

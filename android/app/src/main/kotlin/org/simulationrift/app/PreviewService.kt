@@ -30,7 +30,7 @@ import org.simulationrift.worker.reject
  * it, and the controller validates everything it returns.
  *
  * It loads `rift_worker_ffi` (parsers and protocol) and never `rift_ffi`, so
- * no core, session or vault code is mapped here. Each instance previews one
+ * no core or session code is mapped here. Each instance previews one
  * file and is then retired by unbinding.
  */
 open class PreviewService : Service() {

@@ -35,7 +35,6 @@ import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanFailure
 import org.simulationrift.core.ScanStart
 import org.simulationrift.core.Verdict
-import org.simulationrift.core.VaultHandle
 import org.simulationrift.core.Navigation
 import org.simulationrift.core.QuarantinedFile
 import org.simulationrift.core.Navigator
@@ -199,11 +198,34 @@ object Core {
         if (started.compareAndSet(false, true)) {
             app = context.applicationContext
             disposal = AndroidBrowserDisposal(app)
-            Locker.open(app)
-            // An update's working copy left by a kill during an install (found by
-            // F4). First on the update executor, so before any new install.
-            updating.execute { File(app.filesDir, "rift/import").deleteRecursively() }
+            WeeklyStats.open(app)
+            updating.execute {
+                // An update's working copy left by a kill during an install (found by
+                // F4). First on the update executor, so before any new install.
+                File(app.filesDir, "rift/import").deleteRecursively()
+                forgetVault()
+            }
             worker.execute(::openAndStart)
+        }
+    }
+
+    /**
+     * Earlier versions could keep files in an encrypted vault; Rift no
+     * longer keeps anything after a session, so what such a version left is
+     * deleted: the vault's files, its lock settings and its keystore key.
+     */
+    private fun forgetVault() {
+        val dir = File(app.filesDir, "rift/vault")
+        val settings = File(app.filesDir, "rift/vault-lock")
+        if (dir.exists() && !dir.deleteRecursively()) Log.e(TAG, "an earlier version's vault could not be deleted")
+        if (settings.exists() && !settings.delete()) Log.e(TAG, "an earlier version's vault settings could not be deleted")
+        try {
+            val keys = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            if (keys.containsAlias(OLD_VAULT_KEY)) keys.deleteEntry(OLD_VAULT_KEY)
+        } catch (e: java.security.GeneralSecurityException) {
+            Log.e(TAG, "an earlier version's vault key could not be deleted", e)
+        } catch (e: java.io.IOException) {
+            Log.e(TAG, "an earlier version's vault key could not be deleted", e)
         }
     }
 
@@ -223,7 +245,6 @@ object Core {
         _localHosts.value = emptyList()
         _previews.value = emptyMap()
         _verdicts.value = emptyMap()
-        Locker.sessionEnded()
         try {
             opened.reset()
         } catch (e: SessionFailure) {
@@ -272,7 +293,7 @@ object Core {
         try {
             val generation = opened.start().toLong()
             // Before the generation is current, so its first decision is watched.
-            watch = Watch(generation, PageWatcher(NetworkLock.newSession()))
+            watch = Watch(generation, PageWatcher(NetworkLock.newSession(), WeeklyStats::count))
             currentGeneration = generation
             _state.value = State.Active(generation, recovered)
             Log.i(TAG, "session $generation active" + (recovered?.let { "; recovered interrupted session $it" } ?: ""))
@@ -410,6 +431,7 @@ object Core {
             is Navigation.Block -> NavigationDecision.Block(fact(d.reason), d.inspectAnyway, displaySafe(url))
         }
         watcher(generation)?.navigation(url, decision)
+        WeeklyStats.count(Tally.LINK_CHECKED)
         if (decision is NavigationDecision.Block) return decision
         // INV-14: nothing loads unless every request goes through the proxy,
         // behind the lock unless the user chose reduced isolation.
@@ -488,37 +510,11 @@ object Core {
             if (verdict != null) {
                 val name = _downloads.value.firstNotNullOfOrNull { it.file?.takeIf { f -> f.id == fileId }?.displayName } ?: "a file"
                 watcher(generation)?.verdict(name, verdict)
+                WeeklyStats.count(Tally.FILE_SCANNED)
             }
             if (generation == currentGeneration) {
                 _verdicts.update { if (verdict == null) it - fileId else it + (fileId to verdict) }
             }
-        }
-    }
-
-    /**
-     * Scans kept file `id` with the installed database (§12.1, §14): the
-     * vault's copy goes to a fresh isolated worker, as a quarantined file
-     * does, and rift-ffi records the result in the vault in place of the
-     * earlier one. `done` gets the verdict, or the failure (no database, the
-     * vault locked meanwhile, the file gone).
-     */
-    internal fun scanKept(vault: VaultHandle, id: String, service: Class<out Service>, done: (Result<Verdict>) -> Unit) {
-        val intel = database ?: return done(Result.failure(ScanFailure.NoDatabase()))
-        scanning.execute {
-            val started = android.os.SystemClock.elapsedRealtime()
-            val outcome = try {
-                Result.success(
-                    when (val start = vault.scan(id, intel)) {
-                        is ScanStart.Done -> start.verdict
-                        is ScanStart.Run -> start.job.use { job -> Scanner.scan(app, job, service) }
-                    },
-                )
-            } catch (e: ScanFailure) {
-                Result.failure(e)
-            }
-            Log.i(TAG, "scan of kept file after ${android.os.SystemClock.elapsedRealtime() - started} ms: " +
-                outcome.fold({ v -> "${v.label}; findings ${v.findings.map { "${it.check}:${it.id}" }}; gaps ${v.gaps}" }, { "not recorded: $it" }))
-            done(outcome)
         }
     }
 
@@ -683,20 +679,20 @@ object Core {
     /** Concurrent scans: enough that one hung worker does not hold the queue, few enough for memory. */
     private const val SCAN_WORKERS = 2
 
-    /** The user's per-session exception for one local host name (INV-13). */
+    /** The keystore alias of the vault key earlier versions made ([forgetVault]). */
+    private const val OLD_VAULT_KEY = "rift-vault-wrap"
+
+    /**
+     * A per-session exception for one local host name (INV-13). The home
+     * screen no longer offers it; the instrumented tests use it to reach
+     * their fixture server.
+     */
     fun allowLocalHost(host: String) = worker.execute {
         val generation = currentGeneration ?: return@execute
         val opened = sessions ?: return@execute
         if (opened.allowLocalHost(generation.toULong(), host)) {
             _localHosts.value = opened.localHosts(generation.toULong())
         }
-    }
-
-    /** Keeps quarantined file `fileId` in the unlocked vault (§14); it is still untrusted. */
-    fun keep(fileId: String) {
-        val generation = currentGeneration ?: return
-        val opened = sessions ?: return
-        Locker.keep(opened, generation, fileId)
     }
 
     /**
@@ -751,7 +747,6 @@ object Core {
 
     private fun describe(e: PreviewFailure): String = when (e) {
         is PreviewFailure.SessionEnded -> "the session this file belonged to has ended"
-        is PreviewFailure.Locked -> "the vault was locked"
         is PreviewFailure.NotFound -> "the file is not in this session's quarantine"
         is PreviewFailure.Unsupported -> "Rift previews PNG, JPEG, WebP, PDF and plain-text content only"
         is PreviewFailure.TooLarge -> "files larger than ${e.limit} bytes are not previewed"

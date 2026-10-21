@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Both apps' window theme: light or dark with the system, no action
+         bar, and the window already in Compose's background colour, so a
+         cold start shows no flash. Compose draws everything else. -->
+    <color name="rift_window">#FFFBF8FF</color>
+    <bool name="rift_light_bars">true</bool>
+    <style name="Theme.Rift" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/rift_window</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">@bool/rift_light_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/rift_light_bars</item>
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">@color/rift_window</item>
+    </style>
+</resources>

@@ -22,22 +22,31 @@ import org.simulationrift.core.displaySafe
  * renderer), so the status is the session's, and only a reset clears it.
  * Bounded: repeats are counted, and when the list is full a new event
  * replaces the oldest of a lower level, or is counted as not listed.
+ *
+ * `tally` hears of each event the first time it is seen in the session,
+ * listed or not, for the weekly summary ([WeeklyStats]).
  */
-internal class PageWatcher(private val lockEpoch: Long) {
+internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tally) -> Unit = {}) {
     private val events = LinkedHashMap<String, PageWatch.Event>()
     private var nextSeq = 1L
     private var unlisted = 0
     private var lastDenial = 0L
     private val lockSeen = HashSet<String>()
 
+    /**
+     * `counted` is what the weekly summary counts the event as: by default
+     * nothing for a note, a flagged file for a file, and anything else at
+     * warning or danger is something Rift stopped.
+     */
     @Synchronized
-    fun record(level: Level, code: String, subject: String, text: String) {
+    fun record(level: Level, code: String, subject: String, text: String, counted: Tally? = defaultTally(level, code)) {
         val key = "$code\u0000$subject"
         val now = SystemClock.elapsedRealtime()
         events[key]?.let { seen ->
             events[key] = seen.copy(count = (seen.count + 1).coerceAtMost(MAX_COUNT), lastSeen = now)
             return
         }
+        counted?.let(tally)
         if (events.size >= MAX_EVENTS) {
             val evicted = events.entries.firstOrNull { it.value.level > level }
             if (evicted == null) {
@@ -63,7 +72,8 @@ internal class PageWatcher(private val lockEpoch: Long) {
                 else -> {}
             }
             is NavigationDecision.Confirm -> {
-                decision.reasons.forEach { record(Level.WARNING, it.code, host, "$host: ${it.text}") }
+                // A warning the user may click through, not something stopped.
+                decision.reasons.forEach { record(Level.WARNING, it.code, host, "$host: ${it.text}", Tally.WARNED) }
                 notes(host, decision.notes)
             }
             is NavigationDecision.Proceed -> notes(host, decision.notes)
@@ -140,7 +150,7 @@ internal class PageWatcher(private val lockEpoch: Long) {
 
     fun verdict(name: String, verdict: Verdict) = when (verdict.status) {
         ScanStatus.KNOWN_MALICIOUS -> record(Level.DANGER, "file-known-malicious", name,
-            "The download $name is known malicious. It stays in encrypted quarantine and is deleted with the session unless you keep it.")
+            "The download $name is known malicious. It stays in encrypted quarantine and is deleted with the session.")
         ScanStatus.SUSPICIOUS -> record(Level.WARNING, "file-suspicious", name,
             "The download $name is suspicious (${verdict.findings.size} findings). It stays in encrypted quarantine.")
         ScanStatus.NOT_FULLY_SCANNED -> record(Level.NOTE, "file-not-fully-scanned", name,
@@ -156,6 +166,12 @@ internal class PageWatcher(private val lockEpoch: Long) {
             PageWatch.Event(0, Level.NOTE, "unlisted", "$unlisted more kinds of activity are not listed.", unlisted, SystemClock.elapsedRealtime()),
         )
         return PageWatch(listed + extra, coverage)
+    }
+
+    private fun defaultTally(level: Level, code: String): Tally? = when {
+        level == Level.NOTE -> null
+        code.startsWith("file-") -> Tally.FLAGGED_FILE
+        else -> Tally.BLOCKED
     }
 
     private fun hostOf(url: String): String =

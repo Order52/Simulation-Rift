@@ -434,9 +434,8 @@ fi
 
 # ---- Fault injection (Phase 7) ------------------------------------------------
 # The controller is killed (SIGKILL, as the OS or a crash would) at a random
-# moment while it keeps files into the vault (f1) or installs the threat
-# database (f3); after each kill, f2 or f4 checks what is left. RIFT_FAULT_ROUNDS
-# rounds of each (default 8); f-<step>-<round>.txt holds each step's output.
+# moment while it installs the threat database (f3); after each kill, f4
+# checks what is left. RIFT_FAULT_ROUNDS rounds (default 8); f-<step>-<round>.txt holds each step's output.
 
 # Kills the controller once the step logged $1 (within $2 s), after a random delay below $3 ms.
 kill_after() { # pattern timeout_s max_delay_ms
@@ -450,38 +449,6 @@ save_fault_log() { "$adb" logcat -d -s Rift:I | tr -d '\r' | grep -E "result f[0
 : > "$out/fault.log"
 
 rounds="${RIFT_FAULT_ROUNDS:-8}"
-echo "== F1/F2: kill while keeping into the vault ($rounds rounds)"
-fault_step f0_prepareTheVault prepare > "$out/f-prepare.txt"
-if passed "$out/f-prepare.txt"; then
-  round=1 failures=0 summary=""
-  while [ $round -le $rounds ]; do
-    "$adb" logcat -c
-    fault_step f1_keepUntilKilled keep > "$out/f-keep-$round.txt" &
-    runner=$!
-    if kill_after "result f1: keeping from" 120 3000; then
-      wait $runner || true
-      log="$("$adb" logcat -d -s Rift:I | tr -d '\r')"
-      from="$(echo "$log" | sed -n 's/.*result f1: keeping from \([0-9]*\).*/\1/p' | tail -1)"
-      kept="$(echo "$log" | sed -n 's/.*result f1: kept \([0-9]*\).*/\1/p' | tail -1)"
-      kept="${kept:-$from}"
-      fault_step f2_theVaultIsWholeAfterTheKill check-vault kept "$kept" > "$out/f-check-vault-$round.txt"
-      save_fault_log
-      if passed "$out/f-check-vault-$round.txt"; then
-        summary="$summary $round:killed-${delay}s,kept-$kept"
-      else
-        failures=$((failures + 1)); summary="$summary $round:CHECK-FAILED"
-      fi
-    else
-      wait $runner || true
-      failures=$((failures + 1)); summary="$summary $round:NOT-STARTED"
-    fi
-    round=$((round + 1))
-  done
-  if [ $failures -eq 0 ]; then result F2 PASS "$rounds kills while keeping;$summary"; else result F2 FAIL "$failures of $rounds rounds;$summary"; fi
-else
-  result F2 FAIL "the vault could not be prepared; see f-prepare.txt"
-fi
-
 echo "== F3/F4: kill while installing the threat database ($rounds rounds)"
 # The first round is killed after the install finished, which measures it;
 # later rounds are killed at a random moment within that time.
@@ -519,7 +486,7 @@ done
 if [ $failures -eq 0 ]; then result F4 PASS "$rounds kills while installing (one install: ${install_ms} ms);$summary"; else result F4 FAIL "$failures of $rounds rounds;$summary"; fi
 
 echo "== F5/F6: a full disk"
-# f5 prepares a vault, the database and a download, then logs "result f5:
+# f5 prepares the database and a download, then logs "result f5:
 # ready"; root fills /data up to what apps may use (df's Available). The
 # blocks ext4 reserves for the system (resgid 1065) stay free, so Android
 # itself keeps working. f5 tries Rift's writes on the full disk, then logs
@@ -548,7 +515,7 @@ fi
 wait $runner || true
 trap 'kill $server 2>/dev/null || true' EXIT
 save_fault_log
-outcomes="$(grep -E "result f5: (full|keep|install|download|reset|after freeing)" "$out/fault.log" | sed 's/.*result f5: //' | tr '\n' ';')"
+outcomes="$(grep -E "result f5: (full|install|download|reset|after freeing)" "$out/fault.log" | sed 's/.*result f5: //' | tr '\n' ';')"
 if [ -z "$filled" ]; then
   result F6 FAIL "f5 did not get ready; see f-full.txt"
 else
