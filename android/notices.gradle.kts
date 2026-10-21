@@ -89,6 +89,10 @@ val androidLibraries = tasks.register("androidLibraries") {
     }
 }
 
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+// Every task that reads the assets: merging them, and lint's models of
+// the sources (a release build runs lint and fails on an undeclared input).
+tasks.matching {
+    (it.name.startsWith("merge") && it.name.endsWith("Assets")) || it.name.contains("lint", ignoreCase = true)
+}.configureEach {
     dependsOn(androidLibraries)
 }
