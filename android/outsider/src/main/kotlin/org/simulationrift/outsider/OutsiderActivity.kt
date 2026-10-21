@@ -9,7 +9,9 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.IBinder
 import android.os.ResultReceiver
+import android.provider.Settings
 import android.util.Base64
+import android.widget.EditText
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.CompletableFuture
@@ -19,7 +21,10 @@ import kotlin.concurrent.thread
 /**
  * Tries, as an unrelated app, everything S24 expects to be refused, and
  * returns each outcome through the ResultReceiver in `receiver`. With
- * `vpn` = "take" or "release" it instead starts or stops [OutsiderVpn].
+ * `vpn` = "take" or "release" it instead starts or stops [OutsiderVpn];
+ * with `overlay` = "show" or "hide", [OutsiderOverlay] (h3); with `field`,
+ * it stays open with one text field, an ordinary app's window for h3 and
+ * h4 to compare Rift's with.
  */
 class OutsiderActivity : Activity() {
 
@@ -27,6 +32,20 @@ class OutsiderActivity : Activity() {
         super.onCreate(savedInstanceState)
         @Suppress("DEPRECATION") // the typed overload needs API 33
         val receiver = intent.getParcelableExtra<ResultReceiver>("receiver")
+        if (intent.getBooleanExtra("field", false)) {
+            setContentView(EditText(this).apply {
+                hint = "Outsider field"
+                setText("Outsider text")
+            })
+            return
+        }
+        intent.getStringExtra("overlay")?.let { overlay ->
+            val allowed = Settings.canDrawOverlays(this)
+            if (allowed || overlay == "hide") startService(Intent(this, OutsiderOverlay::class.java).putExtra("stop", overlay == "hide"))
+            receiver?.send(0, Bundle().apply { putString("overlay", if (allowed) overlay else "not allowed") })
+            finish()
+            return
+        }
         when (intent.getStringExtra("vpn")) {
             "take" -> {
                 // As any VPN app does. With consent already given (run-tests.sh)

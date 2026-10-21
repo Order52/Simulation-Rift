@@ -155,6 +155,21 @@ scroll_down() {
   w="${dims% *}" h="${dims#* }"
   "$adb" shell input swipe $((w / 2)) $((h * 3 / 4)) $((w / 2)) $((h / 4)) 300
 }
+# tap, but only once the node's centre is in the upper three quarters of the
+# screen: a node at the bottom edge was found, and the tap landed on the
+# navigation bar (S16d on API 36).
+tap_upper() { # text|id value
+  "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml > "$out/last-dump.txt" 2>&1 || return 1
+  case $1 in text) match="text=\"$2\"" ;; id) match="resource-id=\"$2\"" ;; esac
+  xy="$("$adb" shell cat /data/local/tmp/rift-ui.xml | tr -d '\r' | tr '>' '\n' | grep -iF "$match" | head -1 \
+    | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p' \
+    | awk '{ print int(($1 + $3) / 2), int(($2 + $4) / 2) }')"
+  [ -n "$xy" ] || return 1
+  h="$("$adb" shell wm size | tr -d '\r' | sed -n 's/.*: *[0-9]*x\([0-9]*\)$/\1/p' | tail -1)"
+  [ "${xy#* }" -le $((h * 3 / 4)) ] || return 1
+  "$adb" shell input tap $xy
+  sleep 1
+}
 # The same, retried while the screen settles (bounded).
 tap_when() { i=0; until tap "$1" "$2"; do i=$((i + 1)); [ $i -lt 10 ] || return 1; sleep 1; done; }
 
@@ -175,7 +190,7 @@ if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
   close_dialogs
   found=no
   for _ in $(seq 20); do
-    if tap id intel-import; then found=yes; break; fi
+    if tap_upper id intel-import; then found=yes; break; fi
     scroll_down
     sleep 1
   done
@@ -360,6 +375,59 @@ if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
       result H1 PASS "task $task: $line"
     else
       result H1 FAIL "${task:+task $task: }$why; $line; see h1.txt"
+    fi
+  fi
+fi
+
+# ---- Accessibility services (Phase 7) -----------------------------------------
+# H4: an accessibility service that is not a tool for users with disabilities
+# (the outsider's, as screen-reading malware is) reads nothing in Rift's
+# windows (WindowGuard, API 34+). No instrumentation runs meanwhile, as
+# UiAutomation would suppress the service. The outsider's own window is the
+# control: the service must read it.
+if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
+  echo "== H4: a non-tool accessibility service reads nothing of Rift"
+  sdk="$("$adb" shell getprop ro.build.version.sdk | tr -d '\r')"
+  if [ "$sdk" -lt 34 ]; then
+    result H4 SKIPPED "API $sdk; Rift's windows are kept from non-tool services from API 34"
+  else
+    services="$("$adb" shell settings get secure enabled_accessibility_services | tr -d '\r')"
+    enabled="$("$adb" shell settings get secure accessibility_enabled | tr -d '\r')"
+    "$adb" shell am force-stop $pkg
+    "$adb" logcat -c
+    "$adb" shell settings put secure enabled_accessibility_services $outsider/$outsider.OutsiderAccessibility
+    "$adb" shell settings put secure accessibility_enabled 1
+    sleep 3
+    front() { "$adb" shell dumpsys window | tr -d '\r' | sed -n 's/.*mCurrentFocus=Window{[0-9a-f]* u0 \([^ }]*\)}.*/\1/p' | head -1; }
+    "$adb" shell am start -n $outsider/.OutsiderActivity --ez field true >/dev/null
+    sleep 4
+    shown="outsider: $(front)"
+    "$adb" shell am start -n $pkg/.MainActivity >/dev/null
+    wait_log "session [0-9]+ active" 30 || true
+    sleep 4
+    shown="$shown; home: $(front)"
+    open_link "http://localhost:$port/sign-in.html"
+    sleep 8
+    shown="$shown; browser: $(front)"
+    "$adb" shell input keyevent KEYCODE_HOME
+    sleep 2
+    if [ "$services" = null ] || [ -z "$services" ]; then
+      "$adb" shell settings delete secure enabled_accessibility_services >/dev/null
+    else
+      "$adb" shell settings put secure enabled_accessibility_services "$services"
+    fi
+    "$adb" shell settings put secure accessibility_enabled "${enabled:-0}"
+    "$adb" shell am force-stop $outsider
+    { echo "in front: $shown"; "$adb" logcat -d -s rift-outsider-a11y:I | tr -d '\r'; } > "$out/h4.txt"
+    read_rift="$(grep -cE "window org\.simulationrift\.(app|browser): [1-9][0-9]* texts" "$out/h4.txt" || true)"
+    if ! grep -qE "window $outsider: [1-9][0-9]* texts:.*Outsider text" "$out/h4.txt"; then
+      result H4 FAIL "the control failed: the service read nothing of the outsider's window; $shown; see h4.txt"
+    elif ! echo "$shown" | grep -q "home: $pkg/" || ! echo "$shown" | grep -q "browser: $browser/"; then
+      result H4 FAIL "Rift's windows were not in front: $shown"
+    elif [ "$read_rift" != 0 ]; then
+      result H4 FAIL "the service read Rift's windows $read_rift times; see h4.txt"
+    else
+      result H4 PASS "it read the outsider's window and nothing of Rift's home screen or browser ($shown)"
     fi
   fi
 fi

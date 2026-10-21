@@ -121,13 +121,18 @@ class SecurityTest {
         assertEquals(emptyList<String>(), dangerous)
         assertTrue("android.permission.INTERNET" in requested)
         assertTrue("android.permission.USE_BIOMETRIC" in requested) // the vault prompt (§8.7)
+        // Both apps hide other apps' overlays over their windows (§10.7): a normal permission.
+        assertTrue("android.permission.HIDE_OVERLAY_WINDOWS" in requested)
+        if (android.os.Build.VERSION.SDK_INT >= 31) { // the permission is new in API 31
+            assertEquals(PermissionInfo.PROTECTION_NORMAL, context.packageManager.getPermissionInfo("android.permission.HIDE_OVERLAY_WINDOWS", 0).protection)
+        }
 
         // Nor does the browser app, the one pages run in. androidx.core adds a
         // signature permission of the app's own, for its unexported receivers.
         val browser = context.packageManager
             .getPackageInfo(Rift.BROWSER_PACKAGE, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty()
             .filter { it != "${Rift.BROWSER_PACKAGE}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" }.sorted()
-        assertEquals(listOf("android.permission.ACCESS_NETWORK_STATE", "android.permission.INTERNET", Rift.PERMISSION), browser)
+        assertEquals(listOf("android.permission.ACCESS_NETWORK_STATE", "android.permission.HIDE_OVERLAY_WINDOWS", "android.permission.INTERNET", Rift.PERMISSION), browser)
     }
 
     // ---- Navigation policy in the trusted UI (INV-6, §10.2–§10.4) ---------------
@@ -1454,6 +1459,125 @@ class SecurityTest {
         report("h2", "learning off in the home screen's address field, the browser's address bar and a page's field")
     }
 
+    /**
+     * h3: another app cannot draw over Rift's windows or have autofill read
+     * them, and an unlocked vault stays out of screenshots (WindowGuard,
+     * INV-12). The outsider draws magenta at half opacity over the whole
+     * screen and is made the device's autofill service; its own window is
+     * the control, where both must work. Screenshots are UiAutomation's, as
+     * the display shows it.
+     */
+    @Test
+    fun h3_otherAppsCannotDrawOverOrAutofillRift() {
+        val since = System.currentTimeMillis() / 1000.0
+        val autofill = device.executeShellCommand("settings get secure autofill_service").trim()
+        // No window of the outsider's left from an earlier run, which would take the intents below.
+        device.executeShellCommand("am force-stop $OUTSIDER")
+        device.executeShellCommand("appops set $OUTSIDER SYSTEM_ALERT_WINDOW allow")
+        device.executeShellCommand("settings put secure autofill_service $OUTSIDER/.OutsiderAutofill")
+        try {
+            assertEquals("show", outsider("overlay" to "show").getString("overlay"))
+
+            // The control: an ordinary app's window, under the overlay, with a field autofill is asked about.
+            context.startActivity(Intent().setComponent(ComponentName(OUTSIDER, "$OUTSIDER.OutsiderActivity")).putExtra("field", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val field = device.wait(Until.findObject(By.pkg(OUTSIDER).clazz("android.widget.EditText")), UI_TIMEOUT_MS) ?: throw AssertionError("the outsider's field")
+            val control = overlaid("h3-outsider")
+            assertTrue("the overlay covers only ${percent(control)} of the outsider's window", control > 0.8)
+            field.click()
+            awaitCondition("the autofill service's request for the outsider's field") { fillRequests(since).any { it.first == OUTSIDER && it.second > 0 } }
+
+            val home = openHome()
+            val overHome = try {
+                assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
+                val overHome = overlaid("h3-home")
+                assertTrue("${percent(overHome)} of the home screen is under the overlay", overHome < 0.02)
+                (device.wait(Until.findObject(By.res("home-address")), UI_TIMEOUT_MS) ?: throw AssertionError("home address field")).click()
+                SystemClock.sleep(AUTOFILL_WAIT_MS)
+                device.pressBack()
+                overHome
+            } finally {
+                home.finish()
+            }
+
+            allowFixtureHost()
+            openBrowser(activeGeneration(), fixture("/sign-in.html"))
+            val fields = { device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty() }
+            awaitCondition("the page's sign-in fields") { fields().count { it.resourceName != "address" } >= 2 }
+            val overPage = overlaid("h3-browser")
+            assertTrue("${percent(overPage)} of the browser's window is under the overlay", overPage < 0.02)
+            fields().first { it.resourceName != "address" }.click()
+            SystemClock.sleep(AUTOFILL_WAIT_MS)
+            device.pressBack()
+            // The controller sends none. The engine still tells the system a
+            // page field was focused, but the request must hold nothing of the
+            // page (its address, texts, hints).
+            val requests = fillRequests(since)
+            assertFalse("autofill was asked about the home screen: $requests", requests.any { it.first == context.packageName })
+            val fromPages = requests.filter { it.first == Rift.BROWSER_PACKAGE }
+            assertTrue("a request told autofill about a page: $fromPages", fromPages.all { it.second == 0 })
+            report("h3", "overlay over ${percent(control)} of the outsider, ${percent(overHome)} of the home screen, ${percent(overPage)} of the browser; autofill requests (app, items learnt): $requests")
+        } finally {
+            // Stopping the outsider removes its overlay.
+            device.executeShellCommand("am force-stop $OUTSIDER")
+            device.executeShellCommand("appops set $OUTSIDER SYSTEM_ALERT_WINDOW default")
+            if (autofill == "null" || autofill.isEmpty()) device.executeShellCommand("settings delete secure autofill_service")
+            else device.executeShellCommand("settings put secure autofill_service $autofill")
+        }
+
+        // INV-12: an unlocked vault blanks the home screen in screenshots, and only then.
+        destroyVault()
+        val home = openHome()
+        try {
+            assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
+            val absent = dark("h3-vault-absent")
+            Locker.createWithPassphrase(PASSPHRASE.toByteArray())
+            awaitVault<Locker.State.Unlocked>()
+            SystemClock.sleep(SETTLE_MS)
+            val unlocked = dark("h3-vault-unlocked")
+            Locker.lock()
+            awaitVault<Locker.State.Locked>()
+            SystemClock.sleep(SETTLE_MS)
+            val locked = dark("h3-vault-locked")
+            report("h3", "black in screenshots: ${percent(absent)} with no vault, ${percent(unlocked)} unlocked, ${percent(locked)} locked")
+            assertTrue("only ${percent(unlocked)} of the screenshot is black while the vault is unlocked", unlocked > 0.85)
+            assertTrue("${percent(locked)} is black once it is locked", locked < 0.5)
+            assertTrue("${percent(absent)} is black with no vault", absent < 0.5)
+        } finally {
+            home.finish()
+        }
+    }
+
+    /**
+     * The outsider's autofill requests since `since` (epoch seconds): the app
+     * each came from, and how many web domains, texts and hints it was told.
+     */
+    private fun fillRequests(since: Double): List<Pair<String, Int>> =
+        device.executeShellCommand("logcat -d -v epoch -s rift-outsider-autofill:I").lines().mapNotNull { line ->
+            val time = line.trim().substringBefore(' ').toDoubleOrNull() ?: return@mapNotNull null
+            val match = Regex("""fill request from (\S+) \(.*; learnt (\d+):""").find(line) ?: return@mapNotNull null
+            (match.groupValues[1] to match.groupValues[2].toInt()).takeIf { time >= since }
+        }
+
+    /** The share of a screenshot's pixels the outsider's overlay tints (red and blue well above green). */
+    private fun overlaid(name: String): Double = shareOf(name) { r, g, b -> r - g > 60 && b - g > 60 }
+
+    /** The share of a screenshot's pixels that are black, as a secure window is in it. */
+    private fun dark(name: String): Double = shareOf(name) { r, g, b -> r < 12 && g < 12 && b < 12 }
+
+    private fun shareOf(name: String, counts: (Int, Int, Int) -> Boolean): Double {
+        val file = File(context.getExternalFilesDir("evidence") ?: context.cacheDir, "$name.png")
+        device.waitForIdle()
+        assertTrue("screenshot $name", device.takeScreenshot(file))
+        val bitmap = android.graphics.BitmapFactory.decodeFile(file.path) ?: throw AssertionError("cannot decode $file")
+        val row = IntArray(bitmap.width)
+        var hits = 0L
+        for (y in 0 until bitmap.height) {
+            bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+            for (p in row) if (counts(android.graphics.Color.red(p), android.graphics.Color.green(p), android.graphics.Color.blue(p))) hits++
+        }
+        return hits.toDouble() / (bitmap.width.toLong() * bitmap.height)
+    }
+
     /** The number of the system's most recent input start (dumpsys input_method). */
     private fun lastInputStart(): Int = inputStarts().maxOfOrNull { it.number } ?: 0
 
@@ -2071,6 +2195,10 @@ class SecurityTest {
         /** How long f1 and f3 wait to be killed before they fail. */
         const val FAULT_WINDOW_MS = 60_000L
         const val HOST_CAPTURE_MS = 60_000L
+        /** How long a focused field is given for an autofill request to arrive. */
+        const val AUTOFILL_WAIT_MS = 3_000L
+        /** For a window flag change to reach the display. */
+        const val SETTLE_MS = 1_000L
 
         /** Below this many usable bytes the disk counts as full; f5's files are larger. */
         const val FULL_BYTES = 64L * 1024
