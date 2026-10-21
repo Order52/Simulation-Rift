@@ -47,10 +47,8 @@ ApplicationWindow {
             wrapMode: Text.Wrap
             text: "The exported copy leaves Rift's protection. It is the original file, not made safe: opening it outside Rift can harm this computer, whatever its scan said."
         }
-        footer: DialogButtonBox {
-            Button { text: "Export anyway"; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
-            Button { text: "Cancel"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
-        }
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        Component.onCompleted: standardButton(Dialog.Ok).text = "Export anyway"
         onAccepted: exportTarget.open()
     }
     // Previews show only what Rift made: escaped text, or a PNG encoded
