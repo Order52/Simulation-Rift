@@ -268,8 +268,16 @@ class SecurityTest {
             // Back to the home screen, where the file is listed with the session's.
             device.findObject(By.res("viewer-close")).click()
             assertNotNull("the home screen", device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
-            val view = device.findObject(By.scrollable(true))?.scrollUntil(Direction.DOWN, Until.findObject(By.res("preview-${file.id}")))
-                ?: throw AssertionError("the file is not listed on the home screen")
+            // The home screen may still be laying out when "session" appears.
+            val home = device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS)
+            val view = home?.scrollUntil(Direction.DOWN, Until.findObject(By.res("preview-${file.id}")))
+                ?: device.findObject(By.res("preview-${file.id}"))
+                ?: swipeUntil(By.res("preview-${file.id}"))
+                ?: run {
+                    screenshot("n6-home")
+                    val shown = device.findObjects(By.pkg(context.packageName)).mapNotNull { it.resourceName }.distinct()
+                    throw AssertionError("the file is not listed on the home screen (scrollable: ${home != null}; shown: $shown)")
+                }
             // And "View safely" opens it again.
             view.click()
             assertNotNull(device.wait(Until.findObject(By.res("preview-image-${file.id}")), UI_TIMEOUT_MS))
@@ -1912,6 +1920,17 @@ class SecurityTest {
             }
         }
         return ask(intent)
+    }
+
+    /** Swipes the screen up, a third at a time, until [selector] shows (at most 15 swipes). */
+    private fun swipeUntil(selector: androidx.test.uiautomator.BySelector): androidx.test.uiautomator.UiObject2? {
+        val (w, h) = device.displayWidth to device.displayHeight
+        repeat(15) {
+            device.findObject(selector)?.let { return it }
+            device.swipe(w / 2, h * 3 / 4, w / 2, h * 5 / 12, 20)
+            device.waitForIdle()
+        }
+        return device.findObject(selector)
     }
 
     private fun report(test: String, line: String) = android.util.Log.i(TAG, "result $test: $line")
