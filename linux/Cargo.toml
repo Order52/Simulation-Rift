@@ -1,0 +1,35 @@
+# The Linux app (docs/architecture.md §9). Its own workspace: it needs Qt at
+# build time, which the product workspace and its CI on macOS do not have.
+# The shared crates are path dependencies; the Flatpak builds it with the
+# SDK's Rust extension (rust-version below).
+[workspace]
+resolver = "3"
+members = ["browser"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.98"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Order52/Simulation-Rift"
+publish = false
+
+# As the product workspace's, except unsafe_code: `deny` instead of
+# `forbid`, so that each cxx bridge module can allow the `unsafe extern
+# "C++"` block that declares its C++ functions. cxx checks those
+# declarations against the C++ side at build time; no other unsafe code is
+# written.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "warn"
+indexing_slicing = "warn"
+arithmetic_side_effects = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
