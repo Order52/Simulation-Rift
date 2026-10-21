@@ -6,8 +6,9 @@
 #            the host, the browser host has no network and every renderer
 #            is sandboxed by the engine; SIGTERM destroys the session and
 #            the browser's files
-#   confirm  an address rift-core wants confirmed (a loopback IP) is not
-#            loaded, and nothing reaches the local server
+#   loopback a loopback address goes to the controller's proxy (Chromium's
+#            implicit bypass is removed), which refuses it: nothing loads,
+#            and nothing reaches the local server
 #   crash    killing the browser host ends and destroys the session
 #   recover  killing the controller leaves no browser host running, and the
 #            next start destroys the session it left
@@ -73,7 +74,7 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
   wait_count "$out/page.log" "^rift: demo threat database .* installed" 1 120 \
     || fail "intel: the demo threat database was not installed"
   if loaded page 150; then
-    python3 -I "$here/host-check.py" > "$out/page-host.txt" 2>&1
+    sudo -n python3 -I "$here/host-check.py" > "$out/page-host.txt" 2>&1
     verdict=$?
     cat "$out/page-host.txt"
     [ $verdict -eq 0 ] || fail "page: host check exit $verdict"
@@ -91,15 +92,17 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
   clean page
   echo
 
-  echo "## confirm"
-  launch confirm http://127.0.0.1:8765/
-  wait_count "$out/confirm.log" "navigation needs confirming: .*ip-address" 1 150 || fail "confirm: no confirmation asked"
+  echo "## loopback"
+  launch loopback http://127.0.0.1:8765/
+  wait_count "$out/loopback.log" "^rift-browser: page did not load" 1 150 || fail "loopback: no refusal seen"
   sleep 5
   finish
-  grep -E "^rift(-browser)?:" "$out/confirm.log"
-  [ "$(count "$out/confirm.log" "^rift-browser: page loaded")" -le 1 ] || fail "confirm: a page loaded"
-  if grep -q "GET" "$out/local-server.log"; then fail "confirm: a request reached the local server"; fi
-  clean confirm
+  grep -E "^rift(-browser)?:" "$out/loopback.log"
+  [ "$(count "$out/loopback.log" "^rift-browser: page loaded")" -le 1 ] || fail "loopback: a page loaded"
+  grep -q "^rift: session [0-9]*: proxy allowed 0, refused [1-9]" "$out/loopback.log" \
+    || fail "loopback: the proxy did not refuse it"
+  if grep -q "GET" "$out/local-server.log"; then fail "loopback: a request reached the local server"; fi
+  clean loopback
   echo
 
   echo "## crash"
@@ -141,7 +144,7 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
     echo "the switch reached the browser host, which refused to start"
   elif [ "$(count "$out/switch.log" "^rift-browser: page loaded")" -ge 2 ]; then
     echo "the switch did not reach the browser host; checking its renderers"
-    python3 -I "$here/host-check.py" > "$out/switch-host.txt" 2>&1 || fail "switch: host check failed"
+    sudo -n python3 -I "$here/host-check.py" > "$out/switch-host.txt" 2>&1 || fail "switch: host check failed"
     cat "$out/switch-host.txt"
   else
     fail "switch: neither refused nor loaded"

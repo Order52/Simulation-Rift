@@ -271,9 +271,17 @@ bool g_closeEarly = false;
 
 std::int32_t run_browser(std::uint16_t proxy_port)
 {
-    static int argc = 1;
+    // The engine's own proxy settings, as Chromium switches after
+    // --webEngineArgs: every connection to the forwarder, and "<-loopback>"
+    // removes Chromium's implicit bypass for loopback and localhost, so that
+    // those go to the controller's proxy too, which refuses them unless the
+    // user allowed the name (INV-13), as on Android.
+    static std::string server = "--proxy-server=http://127.0.0.1:" + std::to_string(proxy_port);
     static char name[] = "rift-browser";
-    static char *argv[] = {name, nullptr};
+    static char engineArgs[] = "--webEngineArgs";
+    static char bypass[] = "--proxy-bypass-list=<-loopback>";
+    static char *argv[] = {name, engineArgs, server.data(), bypass, nullptr};
+    static int argc = 4;
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("rift-browser"));
     // Before any profile exists: every connection goes to the forwarder.

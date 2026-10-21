@@ -11,7 +11,10 @@ browser host ("rift-browser") and the engine's processes
   browser host (Chromium stacks its own on bubblewrap's), NoNewPrivs=1, and
   mount and pid namespaces of its own.
 
-Usage: python3 -I host-check.py
+A namespace that cannot be read is a problem, not evidence either way:
+Chromium makes its zygotes non-dumpable, so the check runs as root.
+
+Usage: sudo python3 -I host-check.py
 Exit 0: all hold; 1: one does not; 2: a process was not found.
 """
 
@@ -97,6 +100,9 @@ def main():
 
     renderers = 0
     for pid in engine:
+        unreadable = [k for k in NAMESPACES if namespace(pid, k) is None]
+        if unreadable:
+            problems.append(f"engine process {pid}: namespaces {unreadable} could not be read")
         kind = process_type(pid)
         fields = status(pid)
         own = [k for k in NAMESPACES if differs(pid, browser, k)]
