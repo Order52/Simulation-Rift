@@ -43,9 +43,15 @@ jobs:
         # Signed with keys made for this run only, outside the checkout.
         run: sh linux/flatpak/demo-intel.sh "$RUNNER_TEMP/demo-keys"
       - name: Build the Flatpak
+        # The build runs the tests (with the demo database, the confined
+        # worker's install check); their results are kept with the evidence.
         run: |
+          set -o pipefail
+          mkdir -p out
           flatpak-builder --user --install-deps-from=flathub --install --force-clean \
-            --disable-rofiles-fuse build-linux linux/flatpak/org.simulationrift.Rift.yml 2>&1 | tail -40
+            --disable-rofiles-fuse build-linux linux/flatpak/org.simulationrift.Rift.yml 2>&1 \
+            | tee out/build.log | tail -40
+          grep -E "^test |^test result" out/build.log > out/build-tests.txt
           flatpak info --user org.simulationrift.Rift
       - name: End-to-end test
         run: |

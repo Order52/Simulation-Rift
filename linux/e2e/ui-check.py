@@ -57,10 +57,27 @@ def text_of(acc):
         return ""
 
 
+# Roles by their AT-SPI number: their names differ between Qt and at-spi2
+# versions ("button" or "push button").
+ROLES = {
+    "button": {pyatspi.ROLE_PUSH_BUTTON},
+    "label": {pyatspi.ROLE_LABEL},
+    "text": {pyatspi.ROLE_TEXT, pyatspi.ROLE_ENTRY},
+    "password text": {pyatspi.ROLE_PASSWORD_TEXT},
+}
+
+
 def find_all(app, role, predicate):
+    roles = ROLES[role]
     return pyatspi.findAllDescendants(
-        app, lambda a: a.getRoleName() == role and showing(a) and predicate(a)
+        app, lambda a: a.getRole() in roles and showing(a) and predicate(a)
     )
+
+
+def dump(app):
+    """What the window shows, for a failed step."""
+    for acc in pyatspi.findAllDescendants(app, showing):
+        print(f"  {acc.getRoleName()} {acc.name!r} {text_of(acc)[:80]!r}")
 
 
 def wait(what, probe):
@@ -171,5 +188,7 @@ def main():
 try:
     main()
 except Failed as failure:
+    print("showing:")
+    dump(application())
     print(f"ui: FAILED: {failure}")
     sys.exit(1)
