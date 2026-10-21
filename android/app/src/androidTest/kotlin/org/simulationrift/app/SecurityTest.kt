@@ -1308,8 +1308,19 @@ class SecurityTest {
             assertEquals("show", outsider("overlay" to "show").getString("overlay"))
 
             // The control: an ordinary app's window, under the overlay, with a field autofill is asked about.
-            context.startActivity(Intent().setComponent(ComponentName(OUTSIDER, "$OUTSIDER.OutsiderActivity")).putExtra("field", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            val field = device.wait(Until.findObject(By.pkg(OUTSIDER).clazz("android.widget.EditText")), UI_TIMEOUT_MS) ?: throw AssertionError("the outsider's field")
+            val outsiderWindow = Intent().setComponent(ComponentName(OUTSIDER, "$OUTSIDER.OutsiderActivity")).putExtra("field", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(outsiderWindow)
+            // On CI's API 33 and 34 emulators the window sometimes never showed
+            // (cause not yet seen): start it once more, then record what was in front.
+            val field = device.wait(Until.findObject(By.pkg(OUTSIDER).clazz("android.widget.EditText")), UI_TIMEOUT_MS)
+                ?: run {
+                    context.startActivity(outsiderWindow)
+                    device.wait(Until.findObject(By.pkg(OUTSIDER).clazz("android.widget.EditText")), UI_TIMEOUT_MS)
+                }
+                ?: run {
+                    screenshot("h3-no-outsider")
+                    throw AssertionError("the outsider's field; in front: ${device.currentPackageName}")
+                }
             val control = overlaid("h3-outsider")
             assertTrue("the overlay covers only ${percent(control)} of the outsider's window", control > 0.8)
             field.click()
