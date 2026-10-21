@@ -84,6 +84,8 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
   grep -E "^rift(-browser)?:" "$out/page.log"
   [ $status -eq 0 ] || fail "page: controller exit $status"
   grep -q "^rift: session [0-9]*: renderer sandboxed" "$out/page.log" || fail "page: no renderer check"
+  # The window's QML loads without a warning (they name the file and line).
+  if grep -q "Main.qml:[0-9]" "$out/page.log"; then fail "page: the window's QML has errors"; fi
   grep -q "^rift: session [0-9]*: proxy allowed [1-9]" "$out/page.log" || fail "page: nothing went through the proxy"
   grep -q "^rift: session [0-9]* destroyed" "$out/page.log" || fail "page: the session was not destroyed"
   clean page
