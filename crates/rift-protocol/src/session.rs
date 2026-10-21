@@ -25,6 +25,7 @@ pub const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 /// canonicalization takes 8 KiB).
 pub const MAX_URL_BYTES: usize = 8 * 1024;
 pub const MAX_ENGINE_BYTES: usize = 256;
+pub const MAX_USER_AGENT_BYTES: usize = 512;
 pub const MAX_FACTS: usize = 16;
 pub const MAX_FACT_CODE_BYTES: usize = 64;
 pub const MAX_FACT_TEXT_BYTES: usize = 2 * 1024;
@@ -48,13 +49,16 @@ pub enum FromBrowser {
     /// First message: the protocol version and the engine's own description.
     Hello { version: u16, engine: String },
     /// May the page navigate to `url`? Answered by [`ToBrowser::Answer`]
-    /// with the same `id`; the browser host waits for it.
+    /// with the same `id`; the browser host waits for it. `confirmed`: the
+    /// user saw this URL's reasons and chose to continue, which turns a
+    /// `Confirm` into `Proceed` but never lifts a `Block`.
     Decide {
         id: u64,
         url: String,
         main_frame: bool,
         user_gesture: bool,
         redirect: bool,
+        confirmed: bool,
     },
     /// What `/proc` says about a renderer and about the browser host itself,
     /// read before the renderer's page is shown.
@@ -64,8 +68,10 @@ pub enum FromBrowser {
         host: ProcessFacts,
     },
     /// The engine wanted to download `url`. The engine's download was
-    /// cancelled; the controller decides whether to fetch it itself.
-    Download { url: String },
+    /// cancelled; the controller decides whether to fetch it itself, with
+    /// the engine's `user_agent`. No cookies are passed (a session's are
+    /// off the record and stay in the browser host).
+    Download { url: String, user_agent: String },
     /// One TCP connection the engine opened to the forwarder, attached to
     /// this message (`SCM_RIGHTS`), for the controller's egress proxy.
     Connection,
@@ -274,8 +280,10 @@ pub fn decode_from_browser(bytes: &[u8]) -> Result<FromBrowser, ProtocolError> {
     let message: FromBrowser = decode(bytes)?;
     match &message {
         FromBrowser::Hello { engine, .. } => bounded(engine, MAX_ENGINE_BYTES, "engine")?,
-        FromBrowser::Decide { url, .. } | FromBrowser::Download { url } => {
+        FromBrowser::Decide { url, .. } => bounded(url, MAX_URL_BYTES, "url")?,
+        FromBrowser::Download { url, user_agent } => {
             bounded(url, MAX_URL_BYTES, "url")?;
+            bounded(user_agent, MAX_USER_AGENT_BYTES, "user agent")?;
         }
         FromBrowser::Renderer { .. } | FromBrowser::Connection | FromBrowser::Closing => {}
     }
@@ -440,11 +448,13 @@ mod tests {
             main_frame: true,
             user_gesture: false,
             redirect: false,
+            confirmed: false,
         };
         let bytes = encode_message(&decide).unwrap();
         assert_eq!(decode_from_browser(&bytes).unwrap(), decide);
         let long = FromBrowser::Download {
             url: "a".repeat(MAX_URL_BYTES + 1),
+            user_agent: "Mozilla/5.0".into(),
         };
         let bytes = encode_message(&long).unwrap();
         assert_eq!(
