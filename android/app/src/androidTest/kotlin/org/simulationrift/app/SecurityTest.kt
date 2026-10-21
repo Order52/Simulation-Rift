@@ -22,6 +22,7 @@ import android.view.inputmethod.EditorInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
@@ -339,12 +340,13 @@ class SecurityTest {
             )) {
                 val field = device.wait(Until.findObject(By.res("home-address")), UI_TIMEOUT_MS) ?: throw AssertionError("home address field")
                 field.text = url
-                (device.wait(Until.findObject(By.res("check").enabled(true)), UI_TIMEOUT_MS) ?: throw AssertionError("check button")).click()
+                (awaitFresh { device.findObject(By.res("check").enabled(true)) } ?: throw AssertionError("check button")).click()
                 // The previous result is replaced as the text changes: wait for this one's.
-                // hasObject, not the element's text: the card is redrawn as the result arrives.
-                val title = expected.takeIf { device.wait(Until.hasObject(By.res("check-title").text(expected)), UI_TIMEOUT_MS) == true }
+                // Found, not read: the card is redrawn as the result arrives.
+                val title = expected.takeIf { awaitFresh { device.findObject(By.res("check-title").text(expected)) } != null }
                     ?: throw AssertionError("$url: expected \"$expected\", shown: ${runCatching { device.findObject(By.res("check-title"))?.text }.getOrNull()}")
                 device.waitForIdle()
+                freshTree()
                 val score = runCatching { device.findObject(By.res("check-ai-score"))?.text }.getOrNull()
                 val abstained = device.findObject(By.res("check-ai-abstained")) != null
                 rows += "$url: $title, AI ${score ?: if (abstained) "not scored (most visited site)" else "none"}"
@@ -1356,11 +1358,21 @@ class SecurityTest {
 
             allowFixtureHost()
             openBrowser(activeGeneration(), fixture("/sign-in.html"))
-            val fields = { device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty() }
-            awaitCondition("the page's sign-in fields") { fields().count { it.resourceName != "address" } >= 2 }
+            // The page's fields. The engine redraws them as the page settles, and
+            // a field found a moment earlier was stale when read (H3, API 34):
+            // stale ones are skipped and the fields looked for again.
+            val pageFields = {
+                freshTree()
+                device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty().filter {
+                    try { it.resourceName != "address" } catch (e: StaleObjectException) { false }
+                }
+            }
+            awaitCondition("the page's sign-in fields") { pageFields().size >= 2 }
             val overPage = overlaid("h3-browser")
             assertTrue("${percent(overPage)} of the browser's window is under the overlay", overPage < 0.02)
-            fields().first { it.resourceName != "address" }.click()
+            awaitCondition("a click on the page's first field") {
+                try { pageFields().firstOrNull()?.click() != null } catch (e: StaleObjectException) { false }
+            }
             SystemClock.sleep(AUTOFILL_WAIT_MS)
             device.pressBack()
             // The controller sends none. The engine still tells the system a
@@ -1957,10 +1969,28 @@ class SecurityTest {
     private fun inputSwipe(x1: Int, y1: Int, x2: Int, y2: Int) {
         device.executeShellCommand("input swipe $x1 $y1 $x2 $y2 300")
         device.waitForIdle()
-        // API 34 caches the accessibility tree in UiAutomation, and a scrolled
-        // Compose screen kept its old tree there: the button was on screen and
-        // not found. Clearing the cache makes the next lookup read the screen.
+        freshTree()
+    }
+
+    /**
+     * API 34 caches the accessibility tree in UiAutomation, and a Compose
+     * screen kept its old tree there: a scrolled-to button was on screen and
+     * not found (N6), and Check's result card was shown and not found (V1).
+     * Clearing the cache makes the next lookup read the screen.
+     */
+    private fun freshTree() {
         if (android.os.Build.VERSION.SDK_INT >= 34) InstrumentationRegistry.getInstrumentation().uiAutomation.clearCache()
+    }
+
+    /** [find]'s first non-null result, reading the screen afresh each time, or null after [timeoutMs]. */
+    private fun <T : Any> awaitFresh(timeoutMs: Long = UI_TIMEOUT_MS, find: () -> T?): T? {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (true) {
+            freshTree()
+            find()?.let { return it }
+            if (SystemClock.elapsedRealtime() > deadline) return null
+            SystemClock.sleep(100)
+        }
     }
 
     /** Swipes a quarter of the screen at a time, slowly (no fling), down then back up, until [selector] shows (at most 20 swipes each way). */
