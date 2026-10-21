@@ -43,6 +43,7 @@ fuzz_target!(|data: &[u8]| {
             _ => IntelState::Missing,
         },
         heuristics: &heuristics,
+        model: None,
     };
     let decision = decide_navigation(raw, &ctx);
     if !sandbox_verified {

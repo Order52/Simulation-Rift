@@ -8,12 +8,13 @@
 use std::sync::Arc;
 
 use rift_core::egress::{
-    Denial, Egress, EgressCounts, EgressPolicy, ForwardedEgress, Refusal, Screen,
+    Denial, Egress, EgressCounts, EgressPolicy, ForwardedEgress, Refusal, Remark, Screen,
 };
 use rift_core::text::escape_for_display;
 use rift_core::urlcanon::CanonicalUrl;
+use rift_core::urlmodel::View;
 
-use crate::{Intel, SessionFailure, Sessions};
+use crate::{Ai, Intel, SessionFailure, Sessions};
 
 /// Where and how the browser reaches the proxy. The token is a secret: it
 /// goes to the browser over the signature-checked Binder interface only.
@@ -44,6 +45,18 @@ pub struct EgressStats {
     pub unauthenticated: u64,
     /// The most recent refusals, oldest first.
     pub recent: Vec<EgressDenial>,
+    /// The most recent destinations let through with a remark (Rift AI),
+    /// oldest first.
+    pub remarks: Vec<EgressRemark>,
+}
+
+/// A destination let through that Rift AI rates High, escaped for the UI.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct EgressRemark {
+    /// Counts this session's remarks from 1.
+    pub seq: u64,
+    pub destination: String,
+    pub text: String,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -66,11 +79,14 @@ impl From<SessionFailure> for EgressFailure {
 impl Sessions {
     /// This session's proxy, started on first use. With `intel`, every
     /// destination is checked against the installed threat database (the
-    /// one current at each request) before it is resolved.
+    /// one current at each request) before it is resolved. With `ai`, each
+    /// destination let through is also scored, and those it rates High are
+    /// listed as remarks (never refused for it).
     pub fn egress(
         &self,
         generation: u64,
         intel: Option<Arc<Intel>>,
+        ai: Option<Arc<Ai>>,
     ) -> Result<EgressEndpoint, EgressFailure> {
         let mut state = self.lock()?;
         let extras = state
@@ -78,7 +94,7 @@ impl Sessions {
             .ok_or(EgressFailure::NoActiveSession)?;
         if extras.egress.is_none() {
             let started =
-                Egress::start(policy(&extras.local_hosts), screen(intel)).map_err(|e| {
+                Egress::start(policy(&extras.local_hosts), screen(intel, ai)).map_err(|e| {
                     EgressFailure::Start {
                         detail: e.to_string(),
                     }
@@ -113,12 +129,18 @@ impl Sessions {
                 .map(|d| EgressDenial {
                     seq: d.seq,
                     code: d.refusal.code().to_owned(),
-                    destination: escape_for_display(&if d.host.contains(':') {
-                        format!("[{}]:{}", d.host, d.port)
-                    } else {
-                        format!("{}:{}", d.host, d.port)
-                    }),
+                    destination: destination(&d.host, d.port),
                     reason: escape_for_display(&describe(&d.refusal)),
+                })
+                .collect(),
+            remarks: egress
+                .remarks()
+                .into_iter()
+                .map(|r| EgressRemark {
+                    seq: r.seq,
+                    destination: destination(&r.host, r.port),
+                    // Built from escaped parts by crate::ai::remark.
+                    text: r.text,
                 })
                 .collect(),
         })
@@ -141,7 +163,7 @@ impl Sessions {
             .current(generation)
             .ok_or(EgressFailure::NoActiveSession)?;
         if extras.egress.is_none() {
-            let started = ForwardedEgress::new(policy(&extras.local_hosts), screen(intel));
+            let started = ForwardedEgress::new(policy(&extras.local_hosts), screen(intel, None));
             extras.egress = Some(Proxy::Forwarded(Arc::new(started)));
         }
         match extras.egress.as_ref() {
@@ -189,6 +211,13 @@ impl Proxy {
             Self::Forwarded(egress) => egress.denials(),
         }
     }
+
+    fn remarks(&self) -> Vec<Remark> {
+        match self {
+            Self::Loopback(egress) => egress.remarks(),
+            Self::Forwarded(egress) => egress.remarks(),
+        }
+    }
 }
 
 fn policy(local_hosts: &[String]) -> EgressPolicy {
@@ -198,8 +227,20 @@ fn policy(local_hosts: &[String]) -> EgressPolicy {
     }
 }
 
-fn screen(intel: Option<Arc<Intel>>) -> Option<Arc<dyn Screen>> {
-    intel.map(|intel| Arc::new(IntelScreen(intel)) as Arc<dyn Screen>)
+fn screen(intel: Option<Arc<Intel>>, ai: Option<Arc<Ai>>) -> Option<Arc<dyn Screen>> {
+    if intel.is_none() && ai.is_none() {
+        return None;
+    }
+    Some(Arc::new(RiftScreen { intel, ai }))
+}
+
+/// `host:port` (an IPv6 literal in brackets), escaped for the UI.
+fn destination(host: &str, port: u16) -> String {
+    escape_for_display(&if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    })
 }
 
 fn describe(refusal: &Refusal) -> String {
@@ -211,13 +252,21 @@ fn describe(refusal: &Refusal) -> String {
     }
 }
 
-/// The installed snapshot's URL indicators, as the proxy's screen.
+/// The proxy's screen: the installed snapshot's URL indicators refuse,
+/// and Rift AI remarks.
 #[derive(Debug)]
-struct IntelScreen(Arc<Intel>);
+struct RiftScreen {
+    intel: Option<Arc<Intel>>,
+    ai: Option<Arc<Ai>>,
+}
 
-impl Screen for IntelScreen {
+impl Screen for RiftScreen {
+    fn remark(&self, url: &CanonicalUrl, view: View) -> Option<String> {
+        crate::ai::remark(&self.ai.as_ref()?.model, url, view)
+    }
+
     fn listed(&self, url: &CanonicalUrl) -> Option<String> {
-        let pack = self.0.pack()?;
+        let pack = self.intel.as_ref()?.pack()?;
         pack.urls
             .matches(url)
             .into_iter()

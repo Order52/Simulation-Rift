@@ -47,6 +47,7 @@ use sha2::{Digest, Sha256};
 
 use crate::transfer::{DestinationError, check_destination};
 use crate::urlcanon::{self, CanonError, CanonicalUrl};
+use crate::urlmodel::View;
 
 /// The longest request head the proxy reads (request line and headers).
 pub const MAX_HEAD_BYTES: usize = 16 * 1024;
@@ -86,6 +87,13 @@ impl Default for EgressPolicy {
 pub trait Screen: Send + Sync + fmt::Debug {
     /// The listed lookup expression that `url` matches, if any.
     fn listed(&self, url: &CanonicalUrl) -> Option<String>;
+
+    /// Something to tell the user about a destination that is let through
+    /// (Rift AI's view of it, §16): recorded, never a reason to refuse.
+    /// `view` says whether the path was seen (plain HTTP) or only the host.
+    fn remark(&self, _url: &CanonicalUrl, _view: View) -> Option<String> {
+        None
+    }
 }
 
 /// Why a request was refused.
@@ -136,6 +144,16 @@ pub struct Denial {
     pub refusal: Refusal,
 }
 
+/// A destination let through with a remark from the screen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Remark {
+    /// Numbers this proxy's remarks from 1.
+    pub seq: u64,
+    pub host: String,
+    pub port: u16,
+    pub text: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EgressCounts {
     pub allowed: u64,
@@ -183,6 +201,9 @@ struct Shared {
     denials: Mutex<VecDeque<Denial>>,
     /// Refusals recorded so far (the last [`Denial::seq`]); written under `denials`.
     recorded: AtomicU64,
+    remarks: Mutex<VecDeque<Remark>>,
+    /// Remarks recorded so far (the last [`Remark::seq`]); written under `remarks`.
+    remarked: AtomicU64,
     allowed: AtomicU64,
     denied: AtomicU64,
     unauthenticated: AtomicU64,
@@ -240,6 +261,11 @@ impl Egress {
     /// The most recent refusals, oldest first.
     pub fn denials(&self) -> Vec<Denial> {
         self.shared.denials()
+    }
+
+    /// The most recent remarks on destinations let through, oldest first.
+    pub fn remarks(&self) -> Vec<Remark> {
+        self.shared.remarks()
     }
 
     pub fn counts(&self) -> EgressCounts {
@@ -302,6 +328,11 @@ impl ForwardedEgress {
         self.shared.denials()
     }
 
+    /// The most recent remarks on destinations let through, oldest first.
+    pub fn remarks(&self) -> Vec<Remark> {
+        self.shared.remarks()
+    }
+
     pub fn counts(&self) -> EgressCounts {
         self.shared.counts()
     }
@@ -332,6 +363,8 @@ impl Shared {
             next_id: AtomicU64::new(0),
             denials: Mutex::new(VecDeque::new()),
             recorded: AtomicU64::new(0),
+            remarks: Mutex::new(VecDeque::new()),
+            remarked: AtomicU64::new(0),
             allowed: AtomicU64::new(0),
             denied: AtomicU64::new(0),
             unauthenticated: AtomicU64::new(0),
@@ -345,6 +378,10 @@ impl Shared {
 
     fn denials(&self) -> Vec<Denial> {
         lock(&self.denials).iter().cloned().collect()
+    }
+
+    fn remarks(&self) -> Vec<Remark> {
+        lock(&self.remarks).iter().cloned().collect()
     }
 
     fn counts(&self) -> EgressCounts {
@@ -475,10 +512,14 @@ fn serve(shared: &Shared, mut client: TcpStream) {
         return;
     }
     // Before resolving, so a listed name is not even looked up.
-    if let Some(Err(refusal)) = shared.screen.as_deref().map(|s| screen(s, &request)) {
-        record_denial(shared, &request.target, refusal.clone());
-        let _sent = respond(&mut client, 403, "Forbidden", &refusal.to_string());
-        return;
+    match shared.screen.as_deref().map(|s| screen(s, &request)) {
+        Some(Err(refusal)) => {
+            record_denial(shared, &request.target, refusal.clone());
+            let _sent = respond(&mut client, 403, "Forbidden", &refusal.to_string());
+            return;
+        }
+        Some(Ok(Some(text))) => record_remark(shared, &request.target, text),
+        Some(Ok(None)) | None => {}
     }
     let upstream = match connect(&request.target, &policy) {
         Ok(upstream) => upstream,
@@ -525,7 +566,10 @@ fn authorized(auth: &TokenAuth, request: &Request) -> bool {
 /// that cannot be canonicalized (longer than [`urlcanon::MAX_URL_BYTES`]) is
 /// refused as not checked: screening its host alone let a listed path
 /// through behind a padded query.
-fn screen(screen: &dyn Screen, request: &Request) -> Result<(), Refusal> {
+///
+/// A destination that passes may come back with the screen's remark on the
+/// most specific form seen: the whole URL for plain HTTP, else the host.
+fn screen(screen: &dyn Screen, request: &Request) -> Result<Option<String>, Refusal> {
     let host = &request.target.host;
     let host = if host.contains(':') {
         format!("[{host}]")
@@ -537,13 +581,37 @@ fn screen(screen: &dyn Screen, request: &Request) -> Result<(), Refusal> {
         urls.push(format!("http://{host}{origin_form}"));
     }
     urls.push(format!("http://{host}/"));
+    let mut checked = Vec::new();
     for url in urls {
         let url = urlcanon::canonicalize(url.as_bytes()).map_err(Refusal::NotChecked)?;
         if let Some(matched) = screen.listed(&url) {
             return Err(Refusal::KnownMalicious(matched));
         }
+        checked.push(url);
     }
-    Ok(())
+    let view = if matches!(request.form, Form::Absolute { .. }) {
+        View::Address
+    } else {
+        View::HostOnly
+    };
+    Ok(checked.first().and_then(|url| screen.remark(url, view)))
+}
+
+fn record_remark(shared: &Shared, target: &Target, text: String) {
+    let mut remarks = lock(&shared.remarks);
+    if remarks.len() >= MAX_DENIALS {
+        remarks.pop_front();
+    }
+    let seq = shared
+        .remarked
+        .fetch_add(1, Ordering::Relaxed)
+        .saturating_add(1);
+    remarks.push_back(Remark {
+        seq,
+        host: target.host.clone(),
+        port: target.port,
+        text,
+    });
 }
 
 fn record_denial(shared: &Shared, target: &Target, refusal: Refusal) {
@@ -1202,6 +1270,64 @@ mod tests {
                 "a stopped proxy answers nothing"
             );
         }
+    }
+
+    /// Remarks on every destination with the view it was given.
+    #[derive(Debug)]
+    struct Remarks;
+
+    impl Screen for Remarks {
+        fn listed(&self, _url: &CanonicalUrl) -> Option<String> {
+            None
+        }
+
+        fn remark(&self, url: &CanonicalUrl, view: View) -> Option<String> {
+            Some(format!("{view:?} {}{}", url.host(), url.path()))
+        }
+    }
+
+    #[test]
+    fn remarks_are_recorded_and_never_refuse() {
+        let (port, rx) = upstream();
+        let p = Egress::start(
+            EgressPolicy {
+                local_hosts: vec!["localhost".into()],
+                ..EgressPolicy::default()
+            },
+            Some(Arc::new(Remarks)),
+        )
+        .unwrap();
+        let (line, _) = ask(
+            &p,
+            &format!(
+                "GET http://localhost:{port}/odd HTTP/1.1\r\n{}\r\n",
+                auth(&p)
+            ),
+        );
+        assert_ne!(line, "HTTP/1.1 403 Forbidden");
+        assert!(
+            rx.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "the request went through"
+        );
+        let (tunnel_port, _tunnel_rx) = upstream();
+        let (line, _) = ask(
+            &p,
+            &format!(
+                "CONNECT localhost:{tunnel_port} HTTP/1.1\r\n{}\r\n",
+                auth(&p)
+            ),
+        );
+        assert_eq!(line, "HTTP/1.1 200 Connection Established");
+        let remarks: Vec<(u64, String)> =
+            p.remarks().into_iter().map(|r| (r.seq, r.text)).collect();
+        assert_eq!(
+            remarks,
+            vec![
+                (1, "Address localhost/odd".to_owned()),
+                (2, "HostOnly localhost/".to_owned())
+            ]
+        );
+        assert!(p.denials().is_empty());
     }
 
     #[test]

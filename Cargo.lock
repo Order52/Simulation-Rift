@@ -2750,6 +2750,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rift-train"
+version = "0.1.0"
+dependencies = [
+ "rift-core",
+ "serde_json",
+]
+
+[[package]]
 name = "rift-update"
 version = "0.1.0"
 dependencies = [

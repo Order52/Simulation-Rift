@@ -8,6 +8,7 @@ use crate::heuristics::{self, Flag, HeuristicConfig, Severity};
 use crate::intel::UrlTable;
 use crate::text::escape_for_display;
 use crate::urlcanon::{self, CanonError};
+use crate::urlmodel::{Assessment, Level, UrlModel, View};
 use url::Url;
 
 /// Freshness of the active intelligence snapshot, determined by the caller.
@@ -27,6 +28,8 @@ pub struct NavigationContext<'a> {
     pub indicators: Option<&'a UrlTable>,
     pub intel_state: IntelState,
     pub heuristics: &'a HeuristicConfig,
+    /// Rift AI (§16), if loaded: advisory, consulted after the indicators.
+    pub model: Option<&'a UrlModel>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +52,8 @@ pub enum Decision {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reason {
     Heuristic(Flag),
+    /// Rift AI rates the address High.
+    Ai(AiFinding),
     /// The URL could not be assessed (e.g. longer than the checker accepts).
     NotChecked(CanonError),
 }
@@ -56,8 +61,35 @@ pub enum Reason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Note {
     Heuristic(Flag),
+    /// Rift AI rates the address Elevated.
+    Ai(AiFinding),
     IntelStale,
     IntelMissing,
+}
+
+/// What Rift AI said about an address, for display.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AiFinding {
+    /// 0 to 99: never 100, which would read as certainty.
+    pub score: u8,
+    pub signals: Vec<String>,
+}
+
+impl AiFinding {
+    pub fn from_assessment(assessment: &Assessment) -> Self {
+        Self {
+            score: assessment.risk,
+            signals: assessment.signals.clone(),
+        }
+    }
+
+    fn because(&self) -> String {
+        if self.signals.is_empty() {
+            String::new()
+        } else {
+            format!(" What stood out: {}.", self.signals.join("; "))
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +105,7 @@ impl Reason {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Heuristic(flag) => flag.code(),
+            Self::Ai(_) => "ai-suspicious",
             Self::NotChecked(_) => "not-checked",
         }
     }
@@ -80,6 +113,11 @@ impl Reason {
     pub fn explain(&self) -> String {
         match self {
             Self::Heuristic(flag) => flag.explain(),
+            Self::Ai(finding) => format!(
+                "Rift AI: this address closely resembles known phishing and malware links ({}/100).{} A resemblance, not proof.",
+                finding.score,
+                finding.because()
+            ),
             Self::NotChecked(error) => format!("This address could not be checked ({error})."),
         }
     }
@@ -89,6 +127,7 @@ impl Note {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Heuristic(flag) => flag.code(),
+            Self::Ai(_) => "ai-elevated",
             Self::IntelStale => "intel-stale",
             Self::IntelMissing => "intel-missing",
         }
@@ -97,6 +136,11 @@ impl Note {
     pub fn explain(&self) -> String {
         match self {
             Self::Heuristic(flag) => flag.explain(),
+            Self::Ai(finding) => format!(
+                "Rift AI: this address somewhat resembles known malicious links ({}/100).{} Not proof either way.",
+                finding.score,
+                finding.because()
+            ),
             Self::IntelStale => {
                 "The threat database is out of date; recently listed sites may be missed."
                     .to_owned()
@@ -186,6 +230,16 @@ pub fn decide_navigation(raw: &[u8], ctx: &NavigationContext<'_>) -> Decision {
         match flag.severity() {
             Severity::Warn => reasons.push(Reason::Heuristic(flag)),
             Severity::Info => notes.push(Note::Heuristic(flag)),
+        }
+    }
+    // Advisory (§16): it can ask the user to confirm; it never blocks, and
+    // a low score adds nothing (it is not a sign of safety).
+    if let Some(model) = ctx.model {
+        let assessment = model.assess(&url, View::Address);
+        match assessment.level {
+            Level::High => reasons.push(Reason::Ai(AiFinding::from_assessment(&assessment))),
+            Level::Elevated => notes.push(Note::Ai(AiFinding::from_assessment(&assessment))),
+            Level::Low => {}
         }
     }
     if reasons.is_empty() {
@@ -353,6 +407,7 @@ mod tests {
             indicators,
             intel_state: IntelState::Current,
             heuristics: &heuristics,
+            model: None,
         };
         decide_navigation(raw.as_bytes(), &ctx)
     }
@@ -642,6 +697,62 @@ mod tests {
     }
 
     #[test]
+    fn rift_ai_warns_or_notes_and_never_blocks() {
+        use crate::urlmodel::{Kind, model_for_tests};
+        let heuristics = HeuristicConfig::default();
+        // High for "verify" in a path, Elevated for a .xyz ending alone.
+        let model = model_for_tests(
+            &[(Kind::PathWord, "verify", 6.0), (Kind::Tld, "xyz", 1.0)],
+            -0.5,
+        );
+        let decide = |raw: &str, indicators: Option<&UrlTable>| {
+            let ctx = NavigationContext {
+                sandbox_verified: true,
+                indicators,
+                intel_state: IntelState::Current,
+                heuristics: &heuristics,
+                model: Some(&model),
+            };
+            decide_navigation(raw.as_bytes(), &ctx)
+        };
+        match decide("https://shop.example.xyz/account/verify", None) {
+            Decision::Confirm { reasons, .. } => {
+                let [Reason::Ai(finding)] = reasons.as_slice() else {
+                    panic!("{reasons:?}")
+                };
+                assert!(finding.score >= 90, "{finding:?}");
+                assert_eq!(
+                    finding.signals[0],
+                    "the word \u{201c}verify\u{201d} in the path"
+                );
+                let text = Reason::Ai(finding.clone()).explain();
+                assert!(text.contains("not proof"), "{text}");
+            }
+            other => panic!("expected a warning, got {other:?}"),
+        }
+        match decide("https://shop.example.xyz/", None) {
+            Decision::Proceed { notes } => {
+                assert!(notes.iter().any(|n| n.code() == "ai-elevated"), "{notes:?}")
+            }
+            other => panic!("expected a note, got {other:?}"),
+        }
+        // Nothing for a low score: it is not shown as a sign of safety.
+        assert_eq!(
+            decide("https://example.org/", None),
+            Decision::Proceed { notes: vec![] }
+        );
+        // The database decides first: a listed address is blocked whatever the AI says.
+        let listed = table(&["shop.example.xyz/"]);
+        assert!(matches!(
+            decide("https://shop.example.xyz/account/verify", Some(&listed)),
+            Decision::Block {
+                reason: BlockReason::KnownMalicious(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn missing_or_stale_intel_is_surfaced() {
         let heuristics = HeuristicConfig::default();
         for (state, note) in [
@@ -653,6 +764,7 @@ mod tests {
                 indicators: None,
                 intel_state: state,
                 heuristics: &heuristics,
+                model: None,
             };
             match decide_navigation(b"https://example.org/", &ctx) {
                 Decision::Proceed { notes } => assert!(notes.contains(&note)),

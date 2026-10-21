@@ -17,3 +17,4 @@ pub mod store;
 pub mod text;
 pub mod transfer;
 pub mod urlcanon;
+pub mod urlmodel;

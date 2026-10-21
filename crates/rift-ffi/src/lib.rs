@@ -18,10 +18,12 @@ use rift_protocol::{Envelope, PROTOCOL_VERSION, Request, Response};
 
 uniffi::setup_scaffolding!();
 
+mod ai;
 mod egress;
 mod intake;
+pub use ai::{Ai, AiFailure, AiLevel, AiView, LinkCheck};
 mod scan;
-pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressStats};
+pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressRemark, EgressStats};
 pub use intake::Intake;
 /// The Linux controller's proxy, from [`Sessions::forwarded_egress`].
 pub use rift_core::egress::ForwardedEgress;
@@ -55,18 +57,31 @@ pub enum Navigation {
 #[derive(Debug, uniffi::Object)]
 pub struct Navigator {
     heuristics: HeuristicConfig,
+    ai: Option<Arc<Ai>>,
 }
 
 #[uniffi::export]
 impl Navigator {
     #[uniffi::constructor]
     pub fn new(protected_domains: Vec<String>, shorteners: Vec<String>) -> Arc<Self> {
+        Self::with_ai(protected_domains, shorteners, None)
+    }
+
+    /// As [`Navigator::new`], with Rift AI (§16) consulted after the
+    /// indicators: it can add a warning or a note, never a block.
+    #[uniffi::constructor]
+    pub fn with_ai(
+        protected_domains: Vec<String>,
+        shorteners: Vec<String>,
+        ai: Option<Arc<Ai>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             heuristics: HeuristicConfig {
                 protected_domains,
                 shorteners,
                 ..HeuristicConfig::default()
             },
+            ai,
         })
     }
 
@@ -91,6 +106,7 @@ impl Navigator {
                 Some(_) => IntelState::Current,
             },
             heuristics: &self.heuristics,
+            model: self.ai.as_deref().map(|ai| &ai.model),
         };
         match policy::decide_navigation(url.as_bytes(), &ctx) {
             Decision::Proceed { notes } => Navigation::Proceed {
@@ -1367,7 +1383,9 @@ mod tests {
         );
 
         // Started before the install: the screen reads the snapshot current at each request.
-        let endpoint = sessions.egress(generation, Some(intel.clone())).unwrap();
+        let endpoint = sessions
+            .egress(generation, Some(intel.clone()), None)
+            .unwrap();
         let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
         install(&intel, trusted_root, repo);
 
@@ -1455,9 +1473,9 @@ mod tests {
             sessions.egress_stats(generation).is_none(),
             "not started until asked for"
         );
-        let endpoint = sessions.egress(generation, None).unwrap();
+        let endpoint = sessions.egress(generation, None, None).unwrap();
         assert_eq!(
-            sessions.egress(generation, None).unwrap(),
+            sessions.egress(generation, None, None).unwrap(),
             endpoint,
             "one proxy per session"
         );
@@ -1489,11 +1507,11 @@ mod tests {
             "the old proxy answers nothing"
         );
         assert!(matches!(
-            sessions.egress(generation, None),
+            sessions.egress(generation, None, None),
             Err(EgressFailure::NoActiveSession)
         ));
         let next = sessions.start().unwrap();
-        let fresh = sessions.egress(next, None).unwrap();
+        let fresh = sessions.egress(next, None, None).unwrap();
         assert_ne!(fresh.token, endpoint.token);
         assert_eq!(
             connect_through(&fresh, &target).unwrap(),
@@ -1514,7 +1532,7 @@ mod tests {
         ));
         assert!(
             matches!(
-                sessions.egress(generation, None),
+                sessions.egress(generation, None, None),
                 Err(EgressFailure::Start { .. })
             ),
             "one kind of proxy per session"
