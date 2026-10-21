@@ -76,7 +76,7 @@ In order of priority:
 Android first; Linux is the last step.
 
 1. **Phase 3 leftovers:** ~~import screen~~, ~~online updates~~ and ~~clock warning~~ are done; open are the production key policy (offline keys, thresholds, rotation) and licensed real feeds.
-2. ~~**Phase 4:** the vault~~: built, then removed in 2.3. Next for Android: files shared or opened from other apps (images, PDFs) into quarantine for viewing, a release build (R8, signing outside the repository), and the full suite on the new screen.
+2. ~~**Phase 4:** the vault~~: built, then removed in 2.3. Next for Android: ~~files shared or opened from other apps~~ (done, n6); ~~a release build~~: both apps build minified (R8) and unsigned, and were checked on the API 35 emulator signed with a local key (Check, opening a page, a reset; this found that every reset of a release build failed on ART's runtime app image, now fixed). Open: a release signed with the real key, on a phone, and the full suite on the new screen.
 3. **Phase 7, hardening (Android):** ~~privacy checks~~ (x1, x2) are done; ~~a dependency and licence inventory with owners~~, ~~the in-app licence notices~~ and ~~an Android advisory check~~ and ~~kill-fault rounds~~, ~~a full disk~~ and ~~power cuts~~ (emulator) are done; open are long fuzz campaigns, the fault rounds on a phone, the rest of the release gates (§24; [their state](docs/reports/phase-7.md#release-gates-24)), and an external security review before any release claim.
 4. **Phones:** physical devices (every emulator level has passed on 2.1), which also settle the lookup benchmark.
 5. ~~**Phase 6:** Rift AI~~: built in 2.4. Open: a time-separated test, retraining on a schedule, and delivery in a signed pack instead of the app.
