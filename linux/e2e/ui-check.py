@@ -146,8 +146,16 @@ def export_through_portal(app, path):
     press(app, "Export…")
     label(app, "leaves Rift's protection")
     press(app, "Export anyway")
-    wait(f"the file chooser {CHOOSER_TITLE!r}", lambda: x_windows(CHOOSER_TITLE))
-    subprocess.run(["xdotool", "search", "--name", f"^{CHOOSER_TITLE}$", "windowfocus", "--sync"], check=True)
+    # The window can be found before it is mapped, when it cannot take the
+    # focus yet.
+    focus = ["xdotool", "search", "--name", f"^{CHOOSER_TITLE}$", "windowfocus", "--sync"]
+    def focused():
+        try:
+            return subprocess.run(focus, capture_output=True, timeout=10).returncode == 0 or None
+        except subprocess.TimeoutExpired:
+            return None
+
+    wait(f"the file chooser {CHOOSER_TITLE!r} to take the focus", focused)
     time.sleep(1)
     # The name field has the focus; a path in it also picks the folder.
     subprocess.run(["xdotool", "key", "ctrl+a"], check=True)
