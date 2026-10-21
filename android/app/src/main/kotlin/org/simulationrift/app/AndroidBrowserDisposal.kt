@@ -85,12 +85,8 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
             context.registerReceiver(receiver, filter)
         }
         try {
-            val old = Bound.connect(context)
-            val oldPid: Int
-            val died = CompletableFuture<Unit>()
+            val (old, oldPid, died) = instanceToWipe()
             try {
-                oldPid = old.session.pid()
-                old.binder.linkToDeath({ died.complete(Unit) }, 0)
                 val accepted = try {
                     old.session.wipe()
                 } catch (e: RemoteException) {
@@ -98,8 +94,6 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
                 }
                 if (!accepted) throw DisposalException.Failed("Android refused to clear the browser app's data")
                 await(died, "the browser app did not stop for the wipe")
-            } catch (e: RemoteException) {
-                throw DisposalException.Failed("the browser's session service failed: $e")
             } finally {
                 old.close()
             }
@@ -115,7 +109,7 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
 
     /** §15 step 4: a new process, and not one file anywhere in the browser app. */
     private fun checkFresh(oldPid: Int) {
-        val fresh = connectFresh()
+        val fresh = retrying("fresh browser instance") { Bound.connect(context) }
         try {
             val pid = fresh.session.pid()
             if (pid == oldPid) throw DisposalException.Failed("the browser process survived the wipe (pid $pid)")
@@ -131,19 +125,39 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
         }
     }
 
+    /** A running browser instance to wipe: its binding, its pid, and a future completed when it dies. */
+    private data class Running(val bound: Bound, val pid: Int, val died: CompletableFuture<Unit>)
+
+    private fun instanceToWipe(): Running = retrying("browser instance to wipe") {
+        val bound = Bound.connect(context)
+        try {
+            val pid = bound.session.pid()
+            val died = CompletableFuture<Unit>()
+            bound.binder.linkToDeath({ died.complete(Unit) }, 0)
+            Running(bound, pid, died)
+        } catch (e: RemoteException) {
+            bound.close()
+            throw DisposalException.Failed("the browser's session service failed: $e")
+        }
+    }
+
     /**
-     * The first bind after the clear can stall on a slow device (CI, API 34:
-     * no connection within 10 s), so it is retried a bounded number of times.
-     * Each failure is logged; the last one fails the reset.
+     * [step], retried a bounded number of times. The first bind after the
+     * clear can stall on a slow device (CI, API 34: no connection within
+     * 10 s). And when Rift was killed during a wipe, Android may still be
+     * stopping and clearing the browser app as the next launch binds to it,
+     * which ends the new instance: the binding dies, or its first call fails
+     * (F4 on CI's API 34). Each failure is logged; the last one fails the reset.
      */
-    private fun connectFresh(): Bound {
+    private fun <T> retrying(what: String, step: () -> T): T {
         var failure: DisposalException.Failed? = null
-        for (attempt in 1..FRESH_ATTEMPTS) {
+        for (attempt in 1..BIND_ATTEMPTS) {
             try {
-                return Bound.connect(context)
+                return step()
             } catch (e: DisposalException.Failed) {
-                Log.w(TAG, "fresh browser instance, attempt $attempt of $FRESH_ATTEMPTS: ${e.message}")
+                Log.w(TAG, "$what, attempt $attempt of $BIND_ATTEMPTS: ${e.message}")
                 failure = e
+                if (attempt < BIND_ATTEMPTS) Thread.sleep(BIND_RETRY_PAUSE_MS)
             }
         }
         throw checkNotNull(failure)
@@ -225,7 +239,10 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
          */
         private const val CLEAR_TIMEOUT_MS = 30_000L
         private const val BIND_TIMEOUT_MS = 10_000L
-        private const val FRESH_ATTEMPTS = 3
+        private const val BIND_ATTEMPTS = 3
+
+        /** Time for a clear still running from a killed launch to finish. */
+        private const val BIND_RETRY_PAUSE_MS = 500L
 
         /**
          * Files that may remain after a reset. Each entry is Rift's own state or
