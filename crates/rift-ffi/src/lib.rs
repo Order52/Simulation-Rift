@@ -19,8 +19,10 @@ use rift_protocol::{Envelope, PROTOCOL_VERSION, Request, Response};
 uniffi::setup_scaffolding!();
 
 mod egress;
+mod intake;
 mod scan;
 pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressStats};
+pub use intake::Intake;
 /// The Linux controller's proxy, from [`Sessions::forwarded_egress`].
 pub use rift_core::egress::ForwardedEgress;
 pub use scan::{
