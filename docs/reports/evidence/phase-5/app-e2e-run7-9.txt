@@ -1,0 +1,48 @@
+linux-app runs 7-9: the window driven through accessibility (ui-check.py) fails;
+every other case passes in each (page, loopback, download, crash, recover, switch).
+
+## run 7: 39541316885 (commit 71e04e5)
+Qt 6.10's password field offers no EditableText interface:
+Traceback (most recent call last):
+  File "/home/runner/work/Simulation-Rift/Simulation-Rift/linux/e2e/ui-check.py", line 153, in <module>
+    main()
+  File "/home/runner/work/Simulation-Rift/Simulation-Rift/linux/e2e/ui-check.py", line 104, in main
+    type_into(app, "password text", "Passphrase", PASSPHRASE)
+  File "/home/runner/work/Simulation-Rift/Simulation-Rift/linux/e2e/ui-check.py", line 95, in type_into
+    field.queryEditableText().setTextContents(value)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/pyatspi/Accessibility.py", line 147, in <lambda>
+    Atspi.Accessible.queryEditableText = lambda x: EditableText(getInterface(Atspi.Accessible.get_editable_text_iface, x))
+                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/pyatspi/Accessibility.py", line 68, in getInterface
+
+## run 8: 39541987380 (commit ad598c3, threat database import added)
+The same failure (the fallback was not yet in this commit). Its Flatpak build,
+which runs the real-worker install test with the demo database, succeeded.
+
+## run 9: 39543112437 (commit f0e72e8, keyboard fallback)
+Typing through XTest works; the 'Create' button is not found. The check
+matched roles by their name, which differs between at-spi2 versions
+("push button" or "button"); labels and the password field were found, so
+the button's name is the likely cause (not confirmed: the run printed no
+tree). b049d42 matches roles by number and prints the tree on a failure.
+typed into 'Passphrase'
+ui: FAILED: timed out waiting for the button 'Create'
+
+### download case (run 9)
+Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+rift: session 3 started
+rift: session 3: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+[2:25:1021/043311.560673:ERROR:bus.cc(408)] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 3: renderer sandboxed
+rift-browser: page did not load
+rift: session 3: a download was quarantined; scan: Known malicious
+qt.accessibility.atspi: AtSpiAdaptor::applicationInterface does not implement "GetApplicationBusAddress" "/org/a11y/atspi/accessible/root"
+rift: signal 15: destroying the session
+rift: session 3: proxy allowed 1, refused 0
+Release of profile requested but WebEnginePage still not deleted. Expect troubles !
+rift: session 3 ending: The browser window closed.
+rift: session 3 destroyed
