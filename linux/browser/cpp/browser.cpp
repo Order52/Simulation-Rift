@@ -106,6 +106,10 @@ public:
         m_profile->setPersistentCookiesPolicy(QWebEngineProfile::NoPersistentCookies);
         m_profile->setHttpCacheType(QWebEngineProfile::MemoryHttpCache);
 
+        // Before the page is set up, which can start its renderer.
+        connect(m_page, &QWebEnginePage::renderProcessPidChanged, this, [this](qint64 pid) {
+            checkRenderer(pid);
+        });
         m_view->setPage(m_page);
 
         auto *toolbar = addToolBar(QStringLiteral("Navigation"));
@@ -151,14 +155,17 @@ public:
         connect(m_page, &QWebEnginePage::urlChanged, this, [this](const QUrl &url) {
             m_address->setText(url.toDisplayString());
         });
-        connect(m_page, &QWebEnginePage::loadFinished, this, [](bool ok) {
+        connect(m_page, &QWebEnginePage::loadFinished, this, [this](bool ok) {
             std::fputs(ok ? "rift-browser: page loaded\n" : "rift-browser: page did not load\n", stderr);
+            // In case the engine started the renderer before it was watched.
+            const qint64 pid = m_page->renderProcessPid();
+            if (pid == 0)
+                std::fputs("rift-browser: the engine reports no renderer\n", stderr);
+            else if (pid != m_checkedPid)
+                checkRenderer(pid);
         });
         connect(m_page, &QWebEnginePage::titleChanged, this, [this](const QString &title) {
             setWindowTitle(QStringLiteral("Rift session: %1").arg(title));
-        });
-        connect(m_page, &QWebEnginePage::renderProcessPidChanged, this, [this](qint64 pid) {
-            checkRenderer(pid);
         });
         connect(m_page, &QWebEnginePage::permissionRequested, this, [](QWebEnginePermission permission) {
             permission.deny();
@@ -195,9 +202,12 @@ private:
     {
         m_stack->setCurrentIndex(0);
         m_verifiedPid = 0;
+        m_checkedPid = pid;
         if (pid == 0)
             return; // the renderer ended; a new one is checked when it starts
         const rust::String failure = renderer_started(pid);
+        std::fputs(failure.empty() ? "rift-browser: renderer sandboxed\n" : "rift-browser: renderer not sandboxed\n",
+                   stderr);
         if (failure.empty()) {
             m_verifiedPid = pid;
             m_stack->setCurrentIndex(1);
@@ -219,6 +229,7 @@ private:
     QPushButton *m_continue;
     QUrl m_pendingUrl;
     qint64 m_verifiedPid = 0;
+    qint64 m_checkedPid = 0;
 };
 
 Page::Page(QWebEngineProfile *profile, Window *window)

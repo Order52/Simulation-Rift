@@ -61,7 +61,8 @@ clean() {
   fi
   left=$(find "$appdir/sandbox" -mindepth 1 -maxdepth 1 2>/dev/null)
   [ -z "$left" ] || fail "$1: browser files left: $left"
-  sessions=$(find "$appdir/data/rift/sessions" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+  # rift-core keeps each generation's directory in sessions/sessions.
+  sessions=$(find "$appdir/data/rift/sessions/sessions" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
   [ -z "$sessions" ] || fail "$1: session directories left: $sessions"
 }
 loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
