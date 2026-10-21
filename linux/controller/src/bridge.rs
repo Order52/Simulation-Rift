@@ -29,6 +29,8 @@ pub mod qobject {
         #[qproperty(QString, vault)]
         #[qproperty(QStringList, kept)]
         #[qproperty(QString, vault_status)]
+        /// Host names the user allowed to reach local addresses this session.
+        #[qproperty(QString, local_hosts)]
         /// Changes with every preview shown.
         #[qproperty(i32, preview_serial)]
         #[qproperty(QString, preview_title)]
@@ -58,6 +60,9 @@ pub mod qobject {
         fn unlock_vault(self: Pin<&mut Self>, passphrase: &QString);
         #[qinvokable]
         fn lock_vault(self: Pin<&mut Self>);
+        /// Lets `host` reach local or private addresses in this session.
+        #[qinvokable]
+        fn allow_local_host(self: Pin<&mut Self>, host: &QString);
         /// Previews quarantined file `index` (as listed).
         #[qinvokable]
         fn preview(self: Pin<&mut Self>, index: i32);
@@ -114,6 +119,7 @@ pub struct RiftControllerRust {
     vault: QString,
     kept: QStringList,
     vault_status: QString,
+    local_hosts: QString,
     preview_serial: i32,
     preview_title: QString,
     preview_text: QString,
@@ -146,6 +152,7 @@ impl Default for RiftControllerRust {
             vault: QString::from(vault),
             kept: QStringList::default(),
             vault_status: QString::default(),
+            local_hosts: QString::default(),
             preview_serial: 0,
             preview_title: QString::default(),
             preview_text: QString::default(),
@@ -251,6 +258,17 @@ impl qobject::RiftController {
         }
         let event = controller.vault_event(Some("The vault is locked.".into()));
         self.apply(event);
+    }
+
+    pub fn allow_local_host(mut self: Pin<&mut Self>, host: &QString) {
+        let Ok(controller) = controller() else { return };
+        // Quick: no file or network work.
+        match controller.allow_local_host(&String::from(host)) {
+            Ok(hosts) => self
+                .as_mut()
+                .set_local_hosts(QString::from(hosts.join(", ").as_str())),
+            Err(error) => self.set_status(QString::from(error.as_str())),
+        }
     }
 
     pub fn preview(self: Pin<&mut Self>, index: i32) {
@@ -359,6 +377,7 @@ impl qobject::RiftController {
                 self.as_mut().set_active(false);
                 self.as_mut().set_traffic(QString::default());
                 self.as_mut().set_denials(QString::default());
+                self.as_mut().set_local_hosts(QString::default());
                 self.as_mut().rust_mut().files.clear();
                 self.set_quarantine(QStringList::default());
             }

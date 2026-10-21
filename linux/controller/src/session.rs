@@ -346,6 +346,23 @@ impl Controller {
         }
     }
 
+    /// The user's exception for one host name in the current session
+    /// (INV-13): its connections and downloads may reach a local or private
+    /// address. Returns the names now allowed.
+    pub fn allow_local_host(&self, host: &str) -> Result<Vec<String>, String> {
+        let generation = self
+            .sessions
+            .current_generation()
+            .ok_or("No session is open.")?;
+        if !self.sessions.allow_local_host(generation, host.to_owned()) {
+            return Err("That is not a host name.".into());
+        }
+        log(&format!(
+            "session {generation}: a local host was allowed by the user"
+        ));
+        Ok(self.sessions.local_hosts(generation))
+    }
+
     pub fn stats(&self) -> Option<EgressStats> {
         let generation = self.sessions.current_generation()?;
         self.sessions.egress_stats(generation)

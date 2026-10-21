@@ -154,6 +154,27 @@ ApplicationWindow {
             text: rift.traffic
         }
 
+        RowLayout {
+            Layout.fillWidth: true
+            visible: rift.active
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                textFormat: Text.PlainText
+                text: "Local network hosts allowed this session: " + (rift.localHosts === "" ? "none" : rift.localHosts)
+            }
+            TextField {
+                id: localHost
+                placeholderText: "Host name"
+                onAccepted: allowHost.clicked()
+            }
+            Button {
+                id: allowHost
+                text: "Allow"
+                onClicked: { rift.allowLocalHost(localHost.text); localHost.clear() }
+            }
+        }
+
         Label { text: "Refused connections"; font.bold: true }
         ScrollView {
             Layout.fillWidth: true
