@@ -1174,8 +1174,9 @@ class SecurityTest {
         val home = openHome()
         try {
             val since = lastInputStart()
-            (device.wait(Until.findObject(By.res("home-address")), UI_TIMEOUT_MS) ?: throw AssertionError("home address field")).click()
-            assertLearningOff(context.packageName, since, "the home screen's address field")
+            assertLearningOff(context.packageName, since, "the home screen's address field") {
+                (device.wait(Until.findObject(By.res("home-address")), UI_TIMEOUT_MS) ?: throw AssertionError("home address field")).click()
+            }
         } finally {
             home.finish()
         }
@@ -1183,8 +1184,9 @@ class SecurityTest {
         openBrowser(activeGeneration(), fixture("/type.html"))
         val fields = { device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty() }
         var since = lastInputStart()
-        (device.wait(Until.findObject(By.res("address")), UI_TIMEOUT_MS) ?: throw AssertionError("address bar")).click()
-        assertLearningOff(Rift.BROWSER_PACKAGE, since, "the browser's address bar")
+        assertLearningOff(Rift.BROWSER_PACKAGE, since, "the browser's address bar") {
+            (device.wait(Until.findObject(By.res("address")), UI_TIMEOUT_MS) ?: throw AssertionError("address bar")).click()
+        }
         device.pressBack() // the keyboard
         since = lastInputStart()
         // The page's field appears once the keyboard has gone and the page is laid out again.
@@ -1194,8 +1196,8 @@ class SecurityTest {
             SystemClock.sleep(200)
             page = fields().firstOrNull { it.resourceName != "address" }
         }
-        (page ?: throw AssertionError("the page's text field: ${fields().map { it.resourceName }}")).click()
-        assertLearningOff(Rift.BROWSER_PACKAGE, since, "the page's text field")
+        val field = page ?: throw AssertionError("the page's text field: ${fields().map { it.resourceName }}")
+        assertLearningOff(Rift.BROWSER_PACKAGE, since, "the page's text field") { field.click() }
         report("h2", "learning off in the home screen's address field, the browser's address bar and a page's field")
     }
 
@@ -1314,10 +1316,21 @@ class SecurityTest {
     }
 
     /** A text field in `pkg` started input after input start `since`, with IME_FLAG_NO_PERSONALIZED_LEARNING. */
-    private fun assertLearningOff(pkg: String, since: Int, what: String) {
+    /**
+     * Taps a field with `tap` and checks the keyboard was asked not to learn
+     * from it. A tap that lands before the field takes focus (seen on a slow
+     * CI emulator) starts no input, so it is tapped once more halfway.
+     */
+    private fun assertLearningOff(pkg: String, since: Int, what: String, tap: () -> Unit = {}) {
+        tap()
         val deadline = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
+        var tapAgainAt = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS / 2
         var seen: List<InputStart> = emptyList()
         while (SystemClock.elapsedRealtime() < deadline) {
+            if (SystemClock.elapsedRealtime() >= tapAgainAt) {
+                tap()
+                tapAgainAt = Long.MAX_VALUE
+            }
             // inputType 0 is a window gaining focus, not a text field.
             seen = inputStarts().filter { it.number > since && it.pkg == pkg && it.inputType != 0 }
             if (seen.isNotEmpty()) break
