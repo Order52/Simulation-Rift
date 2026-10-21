@@ -9,7 +9,6 @@ import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.http.SslError
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -18,8 +17,11 @@ import android.os.Process
 import android.os.SystemClock
 import android.os.RemoteException
 import android.util.Log
+import android.util.SparseArray
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewStructure
+import android.view.autofill.AutofillValue
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.webkit.CookieManager
@@ -87,6 +89,7 @@ import org.simulationrift.bridge.NetworkMode
 import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.SessionGrant
+import org.simulationrift.bridge.WindowGuard
 
 /**
  * The browser host in the browser app's `:web` process (§8.3, §8.4, §10).
@@ -160,9 +163,8 @@ class BrowserActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         check(Application.getProcessName() == Rift.WEB_PROCESS) { "BrowserActivity must run in ${Rift.WEB_PROCESS}" }
-        // The recents thumbnail is a screenshot the system keeps on disk,
-        // outside the browser app's data and so outside its wipe.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
+        // No overlays, autofill, non-tool accessibility services or recents snapshot.
+        WindowGuard.apply(this)
         generation = intent.getLongExtra(Rift.EXTRA_GENERATION, 0)
         val processGen = processGeneration
         if (generation <= 0 || (processGen != null && processGen != generation)) {
@@ -290,12 +292,21 @@ class BrowserActivity : ComponentActivity() {
         }
     }
 
-    /** Asks keyboards not to learn from what is typed into pages (`IME_FLAG_NO_PERSONALIZED_LEARNING`). */
+    /**
+     * Asks keyboards not to learn from what is typed into pages
+     * (`IME_FLAG_NO_PERSONALIZED_LEARNING`), and keeps pages from autofill
+     * services (§10.7): the engine still tells the system that a field was
+     * focused, but describes no page to it and accepts no fill.
+     */
     private class PrivateWebView(context: Context) : WebView(context) {
         override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? =
             super.onCreateInputConnection(outAttrs).also {
                 outAttrs.imeOptions = outAttrs.imeOptions or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
             }
+
+        override fun onProvideAutofillVirtualStructure(structure: ViewStructure, flags: Int) = Unit
+
+        override fun autofill(values: SparseArray<AutofillValue>) = Unit
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -305,6 +316,9 @@ class BrowserActivity : ComponentActivity() {
         // viewport unit (100vh) was 0 px, so pages sized by them collapsed
         // (found by H1).
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        // Pages' forms go to no autofill service (§10.7): WindowGuard's
+        // setting on the window does not reach the engine's virtual views.
+        importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
         settings.apply {
             javaScriptEnabled = true // sites need it; no bridge is ever added (INV-6)
             domStorageEnabled = true
@@ -317,6 +331,10 @@ class BrowserActivity : ComponentActivity() {
             // and reports the attempt (§10.5). The browser app holds no
             // location permission, so the OS refuses a location in any case.
             setGeolocationEnabled(true)
+            // No form data kept or offered by the engine, and (with the
+            // view's own setting above) no page form handed to autofill.
+            @Suppress("DEPRECATION")
+            saveFormData = false
         }
         // WebView gives every page window.android.webview, a Media Integrity
         // API that asks Google Play for a device attestation (found by S1).
@@ -326,6 +344,16 @@ class BrowserActivity : ComponentActivity() {
                 settings,
                 WebViewMediaIntegrityApiStatusConfig.Builder(WebViewMediaIntegrityApiStatusConfig.WEBVIEW_MEDIA_INTEGRITY_API_DISABLED).build(),
             )
+        }
+        // Pages cannot register ad attribution with the system's Measurement
+        // API, which keeps it outside the browser app's data, past the wipe.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ATTRIBUTION_REGISTRATION_BEHAVIOR)) {
+            WebSettingsCompat.setAttributionRegistrationBehavior(settings, WebSettingsCompat.ATTRIBUTION_BEHAVIOR_DISABLED)
+        }
+        // A device policy could otherwise let sign-in links open another app,
+        // past the core's block on automatic external-app links (§10.3).
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ENTERPRISE_AUTHENTICATION_APP_LINK_POLICY)) {
+            WebSettingsCompat.setEnterpriseAuthenticationAppLinkPolicyEnabled(settings, false)
         }
         webViewClient = Client()
         webChromeClient = Chrome()
@@ -555,7 +583,7 @@ class BrowserActivity : ComponentActivity() {
                         openTyped(typed)
                         typed = ""
                     }),
-                    modifier = Modifier.weight(1f).testTag("address"),
+                    modifier = Modifier.noAutofill().weight(1f).testTag("address"),
                 )
             }
             if (grant?.mode == NetworkMode.REDUCED) {

@@ -7,6 +7,9 @@
          default network is the lock before it loads a page. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Lets each window hide other apps' overlays while it is shown
+         (WindowGuard, API 31+). A normal permission. -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
     <!-- The controller must be visible to bind its CoreService (API 30). -->
     <queries>

@@ -3,6 +3,7 @@ package org.simulationrift.app
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -54,6 +55,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.simulationrift.bridge.PageWatch
+import org.simulationrift.bridge.WindowGuard
 import org.simulationrift.core.EgressStats
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
@@ -98,6 +100,8 @@ class MainActivity : ComponentActivity() {
         // Not when Android recreates the activity (after a crash or a kill):
         // a link handed over before then is not opened again without the user.
         if (savedInstanceState == null) pendingLink = linkFrom(intent)
+        // No overlays, autofill, non-tool accessibility services or recents snapshot.
+        WindowGuard.apply(this)
         setContent { MaterialTheme { NoPersonalizedLearning { Home() } } }
     }
 
@@ -133,6 +137,12 @@ class MainActivity : ComponentActivity() {
         val sandbox by Core.sandbox.collectAsState()
         val lock by NetworkLock.state.collectAsState()
         val reduced by Core.reduced.collectAsState()
+        // INV-12: while the vault is unlocked, its names and previews stay out
+        // of screenshots, screen recordings and casting.
+        val vaultOpen = Locker.state.collectAsState().value is Locker.State.Unlocked
+        LaunchedEffect(vaultOpen) {
+            if (vaultOpen) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
         val link = pendingLink
         val active = state as? Core.State.Active
         val mayBrowse = active != null && (lock == NetworkLock.State.Active || reduced == active.generation)
@@ -326,7 +336,7 @@ class MainActivity : ComponentActivity() {
                     onValueChange = { typed = it },
                     label = { Text("Address") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("home-address"),
+                    modifier = Modifier.noAutofill().fillMaxWidth().testTag("home-address"),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { browse(generation, typed.takeIf { it.isNotBlank() }) }, modifier = Modifier.testTag("browse")) {
@@ -375,7 +385,7 @@ class MainActivity : ComponentActivity() {
                         onValueChange = { host = it },
                         label = { Text("Host name") },
                         singleLine = true,
-                        modifier = Modifier.weight(1f).testTag("local-host"),
+                        modifier = Modifier.noAutofill().weight(1f).testTag("local-host"),
                     )
                     OutlinedButton(onClick = {
                         Core.allowLocalHost(host)
@@ -422,7 +432,7 @@ class MainActivity : ComponentActivity() {
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
-            modifier = Modifier.fillMaxWidth().testTag("vault-passphrase"),
+            modifier = Modifier.noAutofill().fillMaxWidth().testTag("vault-passphrase"),
         )
 
         Card(Modifier.fillMaxWidth().testTag("vault")) {

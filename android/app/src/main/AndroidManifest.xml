@@ -8,6 +8,9 @@
     <!-- The vault unlock prompt (§8.7). A normal permission: it lets Rift ask
          the system to authenticate the user, and reveals nothing itself. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Lets each window hide other apps' overlays while it is shown
+         (WindowGuard, API 31+). A normal permission. -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
     <!-- The browser app must be visible to bind and start it (API 30). -->
     <queries>
