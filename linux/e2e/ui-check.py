@@ -6,16 +6,17 @@ lock and unlock are checked.
 
 Steps: create a vault; preview the quarantined file (its text, escaped by
 rift-core, holds the marker); keep it in the vault; open and cancel the
-export warning (the file chooser is not opened: CI has no portal backend
-for it); allow a local host name; lock; refuse a wrong passphrase; unlock;
-delete the kept file.
+export warning; with --export, export it to that path through the file
+chooser portal (its dialog is answered with XTest: it belongs to the
+portal's backend, outside the app); allow a local host name; lock; refuse a
+wrong passphrase; unlock; delete the kept file.
 
 Text goes in through the accessible EditableText interface where Qt offers
 it (6.11), or else (6.10) by focusing the field through accessibility,
 giving the window X input focus and typing with XTest (xdotool), which
 --keyboard forces.
 
-Usage: python3 -I ui-check.py [--no-download] [--keyboard]
+Usage: python3 -I ui-check.py [--no-download] [--keyboard] [--export <path>]
 Exit 0: every step as expected; 1: a step failed (it says which).
 """
 
@@ -28,7 +29,9 @@ import pyatspi
 PASSPHRASE = "rift end-to-end passphrase"
 TIMEOUT = 60
 WINDOW_TITLE = "Simulation-Rift"
+CHOOSER_TITLE = "Export to"
 KEYBOARD = "--keyboard" in sys.argv[1:]
+EXPORT = sys.argv[sys.argv.index("--export") + 1] if "--export" in sys.argv[1:] else None
 
 
 class Failed(Exception):
@@ -132,6 +135,27 @@ def type_into(app, role, name, value):
     print(f"typed into {name!r}")
 
 
+def x_windows(title):
+    found = subprocess.run(["xdotool", "search", "--name", f"^{title}$"], capture_output=True, text=True)
+    return found.stdout.split()
+
+
+def export_through_portal(app, path):
+    press(app, "Export…")
+    label(app, "leaves Rift's protection")
+    press(app, "Export anyway")
+    wait(f"the file chooser {CHOOSER_TITLE!r}", lambda: x_windows(CHOOSER_TITLE))
+    subprocess.run(["xdotool", "search", "--name", f"^{CHOOSER_TITLE}$", "windowfocus", "--sync"], check=True)
+    time.sleep(1)
+    # The name field has the focus; a path in it also picks the folder.
+    subprocess.run(["xdotool", "key", "ctrl+a"], check=True)
+    subprocess.run(["xdotool", "type", "--delay", "20", path], check=True)
+    time.sleep(0.5)
+    subprocess.run(["xdotool", "key", "Return"], check=True)
+    label(app, "Exported. The copy is outside Rift's protection")
+    print(f"exported through the portal to {path}")
+
+
 def main():
     no_download = "--no-download" in sys.argv[1:]
     app = application()
@@ -158,6 +182,8 @@ def main():
         press(app, "Cancel")
         no_label(app, "leaves Rift's protection")
         print("export warning shown and cancelled")
+        if EXPORT is not None:
+            export_through_portal(app, EXPORT)
 
         type_into(app, "text", "Host name", "printer.local")
         press(app, "Allow")
@@ -190,5 +216,9 @@ try:
 except Failed as failure:
     print("showing:")
     dump(application())
+    windows = subprocess.run(["xdotool", "search", "--name", "."], capture_output=True, text=True)
+    for window in windows.stdout.split():
+        name = subprocess.run(["xdotool", "getwindowname", window], capture_output=True, text=True)
+        print(f"  X window {window}: {name.stdout.strip()!r}")
     print(f"ui: FAILED: {failure}")
     sys.exit(1)
