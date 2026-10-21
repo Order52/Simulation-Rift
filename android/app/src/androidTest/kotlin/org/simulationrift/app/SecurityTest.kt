@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
@@ -186,6 +187,53 @@ class SecurityTest {
         val expected = if (supported) "No page checked yet" else "Browsing refused on this device"
         assertNotNull(expected, device.wait(Until.findObject(By.res("protection").text(expected)), UI_TIMEOUT_MS))
         report("n4", "engine supported=$supported; bar: $expected")
+    }
+
+    @Test
+    fun n5_linksFromOtherAppsAreCheckedAsTheEngineReadsThem() {
+        // No threat database here (s16a and s16b, which run later, need none):
+        // the lookalike check shows which host each link was judged by.
+        // A session that has shown a page.
+        visit("s1", "/s1.html")
+        val first = activeGeneration()
+        assertTrue(Core.hasBrowsed(first))
+
+        // A message shared from another app, with a defanged lookalike link:
+        // its link is found, opened in a new session and stopped for a warning.
+        fromAnotherApp(Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, "Have a look: hxxps://paypa1[.]com/login (urgent)"))
+        val second = activeGenerationAfter(first)
+        assertNotNull("the shared link's warning", device.wait(Until.findObject(By.res("interstitial")), PAGE_TIMEOUT_MS))
+        assertNotNull(device.findObject(By.textContains("looks like paypal.com")))
+        assertNotNull(device.findObject(By.textContains("paypa1.com/login")))
+        // The trusted bar is drawn, not covered by the engine (INV-6): a
+        // WebView that had shown no page covered it in black (found here).
+        val bar = device.findObject(By.res("trusted-bar"))?.visibleBounds ?: throw AssertionError("no trusted bar")
+        val covered = shareOf("n5-shared", bar) { r, g, b -> r < 12 && g < 12 && b < 12 }
+        assertTrue("trusted bar ${"%.1f".format(covered * 100)}% black", covered < 0.2)
+
+        // A link that hides the lookalike host behind a backslash is judged as
+        // the engine reads it (the host before the backslash), not as
+        // example.org. The warning could have led to a page, so the session
+        // counts as used and the link gets another new one.
+        fromAnotherApp(Intent(Intent.ACTION_VIEW, Uri.parse("https://paypa1.com\\@example.org/")))
+        val third = activeGenerationAfter(second)
+        assertNotNull("the backslash link's warning", device.wait(Until.findObject(By.textContains("paypa1.com/@example.org")), PAGE_TIMEOUT_MS))
+        assertNotNull(device.findObject(By.textContains("looks like paypal.com")))
+
+        // Text without a link is refused with a reason, not dropped (in yet
+        // another session: the last one also showed a warning).
+        fromAnotherApp(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "no link in here"))
+        val fourth = activeGenerationAfter(third)
+        assertNotNull("text without a link", device.wait(Until.findObject(By.text("This is not a valid web address.")), PAGE_TIMEOUT_MS))
+        // A refused address loads nothing, so the session stays unused.
+        assertFalse(Core.hasBrowsed(fourth))
+        report("n5", "sessions $first -> $second -> $third -> $fourth; bar ${"%.1f".format(covered * 100)}% black; shared, backslash and linkless text handled")
+    }
+
+    /** Hands `intent` to Rift's home screen as another app's link or share would. */
+    private fun fromAnotherApp(intent: Intent) {
+        context.startActivity(intent.setClassName(context.packageName, MainActivity::class.java.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     // ---- S8 / S9 / S10: downloads go through the core (INV-13, §11.1) -----------
@@ -1564,18 +1612,21 @@ class SecurityTest {
     /** The share of a screenshot's pixels that are black, as a secure window is in it. */
     private fun dark(name: String): Double = shareOf(name) { r, g, b -> r < 12 && g < 12 && b < 12 }
 
-    private fun shareOf(name: String, counts: (Int, Int, Int) -> Boolean): Double {
+    /** The share of a screenshot's pixels (within `area`, or all) for which `counts` holds. */
+    private fun shareOf(name: String, area: android.graphics.Rect? = null, counts: (Int, Int, Int) -> Boolean): Double {
         val file = File(context.getExternalFilesDir("evidence") ?: context.cacheDir, "$name.png")
         device.waitForIdle()
         assertTrue("screenshot $name", device.takeScreenshot(file))
         val bitmap = android.graphics.BitmapFactory.decodeFile(file.path) ?: throw AssertionError("cannot decode $file")
-        val row = IntArray(bitmap.width)
+        val rect = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
+        if (area != null && !rect.intersect(area)) throw AssertionError("$area is off the screen")
+        val row = IntArray(rect.width())
         var hits = 0L
-        for (y in 0 until bitmap.height) {
-            bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+        for (y in rect.top until rect.bottom) {
+            bitmap.getPixels(row, 0, rect.width(), rect.left, y, rect.width(), 1)
             for (p in row) if (counts(android.graphics.Color.red(p), android.graphics.Color.green(p), android.graphics.Color.blue(p))) hits++
         }
-        return hits.toDouble() / (bitmap.width.toLong() * bitmap.height)
+        return hits.toDouble() / (rect.width().toLong() * rect.height())
     }
 
     /** The number of the system's most recent input start (dumpsys input_method). */

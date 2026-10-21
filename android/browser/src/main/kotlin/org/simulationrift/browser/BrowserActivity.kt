@@ -68,12 +68,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
@@ -543,8 +545,14 @@ class BrowserActivity : ComponentActivity() {
         // Test tags double as resource ids so UI tests can find trusted controls.
         Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                TrustedBar()
-                Box(Modifier.fillMaxWidth().weight(1f)) {
+                // Nothing from the engine is drawn over the trusted bar
+                // (INV-6): the bar is drawn last, and the engine's area is
+                // clipped to its bounds. A WebView that has not drawn a page
+                // yet fills its whole clip with its background, which Compose
+                // does not limit to the view, and it covered the bar and the
+                // system bars until a page loaded (found by n5).
+                Box(Modifier.zIndex(1f)) { TrustedBar() }
+                Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
                     webView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
                     when (val s = screen) {
                         Screen.Page -> {}
@@ -562,7 +570,7 @@ class BrowserActivity : ComponentActivity() {
     @Composable
     private fun TrustedBar() {
         var typed by androidx.compose.runtime.remember { mutableStateOf("") }
-        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp)) {
+        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp).testTag("trusted-bar")) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = {}, label = { Text("Session $generation") }, modifier = Modifier.testTag("session-chip"))
                 Text(protectionSummary(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f).testTag("protection"))

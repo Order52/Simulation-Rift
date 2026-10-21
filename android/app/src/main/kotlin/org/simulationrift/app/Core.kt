@@ -423,8 +423,19 @@ object Core {
                 displaySafe(url),
             )
         }
+        browsed = generation
         return decision
     }
+
+    /** The last generation whose window was allowed to load a page. */
+    @Volatile private var browsed: Long? = null
+
+    /**
+     * Whether `generation` has loaded (or been allowed to load) any page. A
+     * link from another app opens in a session that has not, so it never
+     * shares one with pages opened before it.
+     */
+    fun hasBrowsed(generation: Long): Boolean = browsed == generation
 
     fun typed(input: String): String = typedAddress(input)
 

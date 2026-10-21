@@ -121,12 +121,16 @@ class MainActivity : ComponentActivity() {
         linkFrom(intent)?.let { pendingLink = it }
     }
 
-    /** ACTION_VIEW http(s) links and shared text (§8.2); the core checks them before loading. */
+    /**
+     * ACTION_VIEW links and shared text (§8.2), as the address to load: the
+     * first link in shared text, in the form the engine will load. The core
+     * checks it before loading.
+     */
     private fun linkFrom(intent: Intent): String? = when (intent.action) {
         Intent.ACTION_VIEW -> intent.dataString
-        Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()?.takeIf { it.isNotEmpty() }
+        Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
         else -> null
-    }
+    }?.takeIf { it.isNotBlank() }?.let(Core::typed)
 
     /** Starts the browser app's window for `generation` (Core.openWindow). */
     private fun browse(generation: Long, input: String?) = Core.openWindow(this, generation, input)
@@ -147,8 +151,15 @@ class MainActivity : ComponentActivity() {
         val active = state as? Core.State.Active
         val mayBrowse = active != null && (lock == NetworkLock.State.Active || reduced == active.generation)
         if (active != null && link != null && mayBrowse) {
-            pendingLink = null
-            browse(active.generation, link)
+            if (Core.hasBrowsed(active.generation)) {
+                // A link from another app gets a new, wiped session, so it
+                // shares nothing with the pages before it. It opens once
+                // the new session is active.
+                Core.reset(active.generation)
+            } else {
+                pendingLink = null
+                browse(active.generation, link)
+            }
         }
         // Test tags double as resource ids so UI tests can find trusted controls.
         Surface(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
