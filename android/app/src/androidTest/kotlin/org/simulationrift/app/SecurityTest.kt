@@ -268,21 +268,26 @@ class SecurityTest {
             // Back to the home screen, where the file is listed with the session's.
             device.findObject(By.res("viewer-close")).click()
             assertNotNull("the home screen", device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
-            // The home screen may still be laying out when "session" appears.
-            val home = device.wait(Until.findObject(By.scrollable(true)), UI_TIMEOUT_MS)
-            val view = home?.scrollUntil(Direction.DOWN, Until.findObject(By.res("preview-${file.id}")))
-                ?: device.findObject(By.res("preview-${file.id}"))
-                // A small screen can fling past it: look back up too.
-                ?: home?.scrollUntil(Direction.UP, Until.findObject(By.res("preview-${file.id}")))
-                ?: swipeUntil(By.res("preview-${file.id}"))
+            // Slow swipes, finding the button again after each: the home screen
+            // is redrawn as the scan finishes, which made a held scroll view stale,
+            // and on small screens a fast swipe flung past the file.
+            val view = swipeUntil(By.res("preview-${file.id}"))
                 ?: run {
                     screenshot("n6-home")
                     val shown = device.findObjects(By.pkg(context.packageName)).mapNotNull { it.resourceName }.distinct()
-                    throw AssertionError("the file is not listed on the home screen (scrollable: ${home != null}; shown: $shown)")
+                    throw AssertionError("the file is not listed on the home screen (shown: $shown)")
                 }
-            // And "View safely" opens it again.
-            view.click()
-            assertNotNull(device.wait(Until.findObject(By.res("preview-image-${file.id}")), UI_TIMEOUT_MS))
+            // And "View safely" opens it again. Brought to mid-screen first (a
+            // button at the edge can be under the gesture bar), found afresh
+            // for each tap, and tapped twice at most.
+            val h = device.displayHeight
+            if (view.visibleBounds.bottom > h * 4 / 5) device.swipe(device.displayWidth / 2, h * 3 / 4, device.displayWidth / 2, h / 2, 80)
+            device.waitForIdle()
+            val opened = (1..2).any {
+                device.findObject(By.res("preview-${file.id}"))?.click()
+                device.wait(Until.hasObject(By.res("preview-image-${file.id}")), UI_TIMEOUT_MS) == true
+            }
+            assertTrue("View safely opened the viewer", opened)
             device.pressBack()
             assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
 
@@ -1938,13 +1943,13 @@ class SecurityTest {
         return ask(intent)
     }
 
-    /** Swipes a third of the screen at a time, down then back up, until [selector] shows (at most 15 swipes each way). */
+    /** Swipes a quarter of the screen at a time, slowly (no fling), down then back up, until [selector] shows (at most 20 swipes each way). */
     private fun swipeUntil(selector: androidx.test.uiautomator.BySelector): androidx.test.uiautomator.UiObject2? {
         val (w, h) = device.displayWidth to device.displayHeight
         for (up in listOf(false, true)) {
-            repeat(15) {
+            repeat(20) {
                 device.findObject(selector)?.let { return it }
-                if (up) device.swipe(w / 2, h * 5 / 12, w / 2, h * 3 / 4, 20) else device.swipe(w / 2, h * 3 / 4, w / 2, h * 5 / 12, 20)
+                if (up) device.swipe(w / 2, h / 2, w / 2, h * 3 / 4, 80) else device.swipe(w / 2, h * 3 / 4, w / 2, h / 2, 80)
                 device.waitForIdle()
             }
         }
