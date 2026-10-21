@@ -1,0 +1,15 @@
+in front: outsider: org.simulationrift.outsider/org.simulationrift.outsider.OutsiderActivity; home: org.simulationrift.app/org.simulationrift.app.MainActivity; browser: org.simulationrift.browser/org.simulationrift.browser.BrowserActivity
+--------- beginning of main
+10-21 11:36:58.147 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:36:58.170 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:36:58.195 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:36:58.280 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:36:58.406 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:36:58.526 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:36:58.880 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:37:00.226 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:37:00.325 29642 29642 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Outsider text | Rift outsider (test)
+10-21 11:37:17.016 29642 29642 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 8 texts: Wed, Oct 21 | Gmail | Photos | YouTube | Phone | Messages
+10-21 11:37:17.361 29642 29642 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 8 texts: Wed, Oct 21 | Gmail | Photos | YouTube | Phone | Messages
+10-21 11:37:17.524 29642 29642 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 8 texts: Wed, Oct 21 | Gmail | Photos | YouTube | Phone | Messages
+10-21 11:37:17.591 29642 29642 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 8 texts: Wed, Oct 21 | Gmail | Photos | YouTube | Phone | Messages

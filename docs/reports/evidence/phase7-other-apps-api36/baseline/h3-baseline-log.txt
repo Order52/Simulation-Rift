@@ -1,0 +1,9 @@
+10-21 11:03:35.461  5988  5988 I rift-outsider-autofill: fill request from org.simulationrift.outsider
+10-21 11:03:40.550  5924  5938 I Rift    : result h3-baseline: 97.2% of the home screen is under the overlay
+10-21 11:03:40.696  5988  5988 I rift-outsider-autofill: fill request from org.simulationrift.app
+10-21 11:03:50.656  5924  5938 I Rift    : result h3-baseline: 97.2% of the browser's window is under the overlay
+10-21 11:03:50.755  5988  5988 I rift-outsider-autofill: fill request from org.simulationrift.browser
+10-21 11:03:54.224  5924  5938 I Rift    : result h3-baseline: autofill requests: [org.simulationrift.outsider, org.simulationrift.app, org.simulationrift.browser]
+10-21 11:03:54.224  5924  5938 I Rift    : result h3: overlay over 97.2% of the outsider, 97.2% of the home screen, 97.2% of the browser; autofill requests from [org.simulationrift.outsider, org.simulationrift.app, org.simulationrift.browser]
+10-21 11:04:00.944  5924  5938 I Rift    : result h3: black in screenshots: 0.0% with no vault, 0.0% unlocked, 0.0% locked
+10-21 11:04:00.944  5924  5938 I Rift    : result h3-baseline: black while unlocked: 0.0%

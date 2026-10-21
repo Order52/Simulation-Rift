@@ -1,0 +1,3 @@
+10-21 11:25:11.885 22254 22288 I Rift    : result h2: learning off in the home screen's address field, the browser's address bar and a page's field
+10-21 11:25:59.197 22254 22288 I Rift    : result h3: overlay over 97.3% of the outsider, 0.0% of the home screen, 0.0% of the browser; autofill requests (app, items learnt): [(org.simulationrift.outsider, 1), (org.simulationrift.browser, 0)]
+10-21 11:26:11.114 22254 22288 I Rift    : result h3: black in screenshots: 0.0% with no vault, 99.8% unlocked, 0.0% locked

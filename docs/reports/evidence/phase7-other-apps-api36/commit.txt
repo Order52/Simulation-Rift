@@ -1,0 +1,2 @@
+full run on 095bd2f plus the uncommitted changes of this commit (WindowGuard, h3, H4)
+baseline: the same with WindowGuard.apply, noAutofill, the WebView autofill overrides and FLAG_SECURE taken out
