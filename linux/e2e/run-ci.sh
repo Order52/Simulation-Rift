@@ -9,6 +9,9 @@
 #   loopback a loopback address goes to the controller's proxy (Chromium's
 #            implicit bypass is removed), which refuses it: nothing loads,
 #            and nothing reaches the local server
+#   download a download is refused to the engine, re-fetched by the controller
+#            into quarantine, and scanned by a confined worker, which finds
+#            the demo database's marker in it
 #   crash    killing the browser host ends and destroys the session
 #   recover  killing the controller leaves no browser host running, and the
 #            next start destroys the session it left
@@ -103,6 +106,18 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
     || fail "loopback: the proxy did not refuse it"
   if grep -q "GET" "$out/local-server.log"; then fail "loopback: a request reached the local server"; fi
   clean loopback
+  echo
+
+  echo "## download"
+  # httpbin echoes the query into the body and sends it as an attachment.
+  launch download "https://httpbin.org/response-headers?Content-Disposition=attachment%3B%20filename%3Ddemo.txt&marker=RIFT-DEMO-MARKER"
+  wait_count "$out/download.log" "^rift: session [0-9]*: a download was quarantined" 1 150 \
+    || fail "download: nothing was quarantined"
+  finish
+  grep -E "^rift(-browser)?:" "$out/download.log"
+  grep -q "a download was quarantined; scan: \(Known malicious\|Suspicious\)" "$out/download.log" \
+    || fail "download: the scan did not find the demo marker"
+  clean download
   echo
 
   echo "## crash"

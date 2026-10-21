@@ -538,15 +538,20 @@ impl Controller {
                 };
                 match sessions.download(generation, info) {
                     Ok(file) => {
-                        let verdict = match intel {
+                        let scanned = match intel {
                             Some(intel) => Arc::clone(&sessions)
                                 .scan(generation, file.id.clone(), intel)
                                 .map_err(|e| e.to_string())
-                                .and_then(|start| workers.scan(start))
-                                .map_or_else(|e| format!("not scanned: {e}"), |v| describe(&v)),
-                            None => "not scanned: no threat database could be opened".into(),
+                                .and_then(|start| workers.scan(start)),
+                            None => Err("no threat database could be opened".into()),
                         };
-                        log(&format!("session {generation}: a download was quarantined"));
+                        // The label is one of rift-core's fixed texts.
+                        let label = scanned.as_ref().map_or("not scanned", |v| v.label.as_str());
+                        log(&format!(
+                            "session {generation}: a download was quarantined; scan: {label}"
+                        ));
+                        let verdict =
+                            scanned.map_or_else(|e| format!("not scanned: {e}"), |v| describe(&v));
                         report(Event::Quarantined {
                             generation,
                             text: format!(
