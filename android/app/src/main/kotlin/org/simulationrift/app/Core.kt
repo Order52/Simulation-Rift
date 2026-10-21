@@ -27,7 +27,10 @@ import org.simulationrift.bridge.NetworkMode
 import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.SessionGrant
+import org.simulationrift.core.Ai
+import org.simulationrift.core.AiFailure
 import org.simulationrift.core.DisposalException
+import org.simulationrift.core.LinkCheck
 import org.simulationrift.core.DownloadFailure
 import org.simulationrift.core.EgressFailure
 import org.simulationrift.core.EgressStats
@@ -198,7 +201,47 @@ object Core {
         "facebook.com", "instagram.com", "whatsapp.com", "netflix.com", "github.com",
     )
     private val shorteners = listOf("bit.ly", "t.co", "tinyurl.com", "goo.gl", "ow.ly", "is.gd", "buff.ly")
-    private val navigator by lazy { Navigator(protectedDomains, shorteners) }
+    private val navigator by lazy { Navigator.withAi(protectedDomains, shorteners, ai) }
+
+    /**
+     * Rift AI's URL model (§16), shipped in the APK (assets/url-model.bin,
+     * trained offline by tools/rift-train). Advisory only; if it is missing
+     * or does not validate, Rift runs without it and says so.
+     */
+    private val ai: Ai? by lazy {
+        try {
+            app.assets.open(AI_MODEL).use { Ai.load(it.readBytes()) }.also {
+                _aiStatus.value = AiStatus(true, "Rift AI is on: a model trained on real phishing and malware links, run on this device (${it.digest().take(12)}).")
+            }
+        } catch (e: AiFailure) {
+            Log.e(TAG, "Rift AI unavailable", e)
+            _aiStatus.value = AiStatus(false, "Rift AI is unavailable: ${e.message}. The other checks still run.")
+            null
+        } catch (e: IOException) {
+            Log.e(TAG, "Rift AI unavailable", e)
+            _aiStatus.value = AiStatus(false, "Rift AI is unavailable: its model could not be read. The other checks still run.")
+            null
+        }
+    }
+
+    data class AiStatus(val on: Boolean, val text: String)
+    private val _aiStatus = MutableStateFlow<AiStatus?>(null)
+    val aiStatus: StateFlow<AiStatus?> = _aiStatus
+
+    /**
+     * Checks a link without opening it: what "Open safely" would decide,
+     * with Rift AI's score. Nothing is loaded and nothing leaves the device.
+     */
+    fun check(input: String): LinkCheck {
+        val result = navigator.check(typed(input), database, nowUnix())
+        WeeklyStats.count(Tally.LINK_CHECKED)
+        when (val n = result.navigation) {
+            is Navigation.Block -> if (n.reason.code == "known-malicious") WeeklyStats.count(Tally.BLOCKED)
+            is Navigation.Confirm -> WeeklyStats.count(Tally.WARNED)
+            is Navigation.Proceed -> {}
+        }
+        return result
+    }
 
     fun ensureStarted(context: Context) {
         check(Application.getProcessName() == context.packageName) { "rift-core runs in the main process only" }
@@ -213,6 +256,8 @@ object Core {
                 forgetVault()
             }
             worker.execute(::openAndStart)
+            // Rift AI's model, loaded (and validated) before the first check needs it.
+            worker.execute { ai }
         }
     }
 
@@ -378,7 +423,7 @@ object Core {
         val generation = currentGeneration ?: return null
         if (sessions?.egressStats(generation.toULong()) == null) return null
         return try {
-            sessions?.egress(generation.toULong(), database)?.port?.toInt()
+            sessions?.egress(generation.toULong(), database, ai)?.port?.toInt()
         } catch (e: EgressFailure) {
             null
         }
@@ -403,7 +448,7 @@ object Core {
         }
         val endpoint = try {
             // With the database, the proxy checks every request's destination (§10.3).
-            opened.egress(generation.toULong(), database)
+            opened.egress(generation.toULong(), database, ai)
         } catch (e: EgressFailure) {
             Log.e(TAG, "egress proxy unavailable", e)
             return SessionGrant.Refused("Rift's network proxy could not start, so the browser may not load pages.")
@@ -755,6 +800,8 @@ object Core {
 
     /** Concurrent scans: enough that one hung worker does not hold the queue, few enough for memory. */
     private const val SCAN_WORKERS = 2
+
+    private const val AI_MODEL = "url-model.bin"
 
     /** Bytes per copy into the core when another app hands over a file. */
     private const val INTAKE_CHUNK = 256 * 1024

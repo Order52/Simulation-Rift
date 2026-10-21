@@ -15,8 +15,8 @@ android {
         applicationId = "org.simulationrift.browser"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.3.0-phase3"
+        versionCode = providers.gradleProperty("rift.versionCode").get().toInt()
+        versionName = providers.gradleProperty("rift.versionName").get()
     }
 
     buildTypes {

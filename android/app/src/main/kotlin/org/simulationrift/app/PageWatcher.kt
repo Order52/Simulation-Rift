@@ -31,6 +31,7 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
     private var nextSeq = 1L
     private var unlisted = 0
     private var lastDenial = 0L
+    private var lastRemark = 0L
     private val lockSeen = HashSet<String>()
 
     /**
@@ -108,7 +109,13 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
     /** New refusals by this session's proxy (by sequence number, so each is seen once). */
     @Synchronized
     fun egress(stats: EgressStats?) {
-        val recent = stats?.recent ?: return
+        stats ?: return
+        // Rift AI's remarks on connections let through (§16: noted, not refused).
+        for (remark in stats.remarks.filter { it.seq.toLong() > lastRemark }) {
+            record(Level.WARNING, "ai-request", remark.destination, "Part of a page connected to ${remark.destination}. ${remark.text}", Tally.WARNED)
+            lastRemark = remark.seq.toLong()
+        }
+        val recent = stats.recent
         val fresh = recent.filter { it.seq.toLong() > lastDenial }
         if (fresh.isEmpty()) return
         if (fresh.first().seq.toLong() > lastDenial + 1) {

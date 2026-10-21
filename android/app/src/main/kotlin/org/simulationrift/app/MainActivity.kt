@@ -60,6 +60,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -93,10 +94,14 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.WindowGuard
+import org.simulationrift.core.AiLevel
 import org.simulationrift.core.EgressStats
+import org.simulationrift.core.LinkCheck
+import org.simulationrift.core.Navigation
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
 import org.simulationrift.core.Verdict
@@ -326,9 +331,15 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.testTag("recovered"),
                             )
                         }
-                        Text("Open a link safely", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        Text("Check or open a link", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        // Checking needs no network: it works before protection is on.
+                        AddressField(state.generation, mayBrowse)
                         if (mayBrowse) {
-                            AddressField(state.generation)
+                            Text(
+                                "Check looks at the link on this device without opening it. Open safely loads it in a sealed browser " +
+                                    "with no access to your files, accounts or network, wiped with the session.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         } else if (lock == NetworkLock.State.Off || lock == NetworkLock.State.Starting) {
                             Text("Starting protection…", style = MaterialTheme.typography.bodyMedium)
                         } else {
@@ -354,29 +365,181 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun AddressField(generation: Long) {
+    private fun AddressField(generation: Long, mayBrowse: Boolean) {
         var typed by remember { mutableStateOf("") }
-        val open = { browse(generation, typed.takeIf { it.isNotBlank() }) }
+        var result by remember { mutableStateOf<LinkCheck?>(null) }
+        var checking by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+        val open = { if (mayBrowse) browse(generation, typed.takeIf { it.isNotBlank() }) }
+        val check = {
+            val input = typed
+            if (input.isNotBlank() && !checking) {
+                checking = true
+                scope.launch {
+                    result = withContext(Dispatchers.Default) { Core.check(input) }
+                    checking = false
+                }
+            }
+        }
         OutlinedTextField(
             value = typed,
-            onValueChange = { typed = it },
+            onValueChange = {
+                typed = it
+                result = null
+            },
             placeholder = { Text("Paste or type a link") },
             leadingIcon = { Icon(painterResource(R.drawable.ic_link), contentDescription = null) },
             singleLine = true,
             shape = RoundedCornerShape(16.dp),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
-            keyboardActions = KeyboardActions(onGo = { open() }),
+            keyboardActions = KeyboardActions(onGo = { if (mayBrowse) open() else check() }),
             modifier = Modifier.noAutofill().fillMaxWidth().testTag("home-address"),
         )
-        Button(onClick = open, modifier = Modifier.fillMaxWidth().height(52.dp).testTag("browse")) {
-            Text("Open safely", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.width(8.dp))
-            Icon(painterResource(R.drawable.ic_arrow_forward), contentDescription = null, modifier = Modifier.size(18.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FilledTonalButton(
+                onClick = check,
+                enabled = typed.isNotBlank() && !checking,
+                modifier = Modifier.weight(1f).height(52.dp).testTag("check"),
+            ) {
+                Icon(painterResource(R.drawable.ic_shield), contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (checking) "Checking…" else "Check", style = MaterialTheme.typography.titleSmall)
+            }
+            Button(onClick = open, enabled = mayBrowse, modifier = Modifier.weight(1.3f).height(52.dp).testTag("browse")) {
+                Text("Open safely", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.width(8.dp))
+                Icon(painterResource(R.drawable.ic_arrow_forward), contentDescription = null, modifier = Modifier.size(18.dp))
+            }
         }
-        Text(
-            "Opens in a sealed browser with no access to your files, accounts or network. Everything is wiped with the session.",
-            style = MaterialTheme.typography.bodySmall,
-        )
+        result?.let { CheckResult(it, onOpen = open.takeIf { mayBrowse }, onClose = { result = null }) }
+    }
+
+    /**
+     * What a check found, most serious first: the threat database, then the
+     * address checks, then Rift AI's score and its reasons. A link with
+     * nothing found is never called safe.
+     */
+    @Composable
+    private fun CheckResult(check: LinkCheck, onOpen: (() -> Unit)?, onClose: () -> Unit) {
+        val status = LocalStatusColors.current
+        val scheme = MaterialTheme.colorScheme
+        val navigation = check.navigation
+        val ai = check.ai
+        val listed = navigation is Navigation.Block && navigation.reason.code == "known-malicious"
+        val refused = navigation is Navigation.Block && !listed
+        data class Tone(val container: Color, val content: Color, val icon: Int, val title: String)
+        val tone = when {
+            listed -> Tone(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_bug, "Known malicious")
+            refused -> Tone(status.warningContainer, status.onWarningContainer, R.drawable.ic_warning, "Rift won't open this")
+            ai?.level == AiLevel.HIGH -> Tone(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_warning, "Looks dangerous")
+            navigation is Navigation.Confirm || ai?.level == AiLevel.ELEVATED ->
+                Tone(status.warningContainer, status.onWarningContainer, R.drawable.ic_warning, "Warning signs")
+            else -> Tone(scheme.surfaceContainerHigh, scheme.onSurface, R.drawable.ic_info, "No known threats found")
+        }
+        val findings: List<String> = when (navigation) {
+            is Navigation.Block -> listOf(navigation.reason.text)
+            // The AI's own reason is shown by its meter below.
+            is Navigation.Confirm -> navigation.reasons.filterNot { it.code.startsWith("ai-") }.map { it.text } +
+                navigation.notes.filterNot { it.code.startsWith("ai-") || it.code.startsWith("intel-") }.map { it.text }
+            is Navigation.Proceed -> navigation.notes.filterNot { it.code.startsWith("ai-") || it.code.startsWith("intel-") }.map { it.text }
+        }
+        val database = when {
+            listed -> "Listed in the threat database."
+            navigation.notes().any { it.code == "intel-missing" } -> "No threat database is installed, so this link was not looked up in one."
+            navigation.notes().any { it.code == "intel-stale" } -> "Not in the threat database, which is out of date."
+            else -> "Not in the threat database."
+        }
+        Surface(
+            color = tone.container,
+            contentColor = tone.content,
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth().animateContentSize().testTag("check-result"),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(tone.icon), contentDescription = null, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(tone.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f).testTag("check-title"))
+                }
+                Text(check.address, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("check-address"))
+                findings.forEachIndexed { i, text ->
+                    Text("• $text", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("check-finding-$i"))
+                }
+                Text(database, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("check-database"))
+                // A refused address is not a web address: there is nothing to score.
+                if (ai != null || !refused) AiMeter(ai)
+                Text(
+                    "Checked on this device in ${formatMicros(check.micros)}. Nothing was opened or sent anywhere." +
+                        if (tone.title == "No known threats found") " No check can prove a link is safe: open it in Rift, not your usual browser." else "",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (onOpen != null && !refused && !listed) {
+                        FilledTonalButton(onClick = onOpen, modifier = Modifier.testTag("check-open")) { Text("Open safely") }
+                    }
+                    TextButton(onClick = onClose, modifier = Modifier.testTag("check-close")) { Text("Clear") }
+                }
+            }
+        }
+    }
+
+    /** Rift AI's risk score as a bar, with what raised it. */
+    @Composable
+    private fun AiMeter(ai: org.simulationrift.core.AiView?) {
+        val status = LocalStatusColors.current
+        if (ai == null) {
+            Text(Core.aiStatus.collectAsState().value?.text ?: "Rift AI is unavailable.", style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("check-ai-unavailable"))
+            return
+        }
+        if (ai.abstained) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Rift AI", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Not scored: this is one of the 10,000 most visited sites, where fakes and real pages look alike to a model of addresses. " +
+                        "The threat database still checks every page on it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("check-ai-abstained"),
+                )
+            }
+            return
+        }
+        val (color, label) = when (ai.level) {
+            AiLevel.HIGH -> MaterialTheme.colorScheme.error to "high risk"
+            AiLevel.ELEVATED -> status.warning to "some risk"
+            AiLevel.LOW -> status.safe to "nothing it recognises"
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Rift AI", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("${ai.score}/100 · $label", style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("check-ai-score"))
+            }
+            val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+            Canvas(Modifier.fillMaxWidth().height(8.dp).semantics { contentDescription = "Rift AI risk ${ai.score} of 100" }) {
+                val radius = CornerRadius(size.height / 2, size.height / 2)
+                drawRoundRect(track, cornerRadius = radius)
+                val filled = size.width * (ai.score.toInt().coerceIn(2, 99) / 100f)
+                drawRoundRect(color, size = size.copy(width = filled), cornerRadius = radius)
+            }
+            ai.signals.forEachIndexed { i, signal ->
+                Text("• $signal", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("check-ai-signal-$i"))
+            }
+            Text(
+                "A model of known phishing and malware links, run on this device. A resemblance score, not proof either way.",
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+
+    private fun formatMicros(micros: ULong): String =
+        if (micros < 1000u) "$micros µs" else "%.1f ms".format(micros.toDouble() / 1000)
+
+    private fun Navigation.notes(): List<org.simulationrift.core.Fact> = when (this) {
+        is Navigation.Proceed -> notes
+        is Navigation.Confirm -> notes
+        is Navigation.Block -> emptyList()
     }
 
     /** The session's live page watch (§10.5), as the browser's bar shows it. */
@@ -871,12 +1034,20 @@ class MainActivity : ComponentActivity() {
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.testTag("network-report"),
                     )
+                    Text(
+                        Core.aiStatus.collectAsState().value?.text ?: "Rift AI: loads with the first check.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("ai-status"),
+                    )
                     listOf(
-                        "Checked: addresses you type, links opened in Rift, and main-frame navigations the engine reports.",
-                        "Not checked: subresources, frames, WebSockets, WebRTC, service-worker fetches and form posts (§10.3). " +
-                            "All of those still go through Rift's proxy, which refuses local and private addresses.",
-                        "Address checks use a built-in list; the threat database is used for downloaded files.",
-                        "Safe Browsing is off, so no addresses or hashes are sent to Google.",
+                        "Checked against the threat database and by Rift AI: links you check or open, every address a page " +
+                            "moves to (redirects too), and every connection a page makes through Rift's proxy (plain HTTP by " +
+                            "full address, HTTPS by host name only, because the rest is encrypted).",
+                        "The database blocks what it lists. Rift AI only warns: it never blocks on its own, and a low score " +
+                            "does not mean a link is safe. Pages hosted on large sites (a form on Google Docs, a file on " +
+                            "Dropbox) look like that site's real pages, so the AI is not the check that catches those.",
+                        "The proxy also refuses local and private addresses; connections around it are dropped by the network lock.",
+                        "Everything is checked on this device. Safe Browsing is off, so no addresses or hashes are sent to Google.",
                         "No browser is immune to every attack: a flaw in the engine and in Android together could still escape. " +
                             "Rift limits what such an escape reaches, and wipes the session.",
                     ).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -951,8 +1122,9 @@ class MainActivity : ComponentActivity() {
 
     /**
      * The third-party notices (§25): this APK's Android libraries, the Rust
-     * crates in its native libraries, and the Apache License, as build.sh and
-     * notices.gradle.kts wrote them into the assets. One item per line, so
+     * crates in its native libraries, the data Rift AI learned from (with
+     * the model), and the Apache License, as build.sh and notices.gradle.kts
+     * wrote them into the assets. One item per line, so
      * the long texts are laid out only as they scroll into view.
      */
     @Composable
@@ -961,7 +1133,7 @@ class MainActivity : ComponentActivity() {
         val lines by produceState<List<String>?>(null) {
             value = withContext(Dispatchers.IO) {
                 NOTICE_FILES.flatMap { name ->
-                    val text = runCatching { assets.open("notices/$name").bufferedReader().use { it.readLines() } }
+                    val text = runCatching { assets.open(name).bufferedReader().use { it.readLines() } }
                     text.getOrElse { listOf("($name is missing from this build: build it with android/build.sh.)") } + listOf("", "")
                 }
             }
@@ -976,7 +1148,8 @@ class MainActivity : ComponentActivity() {
                     Text("Open-source licences", style = MaterialTheme.typography.headlineSmall)
                     Text(
                         "Simulation-Rift is licensed under MIT OR Apache-2.0. It includes the third-party software below, " +
-                            "under the licences shown, and Google's Material icons, under the Apache License 2.0.",
+                            "under the licences shown, Google's Material icons, under the Apache License 2.0, " +
+                            "and a model learned from the public data listed below.",
                     )
                 }
             }
@@ -990,4 +1163,6 @@ class MainActivity : ComponentActivity() {
 private fun format(n: Int): String = NumberFormat.getIntegerInstance().format(n)
 
 /** The notice assets, in the order shown. */
-private val NOTICE_FILES = listOf("android-libraries.txt", "rust-crates.txt", "apache-2.0.txt")
+private val NOTICE_FILES = listOf(
+    "notices/android-libraries.txt", "notices/rust-crates.txt", "url-model-notice.txt", "notices/apache-2.0.txt",
+)

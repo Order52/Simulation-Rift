@@ -293,6 +293,74 @@ class SecurityTest {
         }
     }
 
+    @Test
+    fun c1_checkLooksAtALinkWithoutOpeningIt() {
+        Core.installDemoIntel()
+        assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
+        val generation = activeGeneration()
+        val browsedBefore = Core.hasBrowsed(generation)
+        val home = openHome()
+        val rows = mutableListOf<String>()
+        try {
+            for ((url, expected) in listOf(
+                // Not in any feed the model learned from: made up for this test.
+                "http://secure-paypal-login.verify-account.xyz/signin/update.php?id=1" to "Looks dangerous",
+                "https://www.wikipedia.org/" to "No known threats found",
+                "https://shop.local-hardware.de/kontakt" to "No known threats found",
+                "http://rift-demo.invalid/known-bad" to "Known malicious",
+                "javascript:alert(1)" to "Rift won't open this",
+            )) {
+                val field = device.wait(Until.findObject(By.res("home-address")), UI_TIMEOUT_MS) ?: throw AssertionError("home address field")
+                field.text = url
+                (device.wait(Until.findObject(By.res("check").enabled(true)), UI_TIMEOUT_MS) ?: throw AssertionError("check button")).click()
+                // The previous result is replaced as the text changes: wait for this one's.
+                val title = device.wait(Until.findObject(By.res("check-title").text(expected)), UI_TIMEOUT_MS)?.text
+                    ?: throw AssertionError("$url: expected \"$expected\", shown: ${runCatching { device.findObject(By.res("check-title"))?.text }.getOrNull()}")
+                device.waitForIdle()
+                val score = runCatching { device.findObject(By.res("check-ai-score"))?.text }.getOrNull()
+                val abstained = device.findObject(By.res("check-ai-abstained")) != null
+                rows += "$url: $title, AI ${score ?: if (abstained) "not scored (most visited site)" else "none"}"
+                screenshot("c1-${rows.size}")
+            }
+            // Checking opened nothing: the same session, no page loaded, no browser window.
+            assertEquals(generation, activeGeneration())
+            assertEquals(browsedBefore, Core.hasBrowsed(generation))
+            assertNull(device.findObject(By.pkg(Rift.BROWSER_PACKAGE)))
+        } finally {
+            home.finish()
+        }
+        // The AI's verdicts through the core's API, and how long a whole check takes.
+        val high = Core.check("http://secure-paypal-login.verify-account.xyz/signin/update.php?id=1")
+        assertEquals(org.simulationrift.core.AiLevel.HIGH, high.ai?.level)
+        assertTrue("${high.ai}", high.ai!!.score.toInt() >= 90 && high.ai!!.signals.isNotEmpty())
+        // One of the most visited sites: the model does not score it.
+        val popular = Core.check("https://www.wikipedia.org/")
+        assertTrue("${popular.ai}", popular.ai!!.abstained && popular.ai!!.level == org.simulationrift.core.AiLevel.LOW)
+        val low = Core.check("https://shop.local-hardware.de/kontakt")
+        assertTrue("${low.ai}", !low.ai!!.abstained && low.ai!!.level == org.simulationrift.core.AiLevel.LOW)
+        val micros = (1..300).map { Core.check("https://example-$it.org/docs/page-$it?ref=$it").micros.toLong() }.sorted()
+        val p50 = micros[150]
+        val p95 = micros[284]
+        assertTrue("p95 $p95 us", p95 < 15_000)
+        report("c1", "${rows.joinToString("; ")}; nothing opened; a whole check p50 $p50 us, p95 $p95 us on this device")
+    }
+
+    @Test
+    fun c2_riftAiWarnsBeforeAPageLoads() {
+        val generation = resetAndAwait(activeGeneration())
+        val url = "http://secure-paypal-login.verify-account.xyz/signin/update.php?id=1"
+        openBrowser(generation, url)
+        assertNotNull("the warning", device.wait(Until.findObject(By.res("interstitial")), PAGE_TIMEOUT_MS))
+        assertNotNull(device.wait(Until.findObject(By.textContains("Rift AI")), UI_TIMEOUT_MS))
+        screenshot("c2-interstitial")
+        // The live watch has it as a warning.
+        val seen = awaitWatch(generation) { "ai-suspicious" in it }
+        assertTrue("seen: $seen", "ai-suspicious" in seen)
+        val event = Core.pageWatch(generation)!!.events.first { it.code == "ai-suspicious" }
+        assertEquals(PageWatch.Level.WARNING, event.level)
+        report("c2", "warned before loading: ${event.text.take(160)}")
+    }
+
     /** Hands `intent` to Rift's home screen as another app's link or share would. */
     private fun fromAnotherApp(intent: Intent) {
         context.startActivity(intent.setClassName(context.packageName, MainActivity::class.java.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -1077,6 +1145,9 @@ class SecurityTest {
         assertTrue("YARA-X's copyright, from its repository", rust.contains("The YARA-X Authors"))
         assertTrue("MPL-2.0 text for uniffi", rust.contains("Mozilla Public License Version 2.0"))
         assertTrue(own.getValue("apache-2.0.txt").contains("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"))
+        // Rift AI's data: the Public Suffix List's MPL-2.0 notice, Phishing.Database's MIT one.
+        val model = context.assets.open("url-model-notice.txt").bufferedReader().use { it.readText() }
+        assertTrue(model.contains("Mozilla Public License") && model.contains("Copyright (c) 2018-2025 Mitchell Krog"))
         val browser = context.createPackageContext(Rift.BROWSER_PACKAGE, 0).assets
         // The browser app's own list: its web engine library, and no JNA (it loads no Rust).
         val browserLibraries = browser.open("notices/android-libraries.txt").bufferedReader().use { it.readText() }
@@ -1183,21 +1254,25 @@ class SecurityTest {
         allowFixtureHost()
         openBrowser(activeGeneration(), fixture("/type.html"))
         val fields = { device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty() }
-        var since = lastInputStart()
-        assertLearningOff(Rift.BROWSER_PACKAGE, since, "the browser's address bar") {
-            (device.wait(Until.findObject(By.res("address")), UI_TIMEOUT_MS) ?: throw AssertionError("address bar")).click()
-        }
-        device.pressBack() // the keyboard
-        since = lastInputStart()
-        // The page's field appears once the keyboard has gone and the page is laid out again.
-        val deadline = SystemClock.elapsedRealtime() + UI_TIMEOUT_MS
+        // The page's field first, while no keyboard covers it; then the address
+        // bar, which stays above the keyboard. (Back to hide a keyboard can
+        // reach the browser too, and close it, once the keyboard is gone.)
+        val deadline = SystemClock.elapsedRealtime() + PAGE_TIMEOUT_MS
         var page = fields().firstOrNull { it.resourceName != "address" }
         while (page == null && SystemClock.elapsedRealtime() < deadline) {
             SystemClock.sleep(200)
             page = fields().firstOrNull { it.resourceName != "address" }
         }
-        val field = page ?: throw AssertionError("the page's text field: ${fields().map { it.resourceName }}")
+        val field = page ?: run {
+            screenshot("h2-no-field")
+            throw AssertionError("the page's text field: ${fields().map { it.resourceName }}")
+        }
+        var since = lastInputStart()
         assertLearningOff(Rift.BROWSER_PACKAGE, since, "the page's text field") { field.click() }
+        since = lastInputStart()
+        assertLearningOff(Rift.BROWSER_PACKAGE, since, "the browser's address bar") {
+            (device.wait(Until.findObject(By.res("address")), UI_TIMEOUT_MS) ?: throw AssertionError("address bar")).click()
+        }
         report("h2", "learning off in the home screen's address field, the browser's address bar and a page's field")
     }
 

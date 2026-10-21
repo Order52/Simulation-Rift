@@ -13,8 +13,8 @@ android {
         applicationId = "org.simulationrift.app"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.3.0-phase3"
+        versionCode = providers.gradleProperty("rift.versionCode").get().toInt()
+        versionName = providers.gradleProperty("rift.versionName").get()
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -48,6 +48,8 @@ android {
         getByName("main").kotlin.directories += "build/generated-rift/kotlin"
         // The signed demo threat database, debug builds only (build.sh).
         getByName("debug").assets.directories += "build/generated-intel"
+        // Rift AI's URL model and its report (models/, trained by tools/rift-train).
+        getByName("main").assets.directories += "../../models"
         // The production root for updates, when the build is given one (build.sh, RIFT_INTEL_ROOT).
         getByName("main").assets.directories += "build/generated-intel-root"
         // Third-party notices (§25): the Rust crates and the Apache License text
