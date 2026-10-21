@@ -9,6 +9,7 @@ A fully local, modular workspace for Android and Linux. It lets you open unfamil
 - **Rift Browser:** a disposable, restricted browser session. It uses the platform engine's own sandbox and has no native bridges, sensor access, or automatic external-app launches.
 - **Rift Files:** downloads and imports go into an encrypted, session-scoped quarantine. PDFs and images are previewed in OS-confined worker processes with no file or network access; text is shown as escaped plain text, never interpreted.
 - **Rift Scanner:** offline checks using URL and hash indicators, explainable URL heuristics, and YARA-X rules. Results state their coverage. There is never a "100% safe" label.
+- **Check a link, or open it:** Check judges a link without opening it: the threat database, the navigation policy, and **Rift AI**, a model of phishing and malware addresses trained on public feeds that runs on the device in microseconds and sends nothing anywhere. It gives a score and its reasons, and it is advisory: it asks before opening a link it rates high risk and never calls anything safe ([how well it does](docs/reports/rift-ai.md)).
 - **This week:** the home screen counts what Rift blocked and checked over seven days, stored as numbers only.
 - **Signed intelligence updates:** delivered through [TUF](https://theupdateframework.io/). They can be fetched or imported offline.
 
@@ -28,6 +29,8 @@ A fully local, modular workspace for Android and Linux. It lets you open unfamil
 | `poc/` | Phase 0 feasibility harnesses (not product code) |
 | `crates/` | Rust workspace (Phase 1 onward) |
 | `android/` | Android app (Phase 2 onward) |
+| `models/` | Rift AI's model file, its report and the notice for its data |
+| `tools/` | Maintainer tools: the signed-pack builder and `rift-train` (Rift AI's trainer) |
 
 ## License
 

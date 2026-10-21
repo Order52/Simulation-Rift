@@ -1,13 +1,14 @@
 # Simulation-Rift — Architecture and Specification
 
-**Version:** 2.3 (21 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
+**Version:** 2.4 (21 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
 **Date:** 21 October 2026
+**Changes in 2.4:** Rift AI is built and on by default on Android (§16, [rift-ai.md](reports/rift-ai.md)): a URL model trained on public phishing and malware feeds, run on the device, advisory only. The home screen separates **Check** (judge a link without opening it, with Rift AI's score and reasons) from **Open safely** (§10.1). A navigation Rift AI rates High asks before loading, and the live watch notes connections to hosts it rates High (§10.5). The model is trained by a Rust tool that shares its feature code with the app, not by Python and scikit-learn as 2.3 planned.
 **Changes in 2.3:** Rift keeps nothing after a session. The Rift Vault (§14 of 2.2: keeping files in age-encrypted storage behind a Keystore key or a passphrase) is removed on both platforms, with its passphrases, lock policy and export; the age code that remains seals each session's quarantine (`rift-core::seal`). Android's home screen is redesigned around opening a link (§10.1), and gains a weekly summary of what Rift checked and stopped, kept as counts only (§10.8). Files can be opened with Rift or shared to it from other apps: each is copied into the session's quarantine and shown in a full-screen viewer (§8.2, §11.1). The Linux app is future work: its code and CI stay, and Android comes first (§9).
 **Changes in 2.2:** the Linux app is built on Qt (QML through cxx-qt, Qt WebEngine from Flathub's BaseApp) instead of GTK4 and WebKitGTK. The browser host runs in a no-network Flatpak sub-sandbox and reaches the web only through a forwarded egress proxy in the controller. PoCs Q1–Q4 measured it ([phase-5-qt-design.md](reports/phase-5-qt-design.md)); §9, §6, B1, ADR-10 and the stack table are revised.
 **Changes in 2.1:** the Android browser moves into its own APK (separate UID, wiped by the system at every reset) behind a network lock: a per-app VPN that forwards nothing, and an authenticated loopback proxy in the controller as the browser's only way out. PoC A8 measured both (ADR-04 revised, ADR-14, INV-14, B2/B8, §8.8, S23–S28).
 **Status:** Approved baseline architecture. Phase 0 feasibility tests are in progress; every claim marked **[PoC]** is unverified until its Phase 0 report says otherwise.
 **Platforms:** Android (API 30+, arm64-v8a first, x86_64 for emulators) and Linux (Flatpak, x86_64 and aarch64)
-**Languages:** Rust (shared core, workers, Linux controller), Kotlin (Android UI and platform glue), QML and C++ (Linux UI and the Qt WebEngine host, kept thin), Python (offline model training only, never shipped)
+**Languages:** Rust (shared core, workers, Linux controller), Kotlin (Android UI and platform glue), QML and C++ (Linux UI and the Qt WebEngine host, kept thin), Python (standard library only: preparing the training data, never shipped)
 
 > Simulation-Rift is a fully local, modular workspace for opening unfamiliar links, downloading untrusted files and viewing them safely, keeping nothing afterwards. It does this by combining OS-enforced isolation, offline-first threat detection, and signed data updates. It never promises perfect isolation. It makes specific, tested claims about named boundaries.
 
@@ -30,7 +31,7 @@
 13. [Threat intelligence and signed updates](#13-threat-intelligence-and-signed-updates)
 14. [Rift Vault (removed in 2.3)](#14-rift-vault-removed-in-23)
 15. [Sessions](#15-sessions)
-16. [Rift AI (deferred, gated)](#16-rift-ai-deferred-gated)
+16. [Rift AI](#16-rift-ai)
 17. [Privacy and network behaviour](#17-privacy-and-network-behaviour)
 18. [Performance budgets](#18-performance-budgets)
 19. [Technology stack](#19-technology-stack)
@@ -91,7 +92,7 @@
 - Synthetic camera, microphone, or location devices. Real access is denied.
 - Background update scheduling. Updates are manual in V1.
 - Online reputation providers. The interface is reserved but not built.
-- The AI phishing classifier, which is a gated later phase (§16).
+- Any AI beyond the advisory URL model of §16: no page-content model, no on-device learning, no cloud model.
 - Multiple concurrent sessions.
 - Keeping files after a session. Versions 2.0–2.2 had an encrypted vault for that; 2.3 removed it, since a tool for opening untrusted things once gains little from storing them, and the vault's keys and passphrases were attack surface and burden.
 
@@ -234,6 +235,7 @@ The workspace has a few crates with explicit dependency direction: `rift-protoco
 | `session` | The state machine `Creating → Active → Resetting → Destroyed / CleanupFailed / RecoveryPending`; generations; the recovery marker. |
 | `policy` | Pure functions `decide(Action, &Context) → Decision { Allow, Deny(Reason), Confirm(Warning) }`. No I/O, so it is exhaustively testable. |
 | `url` | WHATWG parsing (`url` crate), Safe Browsing-style canonicalization and host/path expressions, and explainable heuristics (§12.2). |
+| `urlmodel` | Rift AI (§16): the model file's validated format, the feature extraction shared with the trainer, sites by the Public Suffix List, scores and readable reasons. |
 | `intel` | Snapshot store (memory-mapped sorted hash tables), lookups, and staging and atomic activation. |
 | `update` | TUF client integration (`tough`) and offline import. |
 | `scan` | Orchestration, cache keys, result vocabulary, coverage accounting. The engines themselves run in the worker. |
@@ -449,7 +451,7 @@ As on Android, nothing a session held is kept after it ends. The vault of 2.2 (p
 - Address bar, back/forward, reload, the session indicator, Reset, a downloads list, and a protection status chip.
 - Trusted controls live outside web content and cannot be covered (INV-6). On Android the bar is drawn above the engine's area, which is clipped to its bounds: an engine that has not drawn a page yet fills its whole clip, and covered the bar until Phase 7 (finding 21). n5 checks that the bar is drawn.
 - No password manager, no autofill, no import from other browsers, and no extensions.
-- **The controller's home screen (2.3).** One screen, light or dark with the system and in the wallpaper's colours where Android offers them (API 31+), with fixed colours for safe, warning and danger that the wallpaper never changes. From the top: the logo and one word on whether browsing is protected now; the session card with the address field and "Open safely", and "New session"; the live check (§10.5); the weekly summary (§10.8); the session's files, each with its scan verdict and "View safely", which opens a full-screen viewer (the verdict, then what the isolated worker drew, with pinch to zoom, or the escaped text). A file opened with Rift or shared to it from another app opens straight in the viewer; the protection details, folded unless the network lock needs the user; the threat database; the licences. Nothing on it needs a password.
+- **The controller's home screen (2.3).** One screen, light or dark with the system and in the wallpaper's colours where Android offers them (API 31+), with fixed colours for safe, warning and danger that the wallpaper never changes. From the top: the logo and one word on whether browsing is protected now; the session card with the address field, **Check** and **Open safely**, and "New session" (Check judges the link as Open safely would, without loading anything: the threat database's verdict, the policy's findings, Rift AI's 0–99 score with up to three reasons or "not scored" for the most visited sites, and how long it took; it never says "safe"); the live check (§10.5); the weekly summary (§10.8); the session's files, each with its scan verdict and "View safely", which opens a full-screen viewer (the verdict, then what the isolated worker drew, with pinch to zoom, or the escaped text). A file opened with Rift or shared to it from another app opens straight in the viewer; the protection details, folded unless the network lock needs the user; the threat database; the licences. Nothing on it needs a password.
 
 ### 10.2 Navigation rules
 
@@ -488,6 +490,8 @@ While a page is open, the trusted UI shows, as it happens, what the page has tri
 |---|---|---|
 | Open a known-malicious, suspicious or lookalike address; plain HTTP | Navigation policy (core) | Blocked, interstitial, or marked (§10.4) |
 | Load anything (a frame, script, image, WebSocket) from a listed host, or a listed plain-HTTP URL | Egress proxy, with the threat database (core) | Refused before the name is resolved (§10.3) |
+| Open an address Rift AI rates High | Navigation policy, with Rift AI (core) | Asks before loading, with the score and what stood out (§16) |
+| Connect to a host (or plain-HTTP URL) Rift AI rates High | Egress proxy, with Rift AI (core) | Allowed, and noted as a warning (`ai-request`); never refused for it (§16) |
 | Get the device's location | `onGeolocationPermissionsShowPrompt` (browser) | Denied. The browser app holds no location permission, so Android refuses even if the callback were bypassed |
 | Use the camera, microphone, MIDI or protected media | `onPermissionRequest` (browser) | Denied; the browser app holds none of these permissions |
 | Ask for a file from the device (upload) | `onShowFileChooser` (browser) | Denied (INV-6) |
@@ -498,7 +502,7 @@ While a page is open, the trusted UI shows, as it happens, what the page has tri
 | Deliver a file | Download capture (core) | Fetched into encrypted quarantine, scanned in an isolated worker, verdict shown |
 | Crash or compromise its renderer | `onRenderProcessGone` (browser) | Session ends and the browser app is wiped (INV-7); the home screen says why |
 
-**Status.** *Danger*: a known-malicious address, request or downloaded file. *Warning*: a request for location, camera, microphone, MIDI or files; a link to another app; a suspicious or lookalike address; an attempt on the local network; traffic around the proxy; a suspicious file. *Note*: an unencrypted page and other address notes, a protected-media or fullscreen request, a download, and a file that was not flagged or not fully scanned. With no Danger or Warning the status is *Nothing suspicious seen so far*, shown with what is watched. There is never a "safe" status. The status is the **session's**, not the current page's: what one page did can stay in the session (its storage, a service worker, a compromised renderer), so only a reset clears it.
+**Status.** *Danger*: a known-malicious address, request or downloaded file. *Warning*: a request for location, camera, microphone, MIDI or files; a link to another app; a suspicious or lookalike address; an address or connection Rift AI rates High; an attempt on the local network; traffic around the proxy; a suspicious file. *Note*: an unencrypted page and other address notes, a protected-media or fullscreen request, a download, and a file that was not flagged or not fully scanned. With no Danger or Warning the status is *Nothing suspicious seen so far*, shown with what is watched. There is never a "safe" status. The status is the **session's**, not the current page's: what one page did can stay in the session (its storage, a service worker, a compromised renderer), so only a reset clears it.
 
 **Not seen** (the UI says so): what scripts do inside the page (fingerprinting, reading what is typed into the page, writing to the clipboard, mining), the content of HTTPS traffic (so path-level indicators match plain HTTP only), and pop-ups (the engine refuses them without a callback). The network lock's own background traffic (router and neighbour discovery, multicast, and the system's DNS and private-DNS checks to the lock's resolver address) is dropped but not reported.
 
@@ -671,15 +675,31 @@ CREATING ─▶ ACTIVE ─▶ RESETTING ─▶ DESTROYED
 - **Recovery on launch:** if the marker says ACTIVE or RESETTING, cleanup completes *before* any new session is presented as fresh **[PoC A2]**.
 - Inactivity reset: 15 min by default, configurable. This is best effort under platform scheduling.
 
-## 16. Rift AI (deferred, gated)
+## 16. Rift AI
 
-The AI classifier is **not in V1**. It is Phase 6, and ships only if it adds measured value. These principles carry forward from v1.1:
+Built in 2.4 (Phase 6). The model, its data, its measured results and how to retrain it are in [rift-ai.md](reports/rift-ai.md).
 
-- The AI is advisory only. It never grants permissions, changes confinement, overrides a known-malicious hit, or produces a "safe" label. Rift must work fully with the AI disabled, missing, or corrupt, in which case the UI shows "AI unavailable".
-- Candidate model: logistic regression or small gradient-boosted trees over lexical URL features and hashed character n-grams. It is trained offline with Python and scikit-learn on licensed, provenance-tracked data, with domain-separated and time-separated holdouts. The report covers precision, recall, false-positive rate, calibration, and a comparison against heuristics alone **and** against Safe Browsing.
-- Shipped as fixed-schema numeric data in a signed pack. Inference is direct Rust arithmetic with golden-vector tests. There is no ONNX runtime, Python, pickles, or downloaded code.
-- Budgets: artifact ≤ 2 MiB, extra memory ≤ 8 MiB, p95 inference ≤ 15 ms on the reference phone.
-- No training on user data and no URL telemetry.
+**What it is.** A logistic-regression model over hashed lexical features of a URL (host n-grams, labels and words; path words, n-grams and shape; query keys; an embedded address), trained offline on public feeds of phishing and malware addresses and on ordinary pages from Common Crawl. It answers in about 2 µs on a computer, and a whole Check takes p95 64 µs on the Android emulator. It looks at the address only, never at the page.
+
+**Advisory only.** It never blocks, grants permissions, changes confinement, overrides a known-malicious hit, or produces a "safe" label. A navigation it rates **High** gets a Confirm (an interstitial before loading: "closely resembles known phishing and malware links… A resemblance, not proof"). **Elevated** adds a note. Low is shown as "nothing it recognises", never as safe. The threat database and the policy decide first. Rift works fully without the model: if the file is missing or fails validation, Rift AI is off and the protection details say why.
+
+**Where it is used.**
+
+| Where | View | What happens at High |
+|---|---|---|
+| Check (home screen) | Whole address | Score, level, up to three reasons |
+| Navigation (typed, from other apps, in-page main frame) | Whole address | Confirm before loading; the watch records `ai-suspicious` |
+| Egress proxy (every connection of the page) | Host only for HTTPS, whole URL for plain HTTP | Allowed and recorded as `ai-request` (warning) |
+
+**Sites and abstention.** Sites follow the Public Suffix List, private section included, so a site on a hosting platform (`someone.workers.dev`) is judged on its own. The model does **not score the 10,000 most visited sites** (Tranco): their real pages and the fakes hosted on them look alike as addresses, and scoring them produced false alarms on `mail.google.com` and `login.microsoftonline.com`. The UI says "not scored", and the threat database still checks them.
+
+**The file.** `url-model.bin`: a 32-byte header (magic, feature schema, bits, scale, bias, thresholds), 2^bits little-endian `i16` weights, the suffix rules as text, and the sorted 64-bit keys of the most visited sites. It is at most 2 MiB, and every field is checked before use (`UrlModel::parse`; damaged files are refused in tests). The app ships it as an asset in 2.4; delivery in a signed pack (§13) is later work. Its SHA-256 appears in the protection details, and `rift-ffi` tests the shipped file's verdicts on fixed addresses.
+
+**Training.** `tools/rift-train` (Rust) shares `urlmodel::for_each_feature` with the app, so training and use cannot disagree. Splits are by site (80/10/10), so the test measures sites the model never saw. Thresholds are set on the validation split at 0.1% (High) and 1% (Elevated) false positives, averaged over the benign sources. On never-seen sites the model catches 57% of Phishing.Database pages at High and 81% at Elevated or High, and falsely flags 0.05% of ordinary pages at High.
+
+**Learning.** The model learns when it is retrained on fresh feeds, and a new file ships with the app. It never trains on the device or on what the user opens. There is no telemetry (§17). VirusTotal is not used: its terms, a key in the app, and sending users' links to a third party all rule it out.
+
+**Not done.** A time-separated test, and a comparison with Safe Browsing (§24).
 
 ## 17. Privacy and network behaviour
 
@@ -754,7 +774,7 @@ Each decision lists what was chosen, what was rejected, why, and what would make
 | 08 | Intel: memory-mapped sorted hash tables plus Safe Browsing canonicalization | SQLite; cleartext lists | Trivially validated, fast, compact, atomic to swap, and no complex parser in the update path. | — |
 | 09 | TUF via `tough` | A hand-rolled signed manifest; `rust-tuf` | Root rotation, thresholds, and freeze and rollback protection come from an established framework. | — |
 | 10 | Linux distribution: Flatpak first, on the KDE runtime with the QtWebEngine BaseApp (revised 21 Oct 2026; previously the GNOME runtime with WebKitGTK) | Distro packages | One tested Qt WebEngine, patched by the runtime and BaseApp maintainers, with renderers sandboxed through the portal (Q1). | — |
-| 11 | AI deferred to Phase 6, gated | AI in V1 | Uncertain marginal value over heuristics and Safe Browsing. Keeps V1 focused. | — |
+| 11 | AI deferred to Phase 6, gated (**built in 2.4**: an advisory URL model, trained in Rust on public feeds, §16) | AI in V1 | Uncertain marginal value over heuristics and Safe Browsing. Keeps V1 focused. Measured in 2.4: on never-seen sites it catches 57% of phishing at High, where the heuristics alone catch under 0.01%. | — |
 | 12 | Images: Rust decoders | Platform BitmapFactory, ImageDecoder | Memory-safe decoders. The libwebp CVE-2023-4863 is a precedent for C codec risk. | — |
 | 13 | License: MIT OR Apache-2.0 | GPL | Compatible with every chosen dependency (BSD, MIT, Apache, MPL). Can be revisited before outside contributions. | Maintainers choose otherwise. |
 | 14 | Network lock: a deny-all VPN for the browser UID plus an authenticated loopback proxy in the controller (v2.1) | Proxy only; `shouldInterceptRequest` filtering; a VPN with a userspace TCP/IP stack that forwards checked traffic | A8: a proxy alone is bypassed by WebRTC, by Chromium's implicit loopback rule, and by escaped native code. Request interception sees URLs, not resolved addresses, and misses WebSockets and WebRTC. A forwarding VPN would put a TCP/IP stack in the trusted core; dropping everything needs none, because loopback is not routed through a VPN. | A supported per-app firewall API appears, or the one-VPN limit proves unacceptable (then: reduced mode only). |
@@ -773,8 +793,8 @@ Simulation-Rift/
     rift-worker-ffi/ UniFFI bindings: Android worker (Phase 2)
     rift-linux/      Qt application             (Phase 5, last)
   android/           Gradle project             (Phase 2)
-  tools/             maintainer pack builder    (Phase 3)
-  ml/                offline training           (Phase 6)
+  tools/             maintainer pack builder (Phase 3), rift-train (§16)
+  models/            Rift AI's model file, its report and notice (§16)
   poc/               Phase 0 evidence harnesses — not product code; removed when superseded
   docs/
     architecture.md  (this file)
