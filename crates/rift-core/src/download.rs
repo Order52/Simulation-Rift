@@ -30,9 +30,9 @@ use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver
 use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 use url::Url;
 
+use crate::seal::SealError;
 use crate::store::{ObjectStore, StoredObject};
 use crate::transfer::{DestinationError, check_destination, display_name};
-use crate::vault::VaultError;
 
 const CHUNK: usize = 64 * 1024;
 const MAX_CONTENT_TYPE_CHARS: usize = 100;
@@ -114,7 +114,7 @@ pub enum DownloadError {
     #[error("network error: {0}")]
     Network(String),
     #[error("storage error: {0}")]
-    Storage(#[from] VaultError),
+    Storage(#[from] SealError),
 }
 
 /// Fetches `request` into `store`, encrypted to `recipient`. On any error
@@ -177,7 +177,7 @@ pub fn download(
             if e.kind() == io::ErrorKind::FileTooLarge {
                 DownloadError::TooLarge(policy.max_bytes)
             } else {
-                DownloadError::Storage(VaultError::Io(e))
+                DownloadError::Storage(SealError::Io(e))
             }
         })?;
     }
@@ -410,7 +410,7 @@ fn filename_from_url(url: &Url) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vault::VaultKey;
+    use crate::seal::SealKey;
     use sha2::Digest as _;
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
@@ -518,7 +518,7 @@ mod tests {
     struct Fixture {
         _dir: tempfile::TempDir,
         store: ObjectStore,
-        key: VaultKey,
+        key: SealKey,
     }
 
     fn fixture() -> Fixture {
@@ -527,7 +527,7 @@ mod tests {
         Fixture {
             _dir: dir,
             store,
-            key: VaultKey::generate(),
+            key: SealKey::generate(),
         }
     }
 
@@ -829,7 +829,7 @@ mod network_tests {
     fn https_verifies_with_the_bundled_roots() {
         let dir = tempfile::tempdir().unwrap();
         let store = ObjectStore::open(dir.path()).unwrap();
-        let key = crate::vault::VaultKey::generate();
+        let key = crate::seal::SealKey::generate();
         let request = DownloadRequest {
             url: "https://example.com/",
             cookie: None,

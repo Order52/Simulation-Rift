@@ -10,7 +10,7 @@ publish.workspace = true
 
 [lib]
 # Loaded only by the isolated worker process: it links the parsers and the
-# protocol, never rift-core, so no core or vault code is mapped there.
+# protocol, never rift-core, so no core code is mapped there.
 crate-type = ["cdylib", "lib"]
 
 [lints]

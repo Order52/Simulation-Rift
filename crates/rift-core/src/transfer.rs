@@ -6,8 +6,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use sha2::{Digest, Sha256};
 
+use crate::seal::{SealError, Sealed};
 use crate::text::is_hidden_or_control;
-use crate::vault::{Sealed, VaultError};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DestinationError {
@@ -136,13 +136,13 @@ impl<W: Write> std::fmt::Debug for SealingWriter<W> {
 }
 
 impl<W: Write> SealingWriter<W> {
-    pub fn new(recipient: &age::x25519::Recipient, out: W, limit: u64) -> Result<Self, VaultError> {
+    pub fn new(recipient: &age::x25519::Recipient, out: W, limit: u64) -> Result<Self, SealError> {
         let encryptor =
             age::Encryptor::with_recipients(std::iter::once(recipient as &dyn age::Recipient))
-                .map_err(|e| VaultError::Encrypt(e.to_string()))?;
+                .map_err(|e| SealError::Encrypt(e.to_string()))?;
         let inner = encryptor
             .wrap_output(out)
-            .map_err(|e| VaultError::Encrypt(e.to_string()))?;
+            .map_err(|e| SealError::Encrypt(e.to_string()))?;
         Ok(Self {
             inner,
             hasher: Sha256::new(),
@@ -157,13 +157,13 @@ impl<W: Write> SealingWriter<W> {
 
     /// Completes the age stream. Only after this succeeds may the object be
     /// committed; on any error the caller deletes the partial output.
-    pub fn finish(self) -> Result<Sealed, VaultError> {
+    pub fn finish(self) -> Result<Sealed, SealError> {
         self.finish_into_inner().map(|(sealed, _)| sealed)
     }
 
     /// Like [`finish`](Self::finish), also returning the underlying writer
     /// (e.g. so the caller can fsync the file before publishing it).
-    pub fn finish_into_inner(self) -> Result<(Sealed, W), VaultError> {
+    pub fn finish_into_inner(self) -> Result<(Sealed, W), SealError> {
         let inner = self.inner.finish()?;
         let sealed = Sealed {
             sha256: self.hasher.finalize().into(),
@@ -183,7 +183,7 @@ impl<W: Write> Write for SealingWriter<W> {
         if total > self.limit {
             return Err(io::Error::new(
                 io::ErrorKind::FileTooLarge,
-                VaultError::TooLarge(self.limit),
+                SealError::TooLarge(self.limit),
             ));
         }
         self.inner.write_all(buf)?;
@@ -200,7 +200,7 @@ impl<W: Write> Write for SealingWriter<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vault::{VaultKey, open};
+    use crate::seal::{SealKey, open};
 
     #[test]
     fn non_public_destinations_are_refused() {
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn sealing_writer_enforces_limit_on_the_stream() {
-        let key = VaultKey::generate();
+        let key = SealKey::generate();
         let mut writer = SealingWriter::new(&key.recipient(), Vec::new(), 1000).unwrap();
         writer.write_all(&[1u8; 600]).unwrap();
         let error = writer.write_all(&[1u8; 600]).unwrap_err();
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn sealing_writer_output_opens_and_verifies() {
-        let key = VaultKey::generate();
+        let key = SealKey::generate();
         let mut ciphertext = Vec::new();
         let mut writer = SealingWriter::new(&key.recipient(), &mut ciphertext, 1 << 20).unwrap();
         for chunk in [&b"streamed "[..], b"in ", b"pieces"] {

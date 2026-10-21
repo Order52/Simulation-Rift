@@ -16,7 +16,7 @@ use rift_core::snapshot::{InstallCheck, SnapshotStore};
 use rift_core::text::escape_for_display;
 use rift_protocol::{Envelope, Request, Response, SCAN_ENGINE, WorkerError};
 
-use crate::{Content, ReadFailure, Sessions, VaultHandle, decode_reply, envelope, frame};
+use crate::{Content, ReadFailure, Sessions, decode_reply, envelope, frame};
 
 /// Largest file decrypted for a rule scan; larger ones get the hash check
 /// only, and say so.
@@ -90,11 +90,6 @@ pub enum ScanFailure {
     BadReply { detail: String },
     #[error("session state is unusable after an internal error")]
     Poisoned,
-    /// A kept file is scanned only against an installed database.
-    #[error("no threat database is installed")]
-    NoDatabase,
-    #[error("the vault was locked before the scan finished")]
-    Locked,
 }
 
 impl From<ReadFailure> for ScanFailure {
@@ -395,13 +390,6 @@ pub(crate) enum ScanOwner {
         generation: u64,
         file_id: String,
     },
-    /// A kept file: recorded in the vault's index, unless the vault was
-    /// locked after `unlock` was read.
-    Vault {
-        vault: Arc<VaultHandle>,
-        unlock: u64,
-        id: String,
-    },
 }
 
 impl ScanOwner {
@@ -412,9 +400,6 @@ impl ScanOwner {
                 generation,
                 file_id,
             } => sessions.remember(*generation, file_id, verdict),
-            Self::Vault { vault, unlock, id } => {
-                vault.record_scan(*unlock, id, to_ffi(id, &verdict), now_unix())
-            }
         }
     }
 }
@@ -678,8 +663,7 @@ impl Sessions {
 }
 
 /// The rule scan of `content` (§12.1) in a fresh worker, or, for a file too
-/// large to scan whole, the hash check alone with the gap named. Shared by
-/// quarantined and kept files.
+/// large to scan whole, the hash check alone with the gap named.
 pub(crate) fn start(
     owner: ScanOwner,
     generation: u64,

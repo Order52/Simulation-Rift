@@ -11,7 +11,7 @@
 //! reads, so that the browser host (which hides a page until its renderer
 //! passes) and the controller (which ends the session when one fails) apply
 //! the same code to the same facts. The browser host links this crate, never
-//! rift-core: no vault or intelligence code is mapped next to the engine.
+//! rift-core: no session or intelligence code is mapped next to the engine.
 
 use serde::{Deserialize, Serialize};
 

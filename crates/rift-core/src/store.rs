@@ -1,5 +1,5 @@
-//! Encrypted object store shared by session quarantine and the vault
-//! (docs/architecture.md §11.1, §14).
+//! Encrypted object store for session quarantine (docs/architecture.md
+//! §11.1).
 //!
 //! Lifecycle: `begin` → stream into a private `.part` file → `commit`
 //! (finish the age stream, fsync, atomic rename to `objects/<id>.age`).
@@ -10,8 +10,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use crate::seal::{self, ObjectId, SealError, SealKey, Sealed};
 use crate::transfer::SealingWriter;
-use crate::vault::{self, ObjectId, Sealed, VaultError, VaultKey};
 
 const OBJECTS: &str = "objects";
 const PENDING: &str = "pending";
@@ -29,7 +29,7 @@ pub struct StoredObject {
 
 impl ObjectStore {
     /// Opens (creating if needed) a store rooted at `root`.
-    pub fn open(root: impl Into<PathBuf>) -> Result<Self, VaultError> {
+    pub fn open(root: impl Into<PathBuf>) -> Result<Self, SealError> {
         let root = root.into();
         for dir in [OBJECTS, PENDING] {
             create_private_dir(&root.join(dir))?;
@@ -42,7 +42,7 @@ impl ObjectStore {
         &self,
         recipient: &age::x25519::Recipient,
         limit: u64,
-    ) -> Result<PendingObject, VaultError> {
+    ) -> Result<PendingObject, SealError> {
         let id = ObjectId::random()?;
         let part = self
             .root
@@ -63,15 +63,15 @@ impl ObjectStore {
     pub fn read(
         &self,
         id: ObjectId,
-        key: &VaultKey,
+        key: &SealKey,
         expected: &Sealed,
         out: impl Write,
-    ) -> Result<(), VaultError> {
+    ) -> Result<(), SealError> {
         let file = File::open(self.object_path(id))?;
-        vault::open(key, io::BufReader::new(file), expected, out)
+        seal::open(key, io::BufReader::new(file), expected, out)
     }
 
-    pub fn delete(&self, id: ObjectId) -> Result<(), VaultError> {
+    pub fn delete(&self, id: ObjectId) -> Result<(), SealError> {
         match fs::remove_file(self.object_path(id)) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -84,7 +84,7 @@ impl ObjectStore {
     }
 
     /// Deletes partial transfers left by a crash; returns how many were removed.
-    pub fn remove_abandoned(&self) -> Result<usize, VaultError> {
+    pub fn remove_abandoned(&self) -> Result<usize, SealError> {
         let mut removed = 0usize;
         for entry in fs::read_dir(self.root.join(PENDING))? {
             let path = entry?.path();
@@ -117,7 +117,7 @@ impl PendingObject {
 
     /// Finishes encryption, makes the bytes durable, and publishes the object
     /// atomically. Only a committed object is visible to readers.
-    pub fn commit(mut self) -> Result<StoredObject, VaultError> {
+    pub fn commit(mut self) -> Result<StoredObject, SealError> {
         let writer = self
             .writer
             .take()
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn commit_publishes_and_read_verifies() {
         let (_dir, store) = store();
-        let key = VaultKey::generate();
+        let key = SealKey::generate();
         let mut pending = store.begin(&key.recipient(), 1 << 20).unwrap();
         let id = pending.id();
         assert!(!store.contains(id), "not visible before commit");
@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn exceeding_the_limit_leaves_nothing_behind() {
         let (dir, store) = store();
-        let key = VaultKey::generate();
+        let key = SealKey::generate();
         let mut pending = store.begin(&key.recipient(), 10).unwrap();
         let id = pending.id();
         assert!(pending.write_all(b"more than ten bytes").is_err());
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn abandoned_parts_are_removed_after_a_crash() {
         let (_dir, store) = store();
-        let key = VaultKey::generate();
+        let key = SealKey::generate();
         let mut pending = store.begin(&key.recipient(), 1 << 20).unwrap();
         pending.write_all(b"partial").unwrap();
         std::mem::forget(pending); // simulate a crash: no Drop, no commit
@@ -242,7 +242,7 @@ mod tests {
     fn files_and_directories_are_private() {
         use std::os::unix::fs::PermissionsExt;
         let (dir, store) = store();
-        let key = VaultKey::generate();
+        let key = SealKey::generate();
         let mut pending = store.begin(&key.recipient(), 1 << 20).unwrap();
         pending.write_all(b"x").unwrap();
         let stored = pending.commit().unwrap();
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn reading_with_another_objects_record_fails() {
         let (_dir, store) = store();
-        let key = VaultKey::generate();
+        let key = SealKey::generate();
         let put = |bytes: &[u8]| {
             let mut pending = store.begin(&key.recipient(), 1 << 20).unwrap();
             pending.write_all(bytes).unwrap();

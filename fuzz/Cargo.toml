@@ -17,7 +17,6 @@ rift-core = { path = "../crates/rift-core" }
 rift-protocol = { path = "../crates/rift-protocol" }
 rift-worker = { path = "../crates/rift-worker" }
 sha2 = "0.11.1"
-tempfile = "3.27.0"
 
 # Not part of the product workspace: it builds only on nightly.
 [workspace]
@@ -58,13 +57,6 @@ doc = false
 bench = false
 
 [[bin]]
-name = "vault_index"
-path = "fuzz_targets/vault_index.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
 name = "egress_head"
 path = "fuzz_targets/egress_head.rs"
 test = false
@@ -91,12 +83,6 @@ path = "fuzz_targets/trusted_text.rs"
 test = false
 doc = false
 bench = false
-
-[[bin]]
-name = "vault_index_payload"
-path = "fuzz_targets/vault_index_payload.rs"
-test = false
-doc = false
 
 [[bin]]
 name = "session_from_browser"

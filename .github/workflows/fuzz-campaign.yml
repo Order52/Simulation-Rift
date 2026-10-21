@@ -18,7 +18,7 @@ on:
       targets:
         description: Targets to run (a JSON list)
         required: true
-        default: '["display_name","egress_head","intel_table","navigation","protocol_response","session_from_browser","trusted_text","url_canonicalize","vault_index","vault_index_payload","worker_image","worker_scan"]'
+        default: '["display_name","egress_head","intel_table","navigation","protocol_response","session_from_browser","trusted_text","url_canonicalize","worker_image","worker_scan"]'
 
 permissions:
   contents: read

@@ -20,17 +20,12 @@ uniffi::setup_scaffolding!();
 
 mod egress;
 mod scan;
-mod vault;
 pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressStats};
 /// The Linux controller's proxy, from [`Sessions::forwarded_egress`].
 pub use rift_core::egress::ForwardedEgress;
 pub use scan::{
     Intel, IntelFailure, IntelStatus, PendingIntel, ScanFailure, ScanFinding, ScanJob, ScanStart,
     ScanStatus, Verdict,
-};
-pub use vault::{
-    KeptVerdict, PlatformKey, VaultEntry, VaultFailure, VaultHandle, VaultProtection,
-    vault_has_recovery, vault_protection,
 };
 
 /// One explainable fact for the trusted UI: `code` is stable, `text` is a
@@ -210,7 +205,7 @@ impl From<SessionError> for SessionFailure {
             SessionError::NoActiveSession => Self::NoActiveSession,
             SessionError::AlreadyActive => Self::AlreadyActive,
             other @ (SessionError::Storage(_)
-            | SessionError::Vault(_)
+            | SessionError::Sealed(_)
             | SessionError::MalformedMarker) => Self::Storage {
                 detail: other.to_string(),
             },
@@ -370,9 +365,6 @@ fn sniff(content: &[u8]) -> Option<PreviewKind> {
 pub enum PreviewFailure {
     #[error("the session this file belonged to has ended")]
     SessionEnded,
-    /// A vault preview: the vault was locked before the preview finished.
-    #[error("the vault was locked")]
-    Locked,
     #[error("the file is not in this session's quarantine")]
     NotFound,
     #[error("Rift previews PNG, JPEG, WebP, PDF and plain-text content only")]
@@ -411,11 +403,6 @@ enum PreviewOwner {
         sessions: Arc<Sessions>,
         generation: u64,
     },
-    /// A vault object: the vault must still be unlocked, in the same unlock (§14.2).
-    Vault {
-        vault: Arc<VaultHandle>,
-        unlock: u64,
-    },
 }
 
 impl PreviewOwner {
@@ -425,9 +412,6 @@ impl PreviewOwner {
                 sessions,
                 generation,
             } if !sessions.is_current(*generation) => Err(PreviewFailure::SessionEnded),
-            Self::Vault { vault, unlock } if !vault.still_unlocked(*unlock) => {
-                Err(PreviewFailure::Locked)
-            }
             _ => Ok(()),
         }
     }
@@ -482,7 +466,7 @@ impl PreviewJob {
 
     /// Validates the render reply. `region_bytes` is the size of the output
     /// region the controller created; the bitmap must fit in it. Fails if the
-    /// session ended (or the vault was locked) meanwhile.
+    /// session ended meanwhile.
     pub fn accept(
         &self,
         reply: Vec<u8>,
@@ -870,7 +854,7 @@ impl Sessions {
             return Err(ReadFailure::NotFound);
         };
         let session = state.manager.active().ok_or(ReadFailure::SessionEnded)?;
-        let storage = |e: rift_core::vault::VaultError| ReadFailure::Storage(e.to_string());
+        let storage = |e: rift_core::seal::SealError| ReadFailure::Storage(e.to_string());
         let content = if object.sealed.size > limit {
             let mut head = Head(Vec::new());
             session
@@ -1156,125 +1140,6 @@ mod tests {
             panic!("expected a new worker job for the new snapshot");
         };
         assert_eq!(run_scan(&job).snapshot.as_deref(), Some(two.as_str()));
-    }
-
-    #[test]
-    fn a_kept_file_keeps_the_verdict_it_had_as_history() {
-        let dir = tempfile::tempdir().unwrap();
-        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
-        let generation = sessions.start().unwrap();
-        assert!(sessions.allow_local_host(generation, "localhost".into()));
-        let url = format!("http://localhost:{}/", serve(rift_pack::DEMO_FILE));
-        let demo = sessions.download(generation, info(url)).unwrap();
-        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
-        let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
-        install(&intel, trusted_root, repo);
-        let Ok(ScanStart::Run { job }) = sessions.clone().scan(generation, demo.id.clone(), intel)
-        else {
-            panic!("expected a worker job");
-        };
-        let verdict = run_scan(&job);
-        let vault =
-            VaultHandle::create_with_passphrase(root(&dir) + "/vault", b"correct horse".to_vec())
-                .unwrap();
-        let kept = sessions
-            .save_to_vault(generation, demo.id, vault.clone(), 1_700_000_000)
-            .unwrap();
-        let scan = kept.scan.clone().expect("the verdict is kept");
-        assert_eq!(
-            (scan.status, scan.label.as_str(), scan.demo),
-            (ScanStatus::KnownMalicious, "Known malicious", true)
-        );
-        assert_eq!(scan.snapshot, verdict.snapshot);
-        assert_eq!(scan.engine, verdict.engine);
-        assert_eq!(scan.scanned_unix, 1_700_000_000);
-        assert!(
-            scan.findings.iter().any(|f| f.starts_with("file hash:")),
-            "{:?}",
-            scan.findings
-        );
-        // It survives the session and a new unlock, as recorded.
-        sessions.reset().unwrap();
-        vault.lock();
-        vault
-            .unlock_with_passphrase(b"correct horse".to_vec())
-            .unwrap();
-        assert_eq!(vault.entries().unwrap(), vec![kept]);
-    }
-
-    #[test]
-    fn a_kept_file_is_scanned_again_and_the_result_replaces_the_old_one() {
-        use rift_worker_ffi::WorkerEngine;
-        let dir = tempfile::tempdir().unwrap();
-        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
-        let generation = sessions.start().unwrap();
-        assert!(sessions.allow_local_host(generation, "localhost".into()));
-        let url = format!("http://localhost:{}/", serve(rift_pack::DEMO_FILE));
-        let demo = sessions.download(generation, info(url)).unwrap();
-        let vault =
-            VaultHandle::create_with_passphrase(root(&dir) + "/vault", b"correct horse".to_vec())
-                .unwrap();
-        // Kept without a scan; the session then ends.
-        let kept = sessions
-            .save_to_vault(generation, demo.id, vault.clone(), 1_700_000_000)
-            .unwrap();
-        assert_eq!(kept.scan, None);
-        sessions.reset().unwrap();
-
-        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
-        assert!(matches!(
-            vault.clone().scan(kept.id.clone(), intel.clone()),
-            Err(ScanFailure::NoDatabase)
-        ));
-        let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
-        install(&intel, trusted_root, repo);
-        assert!(matches!(
-            vault.clone().scan("00".into(), intel.clone()),
-            Err(ScanFailure::NotFound)
-        ));
-
-        // A scan that outlives a lock (and a new unlock) records nothing.
-        let Ok(ScanStart::Run { job }) = vault.clone().scan(kept.id.clone(), intel.clone()) else {
-            panic!("expected a worker job");
-        };
-        let worker = WorkerEngine::new(true, false);
-        job.accept_hello(worker.handle(job.hello_frame(), None).frame)
-            .unwrap();
-        job.accept_load(worker.handle(job.load_frame(), Some(job.rules())).frame)
-            .unwrap();
-        vault.lock();
-        vault
-            .unlock_with_passphrase(b"correct horse".to_vec())
-            .unwrap();
-        assert!(matches!(
-            job.finish(worker.handle(job.scan_frame(), Some(job.input())).frame),
-            Err(ScanFailure::Locked)
-        ));
-        assert_eq!(vault.entries().unwrap()[0].scan, None);
-
-        // The vault's copy is scanned in a worker, and the result is recorded.
-        let Ok(ScanStart::Run { job }) = vault.clone().scan(kept.id.clone(), intel.clone()) else {
-            panic!("expected a worker job");
-        };
-        let verdict = run_scan(&job);
-        assert_eq!(verdict.status, ScanStatus::KnownMalicious);
-        let scan = vault.entries().unwrap()[0].scan.clone().expect("recorded");
-        assert_eq!(
-            (scan.status, scan.snapshot.clone(), scan.demo),
-            (ScanStatus::KnownMalicious, verdict.snapshot.clone(), true)
-        );
-        assert!(scan.scanned_unix > 1_700_000_000);
-        assert!(scan.findings.iter().any(|f| f.starts_with("file hash:")));
-        // It is in the authenticated index, so it survives a new unlock.
-        vault.lock();
-        assert!(matches!(
-            vault.clone().scan(kept.id.clone(), intel.clone()),
-            Err(ScanFailure::Locked)
-        ));
-        vault
-            .unlock_with_passphrase(b"correct horse".to_vec())
-            .unwrap();
-        assert_eq!(vault.entries().unwrap()[0].scan, Some(scan));
     }
 
     #[test]
@@ -1728,185 +1593,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn saved_files_outlive_the_session_in_the_vault() {
-        let dir = tempfile::tempdir().unwrap();
-        let vault_dir = root(&dir) + "/vault";
-        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
-        let generation = sessions.start().unwrap();
-        assert!(sessions.allow_local_host(generation, "localhost".into()));
-        let url = format!("http://localhost:{}/report", serve(b"kept on purpose"));
-        let file = sessions.download(generation, info(url)).unwrap();
-
-        assert!(matches!(
-            VaultHandle::create_with_passphrase(vault_dir.clone(), b"too short".to_vec()),
-            Err(VaultFailure::WeakPassphrase { minimum: 10 })
-        ));
-        let vault =
-            VaultHandle::create_with_passphrase(vault_dir.clone(), b"correct horse".to_vec())
-                .unwrap();
-        assert_eq!(
-            vault_protection(vault_dir.clone()),
-            Some(VaultProtection::Passphrase)
-        );
-        let saved = sessions
-            .save_to_vault(generation, file.id.clone(), vault.clone(), 1_700_000_000)
-            .unwrap();
-        assert_eq!(
-            (
-                saved.display_name.as_str(),
-                saved.size,
-                saved.sha256.as_str()
-            ),
-            ("rfdp.exe", file.size, file.sha256.as_str())
-        );
-        assert_ne!(saved.id, file.id, "the vault names objects itself");
-        assert_eq!(saved.scan, None, "never scanned, so no verdict is kept");
-        assert!(matches!(
-            sessions.save_to_vault(generation, "00".repeat(16), vault.clone(), 0),
-            Err(VaultFailure::NotFound)
-        ));
-
-        // The session ends; the saved copy does not.
-        sessions.reset().unwrap();
-        assert!(matches!(
-            sessions.save_to_vault(generation, file.id, vault.clone(), 0),
-            Err(VaultFailure::SessionEnded)
-        ));
-        vault.lock();
-        assert!(matches!(vault.entries(), Err(VaultFailure::Locked)));
-        drop(vault);
-        let reopened = VaultHandle::open(vault_dir.clone()).unwrap();
-        assert!(!reopened.is_unlocked());
-        assert!(matches!(
-            reopened.unlock_with_passphrase(b"wrong horse!".to_vec()),
-            Err(VaultFailure::WrongSecret)
-        ));
-        assert!(matches!(
-            reopened.platform_wrapped(),
-            Err(VaultFailure::WrongProtection)
-        ));
-        reopened
-            .unlock_with_passphrase(b"correct horse".to_vec())
-            .unwrap();
-        assert_eq!(reopened.entries().unwrap(), vec![saved.clone()]);
-        assert_eq!(reopened.read(saved.id.clone()).unwrap(), b"kept on purpose");
-        reopened.remove(saved.id.clone()).unwrap();
-        assert!(reopened.entries().unwrap().is_empty());
-        assert!(matches!(
-            reopened.read(saved.id),
-            Err(VaultFailure::UnknownObject)
-        ));
-        assert!(matches!(
-            VaultHandle::create_with_passphrase(vault_dir, b"another passphrase".to_vec()),
-            Err(VaultFailure::Exists)
-        ));
-    }
-
-    /// Stands in for Android Keystore: "wraps" by reversing, or refuses.
-    struct FakeKey {
-        refuse: bool,
-        calls: AtomicU64,
-    }
-
-    impl PlatformKey for FakeKey {
-        fn wrap(&self, mut secret: Vec<u8>) -> Result<Vec<u8>, VaultFailure> {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            if self.refuse {
-                return Err(VaultFailure::Platform {
-                    detail: "no secure lock screen".into(),
-                });
-            }
-            secret.reverse();
-            Ok(secret)
-        }
-    }
-
-    #[test]
-    fn a_platform_vault_opens_with_the_secret_the_platform_unwraps() {
-        let dir = tempfile::tempdir().unwrap();
-        let vault_dir = root(&dir);
-        let refusing = Arc::new(FakeKey {
-            refuse: true,
-            calls: AtomicU64::new(0),
-        });
-        assert!(matches!(
-            VaultHandle::create_for_platform(vault_dir.clone(), refusing),
-            Err(VaultFailure::Platform { detail }) if detail == "no secure lock screen"
-        ));
-        assert_eq!(
-            vault_protection(vault_dir.clone()),
-            None,
-            "nothing was created"
-        );
-
-        let key = Arc::new(FakeKey {
-            refuse: false,
-            calls: AtomicU64::new(0),
-        });
-        let vault = VaultHandle::create_for_platform(vault_dir.clone(), key.clone()).unwrap();
-        assert!(vault.is_unlocked());
-        drop(vault);
-        assert!(matches!(
-            VaultHandle::create_for_platform(vault_dir.clone(), key.clone()),
-            Err(VaultFailure::Exists)
-        ));
-        assert_eq!(
-            key.calls.load(Ordering::SeqCst),
-            1,
-            "no prompt for a vault that exists"
-        );
-
-        let reopened = VaultHandle::open(vault_dir.clone()).unwrap();
-        assert_eq!(
-            vault_protection(vault_dir.clone()),
-            Some(VaultProtection::Platform)
-        );
-        assert!(matches!(
-            reopened.unlock_with_passphrase(b"any passphrase".to_vec()),
-            Err(VaultFailure::WrongProtection)
-        ));
-        let mut secret = reopened.platform_wrapped().unwrap();
-        assert!(matches!(
-            reopened.unlock_with_secret(secret.clone()),
-            Err(VaultFailure::WrongSecret)
-        ));
-        secret.reverse();
-        reopened.unlock_with_secret(secret).unwrap();
-        assert!(reopened.entries().unwrap().is_empty());
-
-        // A recovery passphrase, and a new platform key after the old one is lost.
-        assert!(!vault_has_recovery(vault_dir.clone()));
-        reopened
-            .set_recovery_passphrase(b"recovery passphrase".to_vec())
-            .unwrap();
-        assert!(vault_has_recovery(vault_dir.clone()));
-        reopened.lock();
-        assert!(matches!(
-            reopened.unlock_with_recovery(b"wrong passphrase".to_vec()),
-            Err(VaultFailure::WrongSecret)
-        ));
-        reopened
-            .unlock_with_recovery(b"recovery passphrase".to_vec())
-            .unwrap();
-        let refusing = Arc::new(FakeKey {
-            refuse: true,
-            calls: AtomicU64::new(0),
-        });
-        let before = reopened.platform_wrapped().unwrap();
-        assert!(matches!(
-            reopened.rewrap_for_platform(refusing),
-            Err(VaultFailure::Platform { .. })
-        ));
-        assert_eq!(
-            reopened.platform_wrapped().unwrap(),
-            before,
-            "unchanged after a refusal"
-        );
-        reopened.rewrap_for_platform(key.clone()).unwrap();
-        assert_eq!(key.calls.load(Ordering::SeqCst), 2);
-    }
-
     /// 1x1 RGBA PNG.
     const PNG: &[u8] = &[
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 0,
@@ -1914,72 +1600,6 @@ mod tests {
         0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0, 0x05, 0x00, 0x01, 0xff,
         0x89, 0x99, 0x3d, 0x1d, 0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ];
-
-    #[test]
-    fn vault_previews_end_when_the_vault_locks() {
-        use rift_worker_ffi::WorkerEngine;
-        let dir = tempfile::tempdir().unwrap();
-        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
-        let generation = sessions.start().unwrap();
-        assert!(sessions.allow_local_host(generation, "localhost".into()));
-        let url = format!("http://localhost:{}/", serve(PNG));
-        let file = sessions.download(generation, info(url)).unwrap();
-        let vault =
-            VaultHandle::create_with_passphrase(root(&dir) + "/vault", b"correct horse".to_vec())
-                .unwrap();
-        let kept = sessions
-            .save_to_vault(generation, file.id, vault.clone(), 0)
-            .unwrap();
-        sessions.reset().unwrap();
-
-        // After the session: the same worker exchange, from the vault's copy.
-        let rendered =
-            |vault: &Arc<VaultHandle>| match vault.clone().preview(kept.id.clone(), 64, 64) {
-                Ok(Preview::Rendered { job }) => job,
-                other => panic!("expected a worker job, got {other:?}"),
-            };
-        let job = rendered(&vault);
-        assert_eq!(
-            (job.kind(), job.input()),
-            (PreviewKind::Image, PNG.to_vec())
-        );
-        let worker = WorkerEngine::new(true, false);
-        job.accept_hello(worker.handle(job.hello_frame(), None).frame)
-            .unwrap();
-        let reply = worker.handle(job.request_frame(), Some(job.input())).frame;
-        assert!(job.accept(reply.clone(), 64 * 64 * 4).is_ok());
-
-        // Locked, then unlocked again: the earlier preview stays refused.
-        let pending = rendered(&vault);
-        vault.lock();
-        vault
-            .unlock_with_passphrase(b"correct horse".to_vec())
-            .unwrap();
-        let worker = WorkerEngine::new(true, false);
-        pending
-            .accept_hello(worker.handle(pending.hello_frame(), None).frame)
-            .unwrap();
-        let late = worker
-            .handle(pending.request_frame(), Some(pending.input()))
-            .frame;
-        assert!(matches!(
-            pending.accept(late, 64 * 64 * 4),
-            Err(PreviewFailure::Locked)
-        ));
-
-        vault.lock();
-        assert!(matches!(
-            vault.clone().preview(kept.id, 64, 64),
-            Err(PreviewFailure::Locked)
-        ));
-        vault
-            .unlock_with_passphrase(b"correct horse".to_vec())
-            .unwrap();
-        assert!(matches!(
-            vault.preview("00".repeat(16), 64, 64),
-            Err(PreviewFailure::NotFound)
-        ));
-    }
 
     #[test]
     fn previews_go_through_a_validated_worker_exchange() {

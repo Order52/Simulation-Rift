@@ -15,8 +15,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::seal::{SealError, SealKey};
 use crate::store::ObjectStore;
-use crate::vault::{VaultError, VaultKey};
 
 const MARKER: &str = "session.marker";
 const MARKER_TEMP: &str = "session.marker.tmp";
@@ -34,7 +34,7 @@ pub enum SessionError {
     #[error("storage error: {0}")]
     Storage(#[from] io::Error),
     #[error("{0}")]
-    Vault(#[from] VaultError),
+    Sealed(#[from] SealError),
     #[error("session marker is malformed")]
     MalformedMarker,
     #[error("no active session")]
@@ -72,7 +72,7 @@ pub struct RecoveryReport {
 #[derive(Debug)]
 pub struct ActiveSession {
     generation: u64,
-    quarantine_key: VaultKey,
+    quarantine_key: SealKey,
     quarantine: ObjectStore,
 }
 
@@ -86,7 +86,7 @@ impl ActiveSession {
     }
 
     /// The in-memory key that encrypts this session's quarantine.
-    pub fn quarantine_key(&self) -> &VaultKey {
+    pub fn quarantine_key(&self) -> &SealKey {
         &self.quarantine_key
     }
 }
@@ -154,13 +154,13 @@ impl<P: SessionPlatform> SessionManager<P> {
         let quarantine = ObjectStore::open(self.generation_dir(generation).join("quarantine"))?;
         Ok(self.active.insert(ActiveSession {
             generation,
-            quarantine_key: VaultKey::generate(),
+            quarantine_key: SealKey::generate(),
             quarantine,
         }))
     }
 
-    /// Destroys the active session. Saved vault objects live elsewhere and
-    /// are untouched. On failure the session is not reported destroyed.
+    /// Destroys the active session. On failure the session is not reported
+    /// destroyed.
     pub fn reset(&mut self) -> Result<u64, SessionError> {
         let session = self.active.take().ok_or(SessionError::NoActiveSession)?;
         let generation = session.generation;
