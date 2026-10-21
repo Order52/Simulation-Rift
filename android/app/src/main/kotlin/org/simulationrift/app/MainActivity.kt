@@ -74,6 +74,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -395,20 +396,28 @@ class MainActivity : ComponentActivity() {
             keyboardActions = KeyboardActions(onGo = { if (mayBrowse) open() else check() }),
             modifier = Modifier.noAutofill().fillMaxWidth().testTag("home-address"),
         )
+        // Below 360 dp the icons and the usual padding leave no room for the labels.
+        val roomy = LocalConfiguration.current.screenWidthDp >= 360
+        val padding = if (roomy) ButtonDefaults.ContentPadding else PaddingValues(horizontal = 10.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             FilledTonalButton(
                 onClick = check,
                 enabled = typed.isNotBlank() && !checking,
+                contentPadding = padding,
                 modifier = Modifier.weight(1f).height(52.dp).testTag("check"),
             ) {
-                Icon(painterResource(R.drawable.ic_shield), contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (checking) "Checking…" else "Check", style = MaterialTheme.typography.titleSmall)
+                if (roomy) {
+                    Icon(painterResource(R.drawable.ic_shield), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (checking) "Checking…" else "Check", style = MaterialTheme.typography.titleSmall, maxLines = 1, softWrap = false)
             }
-            Button(onClick = open, enabled = mayBrowse, modifier = Modifier.weight(1.3f).height(52.dp).testTag("browse")) {
-                Text("Open safely", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.width(8.dp))
-                Icon(painterResource(R.drawable.ic_arrow_forward), contentDescription = null, modifier = Modifier.size(18.dp))
+            Button(onClick = open, enabled = mayBrowse, contentPadding = padding, modifier = Modifier.weight(1.3f).height(52.dp).testTag("browse")) {
+                Text("Open safely", style = MaterialTheme.typography.titleSmall, maxLines = 1, softWrap = false)
+                if (roomy) {
+                    Spacer(Modifier.width(8.dp))
+                    Icon(painterResource(R.drawable.ic_arrow_forward), contentDescription = null, modifier = Modifier.size(18.dp))
+                }
             }
         }
         result?.let { CheckResult(it, onOpen = open.takeIf { mayBrowse }, onClose = { result = null }) }
@@ -644,7 +653,7 @@ class MainActivity : ComponentActivity() {
                 Text("Threats, dangerous files and warnings, per day", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 WeekChart(week)
                 Text(
-                    "${format(week.total(Tally.FILE_SCANNED))} files scanned. Counts only, kept on this device for two weeks: " +
+                    "${week.total(Tally.FILE_SCANNED).let { "${format(it)} ${if (it == 1) "file" else "files"}" }} scanned. Counts only, kept on this device for two weeks: " +
                         "no addresses or file names.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -660,13 +669,16 @@ class MainActivity : ComponentActivity() {
                 .semantics(mergeDescendants = true) {}.testTag(tag),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(36.dp).clip(CircleShape).background(accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                Icon(painterResource(icon), contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+            // Below 360 dp the label needs the icon's room.
+            if (LocalConfiguration.current.screenWidthDp >= 360) {
+                Box(Modifier.size(36.dp).clip(CircleShape).background(accent.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                    Icon(painterResource(icon), contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+                }
+                Spacer(Modifier.width(12.dp))
             }
-            Spacer(Modifier.width(12.dp))
             Column {
                 Text(format(value), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
