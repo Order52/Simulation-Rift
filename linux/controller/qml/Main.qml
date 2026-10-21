@@ -17,7 +17,7 @@ ApplicationWindow {
 
     Timer {
         interval: 1000
-        running: rift.active
+        running: true
         repeat: true
         onTriggered: rift.refresh()
     }

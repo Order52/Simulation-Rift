@@ -29,7 +29,8 @@ pub mod qobject {
         /// Destroys the current session.
         #[qinvokable]
         fn reset(self: Pin<&mut Self>);
-        /// Reads the session's proxy counters and recent refusals.
+        /// Reads the threat database's state, and the session's proxy
+        /// counters and recent refusals.
         #[qinvokable]
         fn refresh(self: Pin<&mut Self>);
     }
@@ -130,6 +131,10 @@ impl qobject::RiftController {
 
     pub fn refresh(mut self: Pin<&mut Self>) {
         let Ok(controller) = controller() else { return };
+        let intel = controller.intel_summary();
+        if self.intel().to_string() != intel {
+            self.as_mut().set_intel(QString::from(intel.as_str()));
+        }
         let Some(stats) = controller.stats() else {
             return;
         };

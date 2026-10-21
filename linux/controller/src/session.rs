@@ -7,16 +7,17 @@
 
 use std::net::TcpStream;
 use std::os::fd::OwnedFd;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::worker::Workers;
 use rift_channel::Channel;
 use rift_ffi::{
     DownloadInfo, EgressStats, ForwardedEgress, Intel, IntelStatus, Navigation, Navigator,
-    Recovery, Sessions, display_safe, typed_address,
+    Recovery, Sessions, Verdict, display_safe, typed_address,
 };
 use rift_protocol::session::{
     Decision, Fact, FromBrowser, MAX_FACT_CODE_BYTES, MAX_FACT_TEXT_BYTES, MAX_FACTS,
@@ -74,6 +75,11 @@ pub struct Paths<'a> {
     pub sandbox: &'a Path,
     /// The browser host inside the sub-sandbox.
     pub browser: &'a Path,
+    /// The worker, started directly in the app's sandbox.
+    pub worker: &'a Path,
+    /// A demo threat database the build carries (`root.json` and `repo/`),
+    /// installed when none is.
+    pub demo_intel: Option<&'a Path>,
 }
 
 #[derive(Debug)]
@@ -84,6 +90,8 @@ pub struct Controller {
     intel: Option<Arc<Intel>>,
     intel_problem: Option<String>,
     launcher: Launcher,
+    workers: Workers,
+    demo_intel: Option<PathBuf>,
     /// Serializes starting and ending sessions, so that ending one never
     /// ends its successor.
     lifecycle: Mutex<()>,
@@ -112,6 +120,8 @@ impl Controller {
             intel,
             intel_problem,
             launcher,
+            workers: Workers::new(paths.worker),
+            demo_intel: paths.demo_intel.map(Path::to_owned),
             lifecycle: Mutex::new(()),
             downloads: Arc::new(AtomicUsize::new(0)),
         });
@@ -136,6 +146,34 @@ impl Controller {
             IntelStatus::Installed { snapshot, .. } => format!("Threat database {snapshot}."),
             IntelStatus::Damaged { detail } => format!("The threat database is damaged: {detail}."),
         }
+    }
+
+    /// Installs the build's demo threat database if no database is
+    /// installed, after a fresh worker has compiled its rules (§13.2).
+    /// None if there was nothing to do. Blocks: call it off the UI thread.
+    pub fn install_demo_intel(&self) -> Option<Result<String, String>> {
+        let (intel, demo) = (self.intel.as_ref()?, self.demo_intel.as_ref()?);
+        if !matches!(intel.status(now_unix()), IntelStatus::Missing) {
+            return None;
+        }
+        let result = (|| {
+            let root = std::fs::read(demo.join("root.json"))
+                .map_err(|e| format!("the demo database's root could not be read: {e}"))?;
+            let pending = Arc::clone(intel)
+                .verify_offline(root, utf8(&demo.join("repo"))?)
+                .map_err(|e| e.to_string())?;
+            self.workers.install(&pending, now_unix())?;
+            Ok(pending.snapshot())
+        })();
+        match &result {
+            Ok(snapshot) => log(&format!(
+                "demo threat database {snapshot} installed, its rules compiled by a confined worker"
+            )),
+            Err(error) => log(&format!(
+                "the demo threat database was not installed: {error}"
+            )),
+        }
+        Some(result)
     }
 
     /// Starts a new session at `input` (as typed), ending any current one.
@@ -348,6 +386,8 @@ impl Controller {
             return;
         }
         let sessions = Arc::clone(&self.sessions);
+        let workers = self.workers.clone();
+        let intel = self.intel.clone();
         let downloads = Arc::clone(&self.downloads);
         let report = Arc::clone(notify);
         let started = thread::Builder::new()
@@ -362,10 +402,21 @@ impl Controller {
                     content_disposition: None,
                 };
                 match sessions.download(generation, info) {
-                    Ok(file) => report(Event::Quarantined(format!(
-                        "{} ({} bytes, from {})",
-                        file.display_name, file.size, file.source
-                    ))),
+                    Ok(file) => {
+                        let verdict = match intel {
+                            Some(intel) => Arc::clone(&sessions)
+                                .scan(generation, file.id.clone(), intel)
+                                .map_err(|e| e.to_string())
+                                .and_then(|start| workers.scan(start))
+                                .map_or_else(|e| format!("not scanned: {e}"), |v| describe(&v)),
+                            None => "not scanned: no threat database could be opened".into(),
+                        };
+                        log(&format!("session {generation}: a download was quarantined"));
+                        report(Event::Quarantined(format!(
+                            "{} ({} bytes, from {}): {verdict}",
+                            file.display_name, file.size, file.source
+                        )));
+                    }
                     Err(error) => {
                         report(Event::Status(format!("A download was not kept: {error}")))
                     }
@@ -377,6 +428,22 @@ impl Controller {
             notify(Event::Status("A download could not be started.".into()));
         }
     }
+}
+
+/// A verdict in one line. Its texts come escaped from rift-core.
+fn describe(verdict: &Verdict) -> String {
+    let mut parts = vec![verdict.label.clone()];
+    parts.extend(
+        verdict
+            .findings
+            .iter()
+            .map(|f| format!("{} {} ({})", f.check, f.id, f.description)),
+    );
+    parts.extend(verdict.gaps.iter().cloned());
+    if verdict.demo {
+        parts.push("the threat database is a demo and gives no real coverage".into());
+    }
+    parts.join("; ")
 }
 
 /// Hands one forwarded connection to the proxy. Only stream sockets are

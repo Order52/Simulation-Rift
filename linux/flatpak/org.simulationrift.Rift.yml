@@ -1,14 +1,18 @@
-# Simulation-Rift for Linux (docs/architecture.md §9): the controller (rift)
-# and the browser host (rift-browser) on the KDE runtime with Qt WebEngine.
+# Simulation-Rift for Linux (docs/architecture.md §9): the controller (rift),
+# the browser host (rift-browser) and the worker (rift-worker) on the KDE
+# runtime with Qt WebEngine.
 #
 # The app keeps the network for the controller's checking proxy. Each
 # session's browser host runs in a `flatpak-spawn --sandbox --no-network`
 # sub-sandbox: no network, no GPU and no files but its own state directory,
 # which disposal deletes; the display, and the app's filtered session bus,
-# through which the engine starts its sandboxed renderers.
+# through which the engine starts its sandboxed renderers. Each job's worker
+# confines itself further (Landlock, seccomp, rlimits) before reading input.
 #
 # The build is offline: the crates are vendored first (see
-# .github/workflows/linux-app.yml), and Cargo is told to use them only.
+# .github/workflows/linux-app.yml), and Cargo is told to use them only. A
+# test build also carries linux/intel-demo (linux/flatpak/demo-intel.sh), a
+# demo threat database; a release build carries none.
 app-id: org.simulationrift.Rift
 runtime: org.kde.Platform
 runtime-version: '6.10'
@@ -46,6 +50,12 @@ modules:
         cargo test --offline --release --locked --manifest-path linux/Cargo.toml
       - install -Dm755 linux/target/release/rift /app/bin/rift
       - install -Dm755 linux/target/release/rift-browser /app/bin/rift-browser
+      - install -Dm755 linux/target/release/rift-worker /app/bin/rift-worker
+      - |
+        if [ -d linux/intel-demo ]; then
+          mkdir -p /app/share/rift
+          cp -R linux/intel-demo /app/share/rift/intel-demo
+        fi
     sources:
       # The repository root: the shared crates are path dependencies.
       - type: dir

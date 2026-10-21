@@ -36,6 +36,9 @@ jobs:
           cargo vendor --locked --manifest-path linux/Cargo.toml linux/vendor > /dev/null
           printf '%s\n' '[source.crates-io]' 'replace-with = "vendored-sources"' \
             '[source.vendored-sources]' 'directory = "linux/vendor"' > linux/vendor-config.toml
+      - name: Make a demo threat database
+        # Signed with keys made for this run only, outside the checkout.
+        run: sh linux/flatpak/demo-intel.sh "$RUNNER_TEMP/demo-keys"
       - name: Build the Flatpak
         run: |
           flatpak-builder --user --install-deps-from=flathub --install --force-clean \

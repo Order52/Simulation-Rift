@@ -14,6 +14,7 @@
 mod bridge;
 mod browser;
 mod session;
+mod worker;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -32,6 +33,9 @@ const EXIT_NOT_FLATPAK: u8 = 3;
 const EXIT_CLEANUP: u8 = 5;
 
 const BROWSER: &str = "/app/bin/rift-browser";
+const WORKER: &str = "/app/bin/rift-worker";
+/// The demo threat database a test build carries; a release carries none.
+const DEMO_INTEL: &str = "/app/share/rift/intel-demo";
 const MAIN_QML: &str = "qrc:/qt/qml/org/simulationrift/app/qml/Main.qml";
 
 fn main() -> ExitCode {
@@ -63,6 +67,15 @@ fn main() -> ExitCode {
     let _set = STARTUP.set(startup);
     if let Some(controller) = &controller {
         watch_signals(controller);
+        let installer = std::sync::Arc::clone(controller);
+        let spawned = thread::Builder::new()
+            .name("rift-intel".into())
+            .spawn(move || installer.install_demo_intel());
+        if let Err(error) = spawned {
+            log(&format!(
+                "could not start the threat database install: {error}"
+            ));
+        }
     }
 
     let mut app = QGuiApplication::new();
@@ -83,10 +96,13 @@ fn main() -> ExitCode {
 }
 
 fn start(data: &Path, sandbox: &Path, address: Option<String>) -> Startup {
+    let demo = Path::new(DEMO_INTEL);
     let paths = Paths {
         data,
         sandbox,
         browser: Path::new(BROWSER),
+        worker: Path::new(WORKER),
+        demo_intel: demo.is_dir().then_some(demo),
     };
     match Controller::open(&paths) {
         Ok((controller, recovery)) => {

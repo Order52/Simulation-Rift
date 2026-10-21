@@ -36,5 +36,6 @@ __pycache__/
 # Linux app: crates vendored by CI for the offline Flatpak build
 /linux/vendor/
 /linux/vendor-config.toml
+/linux/intel-demo/
 /.cargo/config.toml
 /build-linux/

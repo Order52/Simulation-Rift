@@ -1,5 +1,7 @@
 #!/bin/sh
 # End-to-end test of the Linux app (docs/architecture.md §9) in Flatpak.
+#   intel    the demo threat database is installed, its rules compiled by
+#            a worker that reported seccomp and Landlock
 #   page     a public page loads through the controller's proxy; seen from
 #            the host, the browser host has no network and every renderer
 #            is sandboxed by the engine; SIGTERM destroys the session and
@@ -67,6 +69,8 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
 {
   echo "## page"
   launch page "$page"
+  wait_count "$out/page.log" "^rift: demo threat database .* installed" 1 120 \
+    || fail "intel: the demo threat database was not installed"
   if loaded page 150; then
     python3 -I "$here/host-check.py" > "$out/page-host.txt" 2>&1
     verdict=$?
