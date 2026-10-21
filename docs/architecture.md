@@ -1,14 +1,15 @@
 # Simulation-Rift — Architecture and Specification
 
-**Version:** 2.2 (21 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
+**Version:** 2.3 (21 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
 **Date:** 21 October 2026
+**Changes in 2.3:** Rift keeps nothing after a session. The Rift Vault (§14 of 2.2: keeping files in age-encrypted storage behind a Keystore key or a passphrase) is removed on both platforms, with its passphrases, lock policy and export; the age code that remains seals each session's quarantine (`rift-core::seal`). Android's home screen is redesigned around opening a link (§10.1), and gains a weekly summary of what Rift checked and stopped, kept as counts only (§10.8). Files can be opened with Rift or shared to it from other apps: each is copied into the session's quarantine and shown in a full-screen viewer (§8.2, §11.1). The Linux app is future work: its code and CI stay, and Android comes first (§9).
 **Changes in 2.2:** the Linux app is built on Qt (QML through cxx-qt, Qt WebEngine from Flathub's BaseApp) instead of GTK4 and WebKitGTK. The browser host runs in a no-network Flatpak sub-sandbox and reaches the web only through a forwarded egress proxy in the controller. PoCs Q1–Q4 measured it ([phase-5-qt-design.md](reports/phase-5-qt-design.md)); §9, §6, B1, ADR-10 and the stack table are revised.
 **Changes in 2.1:** the Android browser moves into its own APK (separate UID, wiped by the system at every reset) behind a network lock: a per-app VPN that forwards nothing, and an authenticated loopback proxy in the controller as the browser's only way out. PoC A8 measured both (ADR-04 revised, ADR-14, INV-14, B2/B8, §8.8, S23–S28).
 **Status:** Approved baseline architecture. Phase 0 feasibility tests are in progress; every claim marked **[PoC]** is unverified until its Phase 0 report says otherwise.
 **Platforms:** Android (API 30+, arm64-v8a first, x86_64 for emulators) and Linux (Flatpak, x86_64 and aarch64)
 **Languages:** Rust (shared core, workers, Linux controller), Kotlin (Android UI and platform glue), QML and C++ (Linux UI and the Qt WebEngine host, kept thin), Python (offline model training only, never shipped)
 
-> Simulation-Rift is a fully local, modular workspace for opening unfamiliar links, downloading and inspecting untrusted files, and keeping chosen files in encrypted storage. It does this by combining OS-enforced isolation, offline-first threat detection, and signed data updates. It never promises perfect isolation. It makes specific, tested claims about named boundaries.
+> Simulation-Rift is a fully local, modular workspace for opening unfamiliar links, downloading untrusted files and viewing them safely, keeping nothing afterwards. It does this by combining OS-enforced isolation, offline-first threat detection, and signed data updates. It never promises perfect isolation. It makes specific, tested claims about named boundaries.
 
 ---
 
@@ -27,7 +28,7 @@
 11. [Rift Files: intake, quarantine, preview, export](#11-rift-files-intake-quarantine-preview-export)
 12. [Rift Scanner](#12-rift-scanner)
 13. [Threat intelligence and signed updates](#13-threat-intelligence-and-signed-updates)
-14. [Rift Vault](#14-rift-vault)
+14. [Rift Vault (removed in 2.3)](#14-rift-vault-removed-in-23)
 15. [Sessions](#15-sessions)
 16. [Rift AI (deferred, gated)](#16-rift-ai-deferred-gated)
 17. [Privacy and network behaviour](#17-privacy-and-network-behaviour)
@@ -64,19 +65,18 @@
 |---|---|
 | Open an unfamiliar link | Rift is chosen from the share sheet or an ACTION_VIEW intent. It runs a local URL check, then opens the link in a restricted, disposable browser session. |
 | Download a file | The file goes into the session quarantine, never to public Downloads. |
-| Import an attachment | Only the file the user picked (SAF / file portal) is copied into quarantine. Nothing else is indexed or enumerated. |
+| Import an attachment | Only the file the user hands over is copied into quarantine. Android: a file opened with Rift or shared to it from another app (a `content:` URI with a read grant). Linux: the file portal. Nothing else is indexed or enumerated. |
 | Inspect a file | Scan status and coverage are shown. Supported formats get a confined preview. |
-| Keep a file | The user saves it to the encrypted vault. It stays untrusted. |
 | Update intelligence | The user fetches or imports a signed pack. After that, the device works offline. |
-| Reset | All session state is destroyed. Saved vault files are preserved. |
+| Reset | All session state is destroyed, downloads included. Nothing a session held is kept. |
 
 ### 2.2 V1 includes
 
-- Browse, download, inspect, save, and reset, end to end.
+- Browse, download, inspect and reset, end to end.
 - Local URL checks: indicator lookup plus explainable heuristics.
 - File checks: SHA-256 indicators, magic-byte type identification, and YARA-X rules.
 - Confined preview of PDF, PNG/JPEG/WebP, and plain text. Markdown, HTML, and SVG are shown as plain text.
-- An encrypted vault, with one default vault.
+- A weekly summary of what Rift checked and stopped, as counts only (§10.8).
 - Signed manual intelligence updates and signed offline import.
 - Labelled demo intelligence packs.
 - Per-platform security and performance evidence reports.
@@ -92,7 +92,8 @@
 - Background update scheduling. Updates are manual in V1.
 - Online reputation providers. The interface is reserved but not built.
 - The AI phishing classifier, which is a gated later phase (§16).
-- Multiple concurrent sessions and multiple vaults.
+- Multiple concurrent sessions.
+- Keeping files after a session. Versions 2.0–2.2 had an encrypted vault for that; 2.3 removed it, since a tool for opening untrusted things once gains little from storing them, and the vault's keys and passphrases were attack surface and burden.
 
 "Any link" means public `http`/`https` URLs subject to policy. It does not mean every authentication flow, DRM stream, app scheme, or download mechanism works.
 
@@ -103,7 +104,7 @@
 In priority order:
 
 1. The user's personal files and other apps' data.
-2. Vault contents and vault keys.
+2. Quarantined downloads, and the per-session keys that encrypt them.
 3. Sensitive device capabilities: camera, microphone, location, contacts, SMS.
 4. The integrity of Rift's code, policy, and intelligence.
 5. The user's existing browser accounts. Rift never imports cookies, passwords, or extensions.
@@ -125,7 +126,7 @@ In priority order:
 ### 3.3 Explicitly out of scope
 
 - A compromised OS, kernel, firmware, or root user.
-- Same-user non-sandboxed processes on Linux reading an *unlocked* vault.
+- Same-user non-sandboxed processes on Linux reading an open session's data or memory.
 - Most hardware and micro-architectural side channels. Spectre-class leaks between sites are reduced by giving each session its own renderer, but are not eliminated.
 - Undiscovered browser-engine or kernel sandbox escapes. These are residual risk (§24).
 - Forensic recovery of deleted flash blocks. Crypto-shredding mitigates this for Rift's own files (§15).
@@ -135,17 +136,17 @@ In priority order:
 | # | Boundary | Enforced by | Strength | Notes |
 |---|---|---|---|---|
 | B1 | Web content → app | Android: Chromium renderer in an `isolated_app` SELinux domain with seccomp-bpf. Linux: Qt WebEngine's renderer sandbox (Chromium's seccomp-bpf, in a portal-spawned Flatpak instance with mount, pid, IPC and network namespaces of its own; Q1, Q2) | Strong; exploit chains exist | One renderer per WebView profile, so there is no site isolation within a session. |
-| B2 | Browser host → vault and core | Android: separate **APK and UID** (`org.simulationrift.browser`). Its data directory is private to it and Rift's is not even mounted in its namespace; the only door is one Binder service exported under a `signature` permission, which checks the caller's UID and signer on every call | Strong; kernel- and SELinux-enforced (PoC A8) | v2.0 used a separate process with the same UID, which was weak. An engine escape now lands in an app that holds no Rift data, keys or code beyond the browser's. The system wipes that app at every reset. |
+| B2 | Browser host → core and quarantine | Android: separate **APK and UID** (`org.simulationrift.browser`). Its data directory is private to it and Rift's is not even mounted in its namespace; the only door is one Binder service exported under a `signature` permission, which checks the caller's UID and signer on every call | Strong; kernel- and SELinux-enforced (PoC A8) | v2.0 used a separate process with the same UID, which was weak. An engine escape now lands in an app that holds no Rift data, keys or code beyond the browser's. The system wipes that app at every reset. |
 | B3 | File content → app | Android: `isolatedProcess` service (random UID, `isolated_app` domain, no permissions). Linux: worker self-lockdown with seccomp-bpf allowlist, Landlock, rlimits, and no_new_privs | Strong for parse-only workers | Workers receive only file descriptors. |
 | B4 | Website → sensors | Permissions are **absent from the manifest** (Android) or denied in WebKit permission callbacks (Linux) | Strong on Android (OS-enforced); policy-enforced on Linux | Callbacks deny as well, as defence in depth. |
-| B5 | Offline attacker → vault | age encryption; the identity is wrapped by Android Keystore or a passphrase (scrypt) | Strong while locked | Leaks object count, ciphertext sizes, and timestamps. |
+| B5 | Offline attacker → quarantine | Each session's downloads are age-encrypted to a key that exists only in the controller's memory and is dropped at reset, before the files are deleted (crypto-shredding) | Strong once the session ends or the controller dies | While the session lasts, the key is in memory. Object count and sizes leak until reset. |
 | B6 | Network or feed attacker → intelligence | TUF metadata (signatures, thresholds, expiry, rollback state), then strict bounded parsing | Strong while keys are protected | Signatures prove origin, not correctness. |
 | B7 | Other apps → Rift's data | Android app sandbox (per-app UID). Flatpak's per-app home on Linux | Strong on Android; partial on Linux | Linux host processes of the same user can read `~/.var/app/<id>`. |
 | B8 | Browser → network | Android: a VPN that applies to the browser app's UID only and forwards nothing, so the kernel routes all of its non-loopback traffic (TCP, UDP, DNS, WebRTC) into a dead end; the browser's only way out is the controller's loopback proxy (`rift-core::egress`), which needs a per-session token and applies INV-13 to every connection. Linux: §9.2 | Strong for page content; strong against direct sockets from escaped browser code except to **loopback** (PoC A8) | Pages cannot reach the LAN, the router, loopback services or cloud metadata addresses. The proxy sees host names and ports, not HTTPS content. Only one VPN can run on a device; without it the browser runs only in a stated reduced mode (§8.8). |
 
 ```text
                  ┌──────────────── TRUSTED (controller APK) ───────────┐
-  user ──UI──▶   │ main process: UI · rift-core · vault · intel ·       │
+  user ──UI──▶   │ main process: UI · rift-core · quarantine · intel ·  │
                  │ updater · policy · egress proxy (127.0.0.1) · VPN    │
                  └───┬────────────────────┬──────────────────┬──────────┘
             B2 (strong: other UID,   B8: the only way    B3 (strong)
@@ -176,10 +177,10 @@ Each invariant has a test ID in §23. An invariant without a passing test is rep
 | INV-6 | The browser exposes no JavaScript interface or message channel to web content. File and content access are disabled. `intent:`, `file:`, `content:`, and custom schemes are never forwarded automatically. Mixed content is never allowed. Multiple windows are disabled. A persistent trusted indicator survives fullscreen. The file chooser is denied unless the user enables it for the session. |
 | INV-7 | Browsing is refused if the engine's renderer sandbox cannot be confirmed. On Android that means the renderer is not multi-process or WebView is below the minimum version. On Linux that means the WebKit sandbox is not active. If the renderer crashes, the session is torn down and the app does not crash. |
 | INV-8 | Session reset terminates the session's processes, deletes session data, and verifies the deletion. Only then does it report success, and it advances the session generation. Results from older generations are rejected. A failed cleanup is shown as failed. On Android the browser app is wiped by the system (`clearApplicationUserData`), which kills all its processes and deletes all its data, at every reset and before the first session after a launch. |
-| INV-9 | Vault and quarantine plaintext is written to persistent storage only in encrypted form. Preview plaintext lives in RAM-backed fds (memfd/ashmem) **[PoC A7/L3]**. |
+| INV-9 | Quarantine plaintext is written to persistent storage only in encrypted form. Preview plaintext lives in RAM-backed fds (memfd/ashmem) **[PoC A7/L3]**. |
 | INV-10 | An intelligence snapshot is activated only after full TUF verification, staging, schema validation, and smoke tests, all followed by one atomic pointer swap. Expired network metadata and rollbacks are rejected. Recovery is done with a new, higher-versioned release, never by resetting anti-rollback state. |
 | INV-11 | In Local Protection mode, Rift's own code sends no content-specific requests (URLs, hashes, files) to any third party. Engine features that do, such as Safe Browsing, are disclosed and controlled by the user. |
-| INV-12 | The app opts out of backup and device-to-device transfer for all data. Vault screens set `FLAG_SECURE`. |
+| INV-12 | The app opts out of backup and device-to-device transfer for all data. No recents snapshot of either app's windows is stored (API 33+). |
 | INV-13 | Controller-owned network transfers (downloads, updates) re-check every redirect hop. They resolve DNS once per hop and refuse loopback, private, link-local, and multicast destinations unless the user explicitly allows them. They enforce byte limits on the stream, not on `Content-Length`. |
 | INV-14 | While a session is open, the browser has no network path except the controller's egress proxy (Android: the browser UID's traffic is routed into a VPN that forwards nothing, and WebView's proxy override has its implicit bypass rules removed; Linux: the browser host runs in a sub-sandbox with no network, and its connections reach the proxy only over its private socketpair). The proxy accepts only this session's token (Android) or the browser host's socketpair (Linux) and applies INV-13's destination rules to every connection. If the lock is lost, the session ends and the browser is wiped. Browsing without the lock is possible only in a reduced mode the user chooses for one session, which the trusted UI names. |
 
@@ -215,9 +216,9 @@ link ─▶ url::canonicalize ─▶ intel lookup + heuristics ─▶ policy ─
                                                                        │ user: preview
                                                                        ▼
             decrypt into memfd ─▶ worker renders one page ─▶ validated bitmap ─▶ trusted UI
-                                                                       │ user: save
+                                                                       │ reset
                                                                        ▼
-                            re-encrypt to vault identity ─▶ vault index update (atomic)
+                            key dropped ─▶ session directory deleted (crypto-shredded)
 ```
 
 ## 7. Shared Rust components
@@ -236,7 +237,7 @@ The workspace has a few crates with explicit dependency direction: `rift-protoco
 | `intel` | Snapshot store (memory-mapped sorted hash tables), lookups, and staging and atomic activation. |
 | `update` | TUF client integration (`tough`) and offline import. |
 | `scan` | Orchestration, cache keys, result vocabulary, coverage accounting. The engines themselves run in the worker. |
-| `vault` | age-based object encryption, the encrypted index, lock/unlock, export authorization. |
+| `seal` | age encryption of each quarantined object to its session's in-memory key, with the object's hash, size and identity checked when it is opened. |
 | `filetype` | Magic-byte identification over the first 8 KiB (`infer` crate). Bounded; no deep parsing. |
 | `worker` | The `WorkerLauncher` trait and job lifecycle: deadline, cancellation, retirement, result validation. |
 
@@ -285,10 +286,10 @@ Everything else is a concrete type.
 
 ### 8.2 Manifest
 
-- Permissions: `INTERNET`; `USE_BIOMETRIC` for the vault's unlock prompt (§8.7; a normal permission that only lets the app ask the system to authenticate the user); `HIDE_OVERLAY_WINDOWS` in both apps (a normal permission that lets a window hide other apps' overlays, §10.7); and `POST_NOTIFICATIONS` if transfer progress notifications are adopted. The browser APK also requests `ACCESS_NETWORK_STATE` (a normal permission), so that it can confirm its default network is the lock before it loads a page (§8.8). **No** camera, microphone, location, contacts, SMS, storage, accessibility, device-admin, or install-packages permissions. Because the permissions are absent, the OS denies them regardless of WebView callbacks (B4).
+- Permissions: `INTERNET`; `HIDE_OVERLAY_WINDOWS` in both apps (a normal permission that lets a window hide other apps' overlays, §10.7); and `POST_NOTIFICATIONS` if transfer progress notifications are adopted. The browser APK also requests `ACCESS_NETWORK_STATE` (a normal permission), so that it can confirm its default network is the lock before it loads a page (§8.8). **No** camera, microphone, location, contacts, SMS, storage, accessibility, device-admin, or install-packages permissions. Because the permissions are absent, the OS denies them regardless of WebView callbacks (B4).
 - `android:allowBackup="false"` and `dataExtractionRules` that exclude everything (INV-12).
 - `usesCleartextTraffic` is set only as required for user-initiated HTTP browsing. Rift's own traffic is HTTPS-only.
-- Intent filters: `ACTION_VIEW` for http/https (Rift appears as a browser choice) and `ACTION_SEND` with `text/plain` (a link in shared text, §10.2). Files shared from other apps (`*/*`) are not accepted yet; files reach Rift only as downloads.
+- Intent filters: `ACTION_VIEW` for http/https (Rift appears as a browser choice) and `ACTION_SEND` with `text/plain` (a link in shared text, §10.2). Since 2.3 also files: `ACTION_VIEW` of a `content:` URI for images, PDF and plain text, and `ACTION_SEND` of any type with `EXTRA_STREAM` (§11.1, intake). A share with a stream is taken as a file, otherwise as a link; `file:` URIs are never read (they reach the link check, which refuses the scheme).
 - Components:
   - Two APKs signed with the same key (ADR-04, revised in v2.1). The controller, `org.simulationrift.app`, holds everything below except the browser. The browser, `org.simulationrift.browser`, holds only `BrowserActivity` (`android:process=":web"`) and `SessionService` (its default process, which never loads WebView). Both define the `signature` permission `org.simulationrift.permission.RIFT`; each exported component requires it, and each side also checks the calling UID's package and signer on every call. The browser has no launcher entry.
   - `MainActivity` (main process).
@@ -302,7 +303,7 @@ Everything else is a concrete type.
 
 | Process | Holds | Why it exists |
 |---|---|---|
-| controller main | UI, rift-core, vault identity (when unlocked), intel, updater, egress proxy, network lock | Trusted controller. |
+| controller main | UI, rift-core, the session's quarantine key, intel, updater, egress proxy, network lock | Trusted controller. |
 | browser `:web` | WebView host and its network service | The process an engine escape reaches. It runs under the browser APK's UID, which owns nothing of Rift's, and its traffic has no route except the egress proxy (§8.8). |
 | browser default process | `SessionService`: hello, inventory, wipe | Lets the controller have the system wipe the browser app and check that a fresh instance holds nothing. Never loads WebView. |
 | renderer | Web content | Provided and sandboxed by WebView (B1). |
@@ -310,8 +311,8 @@ Everything else is a concrete type.
 
 **What an engine escape reaches (v2.1, PoC A8).** Code running in the browser's `:web` process after an escape has the browser APK's UID. Measured from that process on API 30 and 36:
 
-- Rift's data directories are not visible at all (`ENOENT`): the vault, quarantine, intel and session marker are out of reach, and Keystore keys belong to the controller's UID.
-- The controller's private services cannot be bound (`SecurityException`). The one exported interface, `CoreService`, offers only navigation decisions, typed-address normalization, download submission, the sandbox and network reports, reset and renderer-gone. It has no vault, file or export operations, and every call is checked for the browser's UID and signer and the current session generation.
+- Rift's data directories are not visible at all (`ENOENT`): quarantine, intel and session marker (and, before 2.3, the vault) are out of reach, and Keystore keys belong to the controller's UID.
+- The controller's private services cannot be bound (`SecurityException`). The one exported interface, `CoreService`, offers only navigation decisions, typed-address normalization, download submission, the sandbox and network reports, reset and renderer-gone. It has no file operations, and every call is checked for the browser's UID and signer and the current session generation.
 - TCP, UDP and DNS to anything but loopback are dropped by the network lock; through the proxy only public destinations (or the user's per-session exceptions) are reachable.
 
 What it still has: the browser app's own state for the current session (the pages, cookies and downloads seen in it), the `INTERNET` permission (useless outside loopback while the lock holds), the ability to draw anything inside the browser window, and **loopback**, which no VPN covers: other apps' local servers on the device remain reachable from escaped code (not from pages, which the proxy refuses). Because the system wipes the app at each reset, the escape does not survive into the next session unless it also escapes Android's app sandbox.
@@ -382,14 +383,9 @@ PoC A3 (API 30 and 36) measured this. GET, Content-Disposition, redirect and coo
 
 ### 8.7 Keys
 
-- The vault-wrapping key is AES-256-GCM in Android Keystore:
-  - Non-exportable; StrongBox if present, otherwise TEE.
-  - `setUnlockedDeviceRequired(true)`.
-  - By default `setUserAuthenticationParameters(0, BIOMETRIC_STRONG | DEVICE_CREDENTIAL)`, so every unwrap needs authentication through BiometricPrompt with a CryptoObject.
-- Without a secure lock screen, auth-bound keys are impossible. The user must then choose a vault passphrase (age scrypt). Rift never silently stores an unprotected key.
-- Every passphrase wrapping (the vault passphrase, the recovery passphrase) uses one fixed scrypt work factor, N = 2^17 (128 MiB), and unlocking accepts exactly that factor. age would otherwise time the device to pick it and accept at most its current measurement + 4, so a busy moment refused the right passphrase (Phase 4, finding 6).
-- Key invalidation (for example, new biometrics enrolled) makes the vault unrecoverable without the optional recovery passphrase. This is stated when the vault is created.
-- **As built (Phase 4).** `VaultKeystore` creates the key only for a new vault (never while one exists, since a new key replaces the old one), StrongBox first and the TEE otherwise, and authorizes each wrap and unwrap through the platform `android.hardware.biometrics.BiometricPrompt` with a `CryptoObject` (no AndroidX dependency; minSdk 30). The wrapped identity is `[format 1][12-byte IV][ciphertext and GCM tag]`. On the API 35 emulator, removing the PIN **deleted the key entry outright** rather than leaving an invalidated key, so both cases are reported with the same sentence and the user is offered deletion of the vault. The emulator's Keystore reports `software only` (it has no TEE); hardware backing is unverified until a physical phone is tested. The **recovery passphrase** is optional and set after creation: `identity.recovery` holds a second, age scrypt-encrypted copy of the identity. When the key is gone, the vault opens with it, and "protect again" makes a new key (only once the old one is gone, since a new key replaces it) and replaces `identity.platform`. A stale recovery copy is deleted when a new vault is created.
+Rift holds no long-lived user keys and asks for no passphrase. Each session's quarantine is sealed to an age X25519 key generated in memory when the session starts and dropped at reset, before the session's files are deleted (§15). The only persistent keys are the threat database's trusted TUF root, which ships in the APK, and the APK signing keys, which never enter the repository.
+
+Versions 2.0–2.2 also had a vault key in Android Keystore (auth-bound, StrongBox or TEE) and passphrase wrappings with a fixed scrypt factor; both went with the vault in 2.3. A vault left by an earlier build is deleted at start-up: its files, its lock settings and its Keystore entry.
 
 ### 8.8 Network lock **[PoC A8]**
 
@@ -406,6 +402,8 @@ Without the VPN a proxy is not a boundary (A8 finding 15): WebRTC sends UDP arou
 
 ## 9. Linux platform
 
+> **Future work (v2.3).** Android comes first; the Linux app is not a release target yet. Its code and CI stay, kept building and passing, and it follows the same scope (no vault since 2.3).
+>
 > **Revised 21 Oct 2026 (v2.2).** The Linux app uses Qt, not GTK4 and WebKitGTK, and is built last, after Android (§22). The reviewed v2.0 GTK4 design is in this file's history (v2.1, commit 2040c5c). The evidence for this section is PoCs Q1–Q4 in [phase-5-qt-design.md](reports/phase-5-qt-design.md), which also has the process and message details.
 
 ### 9.1 Distribution
@@ -440,9 +438,9 @@ Rift on Linux scans and previews images and text; PDF files are not previewed, a
 
 Bubblewrap is not used for workers. It needs user namespaces, which are blocked inside Flatpak and restricted on Ubuntu, and a seccomp allowlist is the stronger control for fd-only workers anyway. `flatpak-spawn --sandbox --no-network` may be added later as an extra layer.
 
-### 9.4 Vault
+### 9.4 Nothing kept
 
-rift-core's vault (§14) under the app's data directory, protected by a passphrase only: Linux has no platform key Rift trusts yet (the Secret portal is a later option). It locks on request, after five minutes without a vault action, and when the window is minimized or hidden. Export writes to a file the user chooses through the file chooser portal, after the same warning as on Android.
+As on Android, nothing a session held is kept after it ends. The vault of 2.2 (passphrase only on Linux) is removed with its module, its QML and its end-to-end steps.
 
 ## 10. Rift Browser
 
@@ -451,6 +449,7 @@ rift-core's vault (§14) under the app's data directory, protected by a passphra
 - Address bar, back/forward, reload, the session indicator, Reset, a downloads list, and a protection status chip.
 - Trusted controls live outside web content and cannot be covered (INV-6). On Android the bar is drawn above the engine's area, which is clipped to its bounds: an engine that has not drawn a page yet fills its whole clip, and covered the bar until Phase 7 (finding 21). n5 checks that the bar is drawn.
 - No password manager, no autofill, no import from other browsers, and no extensions.
+- **The controller's home screen (2.3).** One screen, light or dark with the system and in the wallpaper's colours where Android offers them (API 31+), with fixed colours for safe, warning and danger that the wallpaper never changes. From the top: the logo and one word on whether browsing is protected now; the session card with the address field and "Open safely", and "New session"; the live check (§10.5); the weekly summary (§10.8); the session's files, each with its scan verdict and "View safely", which opens a full-screen viewer (the verdict, then what the isolated worker drew, with pinch to zoom, or the escaped text). A file opened with Rift or shared to it from another app opens straight in the viewer; the protection details, folded unless the network lock needs the user; the threat database; the licences. Nothing on it needs a password.
 
 ### 10.2 Navigation rules
 
@@ -509,7 +508,7 @@ While a page is open, the trusted UI shows, as it happens, what the page has tri
 
 Besides the browser's separate UID, the network lock and the wipe (§8.3, §8.8, §15), the browser window keeps page content out of shared system state where Android allows it:
 
-- **Recents:** both apps' windows disable their recents screenshot (`setRecentsScreenshotEnabled(false)`, API 33+), so page images, and the names and previews of downloaded and kept files, are not stored by the system for the task switcher. Tested by H1 for the browser, which decodes the snapshot Android stores.
+- **Recents:** both apps' windows disable their recents screenshot (`setRecentsScreenshotEnabled(false)`, API 33+), so page images, and the names and previews of downloaded files, are not stored by the system for the task switcher. Tested by H1 for the browser, which decodes the snapshot Android stores.
 - **Keyboard:** every text field asks the keyboard not to learn (`IME_FLAG_NO_PERSONALIZED_LEARNING`): fields in pages (set by the browser's WebView) and Rift's own fields in both apps (set through Compose's `InterceptPlatformTextInput`), so addresses and words typed into a hostile page should not enter the keyboard's dictionary. Keyboards may ignore the flag. Tested by h2.
 - **Not closed:** a page can still write to the system clipboard after a user gesture; there is no WebView control for it (§24).
 
@@ -520,13 +519,21 @@ Every window of both apps is set up by one shared guard (`WindowGuard`, in `:bri
 - **Overlays.** An app allowed to "display over other apps" could draw over Rift's trusted bar, its interstitials or the reduced-isolation choice, and mislabel them. Rift's windows hide every other app's overlay while they are shown (`setHideOverlayWindows`, API 31+, with the normal permission `HIDE_OVERLAY_WINDOWS`); on API 30 a touch that passed through another app's window is dropped instead (`filterTouchesWhenObscured`). Tested by h3: an outsider's overlay covering 97 % of its own window covers 0 % of Rift's home screen and browser in screenshots (97 % of both without the guard).
 - **Autofill.** An autofill service is told about every focused field and the form around it, and can fill it or be offered what was typed. Rift has no password manager and no autofill (§10.1). Neither app's views are given to autofill: Compose's text fields are marked as holding no autofill data (`contentDataType = None`), as Compose reports them to autofill itself, and the WebView describes no page to autofill (no virtual structure) and accepts no fill. The engine still tells the system that a page field was focused, so the service learns that Rift's browser is in use and when a field has the focus, but nothing of the page: its address, texts and hints. Tested by h3 with an outsider's autofill service: without these, it was asked about the home screen's address field and the page's sign-in form.
 - **Accessibility services.** A service with the accessibility permission can read every window, which is how most Android malware reads screens. On API 34+ both apps' windows are shown only to services that declare themselves tools for users with disabilities (`setAccessibilityDataSensitive`); a tool such as a screen reader still reads everything, and a malicious app can declare itself a tool, which Google Play reviews but the OS does not check. Tested by H4: an outsider's non-tool service reads its own window and nothing of Rift's (it read Rift's home screen without the guard).
-- **Screen capture.** While the vault is unlocked the controller's window is secure (`FLAG_SECURE`), so screenshots, screen recordings and casting show it black (INV-12). Tested by h3: 99.8 % black while unlocked, 0 % with the vault locked or absent. The browser window is not secure, so that the user can take screenshots of pages.
+- **Screen capture.** Neither window is secure (`FLAG_SECURE`), so that the user can take screenshots of pages and of what Rift found. Until 2.3 the controller's window was secure while the vault was unlocked.
 
 None of this is a boundary against code running as Rift, and on API 30–33 the accessibility protection does not exist.
 
 An "isolated volume" for the browser is not something an ordinary Android app can create: apps cannot mount file systems, and the Android Virtualization Framework's VM permission (`MANAGE_VIRTUAL_MACHINE`) is signature/privileged. The equivalent the platform allows is the browser app's own UID and data directory, which only it can read and which Android deletes at every reset. On Linux (Phase 5) the browser will run in its own namespaces.
 
-## 11. Rift Files: intake, quarantine, preview, export
+### 10.8 Weekly summary
+
+The home screen shows the last seven days: threats blocked, dangerous files, warnings and links checked in four tiles, threats, dangerous files and warnings per day in a bar chart (or a plain "nothing dangerous" line when there were none), and the number of files scanned.
+
+- **What is counted.** Every event of the live watch (§10.5) at warning or danger level, the first time it is seen in a session for its subject: a confirmation the user may click through is a *warning*; a known-malicious or suspicious download is a *dangerous file*; anything else Rift stopped (a listed address or request, an app link, a request to the local network, a connection around the proxy, a permission) is a *threat blocked*. *Links checked* counts the core's main-frame decisions; *files scanned* counts verdicts. The same address blocked twice in one session counts once, so these are distinct events, not requests.
+- **What is stored.** Counts per local day for 14 days, in `files/rift/stats` (Rift's own state, on the browser disposal's allowlist), written atomically: a header line, then `<epoch day> <count>…`. No address, host, file name or time of day. A damaged line is skipped and logged; a file of another format is not read. A clock set back drops the days it puts in the future.
+- **Tested.** `TalliesTest` (JVM): round trip, window, damaged lines, saturation, merging a file read after counting began. On the API 35 emulator, w1's page produced 8 threats blocked, 2 dangerous files, 10 links and 3 files scanned, and the file held only `20747 8 0 2 10 3`.
+
+## 11. Rift Files: intake, quarantine, preview
 
 ### 11.1 Object lifecycle
 
@@ -534,14 +541,13 @@ An "isolated volume" for the browser is not something an ordinary Android app ca
 RECEIVING ─▶ COMMITTED(immutable, sha256) ─▶ SCANNING ─▶ SCANNED(verdict bound to versions)
     │ abort/limit                                   │
     ▼                                               ├─▶ PREVIEW (worker, on request)
- DISCARDED                                          ├─▶ SAVE TO VAULT (re-encrypt; still untrusted)
-                                                    ├─▶ EXPORT (explicit, warned, original bytes)
-                                                    └─▶ DELETE
+ DISCARDED                                          └─▶ DELETE (at reset, with the session)
 ```
 
 - Storage names are app-generated `ObjectId`s. Server-supplied filenames are only display metadata, normalized to remove control characters, path separators, bidi overrides, and excessive length.
 - Limits are enforced on the stream: 100 MiB per object and 500 MiB per session by default. Space is reserved before starting.
 - The hash covers the final stored plaintext. Commit happens only after a complete transfer.
+- **Intake from other apps (Android, 2.3).** The controller reads only the URI it was granted, through the `ContentResolver`, and streams it in 256 KiB chunks into `Sessions::begin_intake` (rift-ffi `intake.rs`). Nothing is parsed on the way. The file is sealed and limited exactly as a download is (same reservation, 100 MiB limit, commit only when complete, cancelled at reset), then scanned and previewed. URIs whose provider belongs to Rift's own packages are refused, so another app cannot point Rift at Rift's own state (a confused deputy). The name and type the other app gives are display metadata only. The source is shown as "another app": the sender cannot be verified. Each intake reads on its own thread, so a provider that never finishes holds up only that file, never downloads. A file still arriving at reset is discarded.
 - Quarantine files are encrypted with a **per-session ephemeral age identity** held only in memory. When a session is destroyed or the app is killed, the key is gone and leftover ciphertext is unreadable (crypto-shredding). The cost is that quarantine content does not survive a process kill. That is deliberate for disposable sessions.
 
 ### 11.2 Supported types
@@ -559,9 +565,9 @@ The core decrypts the object into a RAM-backed fd: `memfd_create` on both platfo
 
 **Fallback if the Android PoC fails:** an unlinked-after-open file in `noBackupFilesDir`. This would be documented as a reduction of INV-9 rather than done silently.
 
-### 11.4 Export
+### 11.4 No export
 
-Export is an explicit user action through SAF or the file portal, with a warning that the copy leaves Rift's protection and is **not sanitized**. Export is never automatic and never triggered by a website. Reconstructed "safe PDF" export, Dangerzone-style, is future work [R24].
+Files never leave Rift: they are viewed inside it (§11.3) and deleted with the session. Until 2.3 a file kept in the vault could be exported, after a warning, through SAF or the file portal. Reconstructed "safe PDF" export, Dangerzone-style, remains possible future work [R24].
 
 ## 12. Rift Scanner
 
@@ -572,7 +578,7 @@ Export is an explicit user action through SAF or the file portal, with a warning
 3. **Rules (worker):** YARA-X with the curated pack rules, bounded by deadline (15 s default) and match count.
 4. **Result:** findings, coverage, and versions. The cache key is `(sha256, yara-x version, snapshot id, policy version)`.
 
-A new snapshot invalidates cached conclusions as *current*. They remain visible as history. Rescans happen on access or on request, never as an automatic whole-vault sweep.
+A new snapshot invalidates cached conclusions as *current*. They remain visible as history. Rescans happen on request.
 
 ### 12.2 URL heuristics (V1, explainable, never "known malicious")
 
@@ -635,33 +641,11 @@ Each finding carries: source, rule or indicator ID, object hash, engine version,
 
 No shared upstream API secret ships in the app. Scraped data is never substituted for licensed feeds.
 
-## 14. Rift Vault
+## 14. Rift Vault (removed in 2.3)
 
-### 14.1 Format
+Versions 2.0–2.2 let the user keep a downloaded file after its session in an encrypted vault: age objects and an HMAC-authenticated index, the identity wrapped by an auth-bound Android Keystore key or a passphrase (scrypt, fixed N = 2^17), an optional recovery passphrase, a lock policy, rescans with the current database, and a warned export. Phase 4 built and tested it on Android and Phase 5 on Linux; that design and its evidence are in this file's history (v2.2) and in the Phase 4 report.
 
-- **Objects:** each saved object is an age v1 file [R19] encrypted to the vault's X25519 recipient, stored as `vault/objects/<ObjectId>.age`. ObjectIds are random, so filenames do not reveal content hashes.
-- **Index:** `vault/index.age`, a postcard-serialized `VaultIndex { format_version, generation, entries[] }`, encrypted to the same recipient. Each entry records the ObjectId, plaintext SHA-256, size, display name, detected type, source kind, an optional source URL, timestamps, and the last scan summary.
-- **Writes:** write `index.age.tmp`, fsync it, rename it over the old index, and fsync the directory. `index.age.prev` is kept for crash recovery.
-- After decrypting an object, the plaintext hash is checked against the index. This detects ciphertext swapped between objects.
-- **The index is authenticated, not just encrypted** (Phase 0 finding, X1). age recipient encryption is not sender-authenticated: anyone who knows the public recipient can produce a well-formed age file. The index plaintext therefore ends with an HMAC-SHA256 keyed from the vault identity. The MAC is verified *before* the index is parsed. Objects are trusted only through the hash and size recorded in this authenticated index.
-- **Format 2 (Phase 4).** Each entry may carry its latest scan result (status, database snapshot, engine, demo flag, finding ids, time): the verdict it had when it was kept, replaced when the user scans it again with the current database (§12.3: on request, never as a sweep). It is shown as a past result with its date, never as a current verdict. Format 1 indexes are still read (without verdicts), and are written back as format 2.
-- If the current index is absent (a crash between the two renames), the previous index is used. If it is present but invalid, reading fails rather than silently falling back, which would amount to a rollback.
-- **Why age:** a reviewed specification, chunked STREAM construction with truncation detection, and a maintained Rust implementation. It replaces a custom libsodium format (ADR-07). The crate is pre-1.0, so it is pinned and covered by format regression fixtures.
-
-### 14.2 Keys
-
-- **Android:** the vault identity (age X25519 secret) is wrapped by the Keystore key (§8.7).
-- **Linux:** the identity is stored as an age **passphrase-encrypted** (scrypt) identity file. A Secret Service adapter is post-V1.
-- The identity exists in memory only while unlocked. It is zeroized on lock on a best-effort basis; Rift does not claim every runtime copy is erased.
-- Lock happens on user request, after an inactivity timeout (default 5 min), and when the app is backgrounded (configurable). On lock, preview jobs are stopped, fds are closed, displayed plaintext is cleared, and the identity is dropped.
-- **As built (Phase 4, Android).** `Locker` keeps one `VaultHandle` (rift-ffi over `rift-core::locker`) in `files/rift/vault`, on its own executor. It locks on request, on `onStop` (except while a system screen Rift opened for the vault is in front: the export picker or the authentication prompt), and 5 minutes after the last vault action. While the vault is unlocked, the user can turn off the background lock (with a warning) and choose the inactivity limit from 1, 5, 15 or 30 minutes; there is no "never". The choice is kept in `files/rift/vault-lock` (not secret; an unreadable file gives the defaults). Kept files are previewed like quarantined ones (a fresh isolated worker, or escaped text); on lock the shown previews are cleared, and the core refuses the reply of any vault preview started before the lock, even after a new unlock. Secrets cross the FFI as byte arrays, which both sides overwrite after use; UniFFI's own buffer copies and Compose's immutable `String` for the passphrase field are not erased. "Keep in the vault" copies a quarantined file (decrypted with the session key in memory, verified, sealed to the vault identity); the quarantined copy still ends with the session. Export goes through `CreateDocument` after a warning that the copy leaves Rift's protection and was not made safe.
-
-### 14.3 Leakage and limits
-
-- **Leaked:** object count, ciphertext sizes, file modification times, and the index size.
-- **Not covered:** WebView and WebKit cookies and cache. These are session-scoped and destroyed on reset, but are not vault-encrypted.
-- **Scale limit:** the single-file index is rewritten on each change. That is fine up to roughly 10,000 objects. Migrate (for example to SQLCipher) only if that limit is reached.
-- Uninstalling the app deletes the vault with the app's data. Losing or invalidating the key loses the vault unless a recovery passphrase was set. Both are stated plainly to the user.
+2.3 removes it. Rift is for opening untrusted links and files once, safely; it keeps nothing afterwards, so it has no passphrases, no long-lived keys and no export. What remains of its code is the age sealing of each session's quarantine (`rift-core::seal`, §11.1), which keeps its checks: an object opens only under its session's key, with its recorded size, hash and identity, and truncation, tampering and swapped objects are detected (X1, S18). A vault left by an earlier build is deleted at start-up (§8.7).
 
 ## 15. Sessions
 
@@ -766,7 +750,7 @@ Each decision lists what was chosen, what was rejected, why, and what would make
 | 04 | **Two APKs in V1** (revised 20 Oct 2026): the browser in its own app with its own UID, wiped by the system at each reset | Single APK with a `:browser` process (v2.0); work profile | The revisit condition of v2.0 was met: the product must protect the vault and Rift's data against a full browser-host compromise ("real isolation", not only disposal). PoC A8 showed the UID boundary hides Rift's data entirely and that the system wipe is reliable and fast (under 1.7 s to a clean instance). The cost: two APKs to install, sign with one key, and release together. | A platform mechanism gives a stronger per-session identity (for example a per-session user or a supported VM) to third-party apps. |
 | 05 | Linux workers: seccomp + Landlock self-lockdown | Bubblewrap | Bubblewrap needs user namespaces, which Flatpak blocks and Ubuntu 23.10+ restricts [R13]. A syscall allowlist is the stronger control for fd-only workers. | — |
 | 06 | Linux PDF: PDFium | Poppler (GPL), MuPDF (AGPL) | Permissive license, the same engine family as Android's PdfRenderer, and heavy fuzzing. | — |
-| 07 | Vault: age format and an encrypted index file | libsodium plus a custom format; SQLite with encrypted fields; SQLCipher | Avoids designing our own crypto format. Encrypting all metadata leaks less than per-field encryption. `sodiumoxide` has been archived since 2021. | More than 10,000 objects → SQLCipher. |
+| 07 | Vault: age format and an encrypted index file (**superseded in 2.3**: the vault is removed; age still seals the quarantine) | libsodium plus a custom format; SQLite with encrypted fields; SQLCipher | Avoids designing our own crypto format. Encrypting all metadata leaks less than per-field encryption. `sodiumoxide` has been archived since 2021. | More than 10,000 objects → SQLCipher. |
 | 08 | Intel: memory-mapped sorted hash tables plus Safe Browsing canonicalization | SQLite; cleartext lists | Trivially validated, fast, compact, atomic to swap, and no complex parser in the update path. | — |
 | 09 | TUF via `tough` | A hand-rolled signed manifest; `rust-tuf` | Root rotation, thresholds, and freeze and rollback protection come from an established framework. | — |
 | 10 | Linux distribution: Flatpak first, on the KDE runtime with the QtWebEngine BaseApp (revised 21 Oct 2026; previously the GNOME runtime with WebKitGTK) | Distro packages | One tested Qt WebEngine, patched by the runtime and BaseApp maintainers, with renderers sandboxed through the portal (Q1). | — |
@@ -816,7 +800,7 @@ Simulation-Rift/
 | **1: Foundations** | Workspace, CI, `rift-protocol`, `rift-core` (object, transfer, session, policy, url, intel, vault format) on the host | Unit, property, and fuzz tests; deny/clippy clean; report. |
 | **2: Android vertical slice** | Compose shell, `:browser` session, captured download, isolated preview, reset and recovery | Security tests S1–S12 pass on the device matrix; report. |
 | **3: Scanner and signed intel** | YARA-X job, verdict cache, TUF update and import, demo pack, `tools/` pack builder | Update-failure suite; offline operation; report. |
-| **4: Vault** | Keystore and passphrase key providers, lock/unlock, save and export UI | Crypto and lifecycle tests; plaintext-on-disk inventory clean; report. |
+| **4: Vault** (removed in 2.3) | Keystore and passphrase key providers, lock/unlock, save and export UI | Crypto and lifecycle tests; plaintext-on-disk inventory clean; report. |
 | **5: Linux** | Qt desktop app (decided 20 Oct 2026; it replaces the GTK4 + WebKitGTK plan), Flatpak, worker lockdown, shared core | Same functional contract plus Linux confinement tests; report. |
 | **6: AI experiment** | Training notebook, model card, Rust inference | Ships only if it adds measured value within budget. |
 | **7: Hardening** | Fuzz campaigns, fault injection, privacy captures, ProxyController study, dependency review | Release gates (§24). |
@@ -840,7 +824,7 @@ Simulation-Rift/
 | L3 | Is the sealed-memfd output immutable? | After sealing, writes from the worker fail; the controller verifies the seals. |
 | L4 | Can WebKitGTK run in a no-network Flatpak sub-sandbox behind a forwarding proxy? (v2.1) | Pages load through the controller's proxy; direct connections and DNS from the sandbox fail; the WebProcess sandbox is still active. |
 | Q1–Q4 | The Qt redo of L1, L4 and L2 (v2.2): renderer sandbox, network lock, cxx-qt build, worker lockdown inside Flatpak | See [phase-5-qt-design.md](reports/phase-5-qt-design.md). All four pass in CI (20–21 Oct 2026). L1 and L4 as written apply to the superseded WebKitGTK design. |
-| X1 | Does the vault format detect damage? | Round trip works; truncation, tampering, swapped objects, and a wrong key are each detected. |
+| X1 | Does the sealed-object format (the vault's until 2.3, the quarantine's since) detect damage? | Round trip works; truncation, tampering, swapped objects, and a wrong key are each detected. |
 | X2 | Can TUF be verified offline on Android targets? | A `tuftool` repository verifies through file transport. Tampering, rollback, expiry, and path traversal are rejected. Cross-compiles for Android. |
 | X3 | Are URL lookups fast and correct? | Canonicalization passes the published Safe Browsing examples; p95 lookup ≤ 5 ms with 1 million entries. |
 
@@ -859,14 +843,14 @@ Simulation-Rift/
 | S9 | Redirect to a private or loopback address | Refused | INV-13 |
 | S10 | Traversal or control characters in a filename | Display name normalized; storage unaffected | §11.1 |
 | S11 | Bytes change after a scan | New object; old verdict not reused | INV-4 |
-| S12 | Reset with a saved vault object | Session state gone; vault object intact | INV-8 |
+| S12 | Reset after browsing and downloads | Every session store gone, quarantine included | INV-8 |
 | S13 | Kill during reset | Recovery runs before a fresh session is shown | INV-8 |
 | S14 | Renderer crash | Session torn down; app alive | INV-7 |
 | S15 | Unsupported WebView configuration (simulated) | Browsing refused | INV-7 |
 | S16 | Update with a bad signature, hash, version, expiry, or path | Rejected; current snapshot retained | INV-10 |
 | S17 | Interrupted update | Old snapshot active; no mixture of versions | INV-10 |
-| S18 | Vault truncation, tamper, swap, or wrong key | Detected; no partial plaintext released | §14 |
-| S19 | Plaintext-on-disk inventory after preview, lock, or kill | None found | INV-9 |
+| S18 | Sealed-object truncation, tamper, swap, or wrong key | Detected; no partial plaintext released | §11.1, §14 |
+| S19 | Plaintext-on-disk inventory after preview or kill | None found | INV-9 |
 | S20 | Local mode traffic capture | No content-specific third-party requests from Rift | INV-11 |
 | S21 | Demo rule and indicator match | Expected finding with versions | §12 |
 | S22 | New pack adds or removes a rule | Cache invalidation is correct | §12.1 |
@@ -877,7 +861,7 @@ Simulation-Rift/
 | S27 | Reset after a page set cookies and storage | The system wiped the browser app: new process, no files, no state in the next session | INV-8 |
 | S28 | The network lock is lost mid-session (another VPN starts) | The session ends and the browser is wiped | INV-14 |
 
-Unit, property, and fuzz testing cover URL canonicalization, the table validator, protocol decoding, the policy decision table, session transitions, quota accounting, and the vault format. Harmless fixtures only: no live malware in CI or demos.
+Unit, property, and fuzz testing cover URL canonicalization, the table validator, protocol decoding, the policy decision table, session transitions, quota accounting, and the sealed-object format. Harmless fixtures only: no live malware in CI or demos.
 
 ## 24. Residual risk register
 
@@ -895,7 +879,7 @@ Unit, property, and fuzz testing cover URL canonicalization, the table validator
 | Feed licensing | No real intelligence until rights are obtained | Demo packs; direct-adapter design |
 | Signing-key compromise | Bounded by TUF thresholds and root rotation | Offline keys; documented response plan |
 | Android developer verification (enforced from 30 Sep 2026 in BR/ID/SG/TH; global rollout planned for 2027) [R22] | Sideloaded builds need a registered identity | Register the package name before distribution |
-| Same-user Linux processes | Can read an unlocked vault's files or memory | Out of scope; stated plainly |
+| Same-user Linux processes | Can read an open session's files or memory | Out of scope; stated plainly |
 | Page writes to the clipboard | A page can put text on the system clipboard after a user gesture (for example a command meant to be pasted elsewhere) | Stated in the live page watch's "not seen" list; no WebView control exists |
 | A browser process taken over after a renderer escape | Could suppress or forge the browser-reported half of the live page watch | The core's own events (proxy, lock, navigation, downloads) and the wipe at reset do not depend on it |
 
@@ -925,7 +909,6 @@ These are considered only after V1. Each needs a definition of accepted input, m
 - An opt-in online reputation provider.
 - The two-APK browser split.
 - ProxyController-based host enforcement.
-- Multiple vaults.
 - Specific synthetic device APIs.
 
 Executing arbitrary programs remains a different product with a different threat model.
@@ -936,7 +919,6 @@ Executing arbitrary programs remains a different product with a different threat
 |---|---|
 | Session | A disposable browsing workspace with its own generation, processes, data directory, and ephemeral quarantine key. |
 | Quarantine | Session-scoped encrypted storage for untrusted objects. It is not a statement that content is harmless. |
-| Vault | Persistent age-encrypted storage for objects the user chose to keep. They remain untrusted. |
 | Worker | A confined process that parses one job's input and holds no other authority. |
 | Controller | Trusted code (rift-core plus platform glue) that authorizes operations and validates results. |
 | Snapshot | One immutable, verified set of intelligence data. |
