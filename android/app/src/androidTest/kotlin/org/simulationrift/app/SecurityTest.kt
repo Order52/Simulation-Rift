@@ -274,8 +274,18 @@ class SecurityTest {
             val view = swipeUntil(By.res("preview-${file.id}"))
                 ?: run {
                     screenshot("n6-home")
-                    val shown = device.findObjects(By.pkg(context.packageName)).mapNotNull { it.resourceName }.distinct()
-                    throw AssertionError("the file is not listed on the home screen (shown: $shown)")
+                    // What the accessibility tree held at each position, from the top
+                    // (CI's API 34 emulator never showed the button; the others do).
+                    val dir = context.getExternalFilesDir("evidence")
+                    val (w, h) = device.displayWidth to device.displayHeight
+                    var listed = false
+                    repeat(12) { i ->
+                        dir?.let { java.io.File(it, "n6-tree-$i.xml").outputStream().use { out -> device.dumpWindowHierarchy(out) } }
+                        listed = listed || device.hasObject(By.textContains("rift-n6.png"))
+                        device.swipe(w / 2, h * 3 / 4, w / 2, h / 2, 80)
+                        device.waitForIdle()
+                    }
+                    throw AssertionError("the file's View safely button is not on the home screen (its name is shown: $listed; trees in n6-tree-*.xml)")
                 }
             // And "View safely" opens it again. Brought to mid-screen first (a
             // button at the edge can be under the gesture bar), found afresh
