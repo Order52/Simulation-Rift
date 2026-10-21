@@ -91,3 +91,15 @@ path = "fuzz_targets/trusted_text.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "vault_index_payload"
+path = "fuzz_targets/vault_index_payload.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "session_from_browser"
+path = "fuzz_targets/session_from_browser.rs"
+test = false
+doc = false

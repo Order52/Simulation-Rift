@@ -333,11 +333,7 @@ struct IndexFile {
 /// current, then fsync the directory. A crash leaves either the old or the new
 /// index readable, never a partial one.
 pub fn write_index(dir: &Path, key: &VaultKey, index: &VaultIndex) -> Result<(), VaultError> {
-    let mut payload = postcard::to_allocvec(&IndexFile {
-        format_version: INDEX_FORMAT_VERSION,
-        index: index.clone(),
-    })
-    .map_err(|e| VaultError::IndexMalformed(e.to_string()))?;
+    let mut payload = encode_index(index)?;
     let mut mac = key.index_mac()?;
     mac.update(&payload);
     payload.extend_from_slice(&mac.finalize().into_bytes());
@@ -404,7 +400,22 @@ pub fn read_index(dir: &Path, key: &VaultKey) -> Result<VaultIndex, VaultError> 
     mac.update(payload);
     mac.verify_slice(tag)
         .map_err(|_| VaultError::IndexNotAuthentic)?;
+    decode_index(payload)
+}
 
+/// The index's payload, before it is authenticated and sealed.
+pub fn encode_index(index: &VaultIndex) -> Result<Vec<u8>, VaultError> {
+    postcard::to_allocvec(&IndexFile {
+        format_version: INDEX_FORMAT_VERSION,
+        index: index.clone(),
+    })
+    .map_err(|e| VaultError::IndexMalformed(e.to_string()))
+}
+
+/// Decodes an index payload that [`read_index`] has authenticated. Public
+/// for the fuzzer, which cannot forge the MAC to reach it through
+/// `read_index`.
+pub fn decode_index(payload: &[u8]) -> Result<VaultIndex, VaultError> {
     // The version comes first, as `IndexFile` writes it; the rest is the
     // index of that version.
     let malformed = |e: postcard::Error| VaultError::IndexMalformed(e.to_string());
