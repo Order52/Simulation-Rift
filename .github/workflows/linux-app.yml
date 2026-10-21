@@ -30,7 +30,7 @@ jobs:
           # at-spi2-core and pyatspi: the end-to-end test drives the window
           # through accessibility.
           sudo apt-get install -y -q flatpak flatpak-builder xvfb dbus \
-            at-spi2-core python3-pyatspi gir1.2-atspi-2.0
+            at-spi2-core python3-pyatspi gir1.2-atspi-2.0 xdotool
           flatpak --version
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
       - name: Vendor the crates
