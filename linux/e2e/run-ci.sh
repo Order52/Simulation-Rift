@@ -18,6 +18,8 @@
 #            (the app has no filesystem access of its own), allow a local
 #            host, lock, refuse a wrong passphrase, unlock, delete
 #            (ui-check.py); the exported copy holds the downloaded bytes
+#   image    a downloaded PNG is decoded by a confined worker and shown in
+#            the window's preview (ui-check.py --image)
 #   crash    killing the browser host ends and destroys the session
 #   recover  killing the controller leaves no browser host running, and the
 #            next start destroys the session it left
@@ -144,6 +146,21 @@ loaded() { wait_count "$out/$1.log" "^rift-browser: page loaded" 2 "$2"; }
   fi
   rm -f "$exported"
   clean download
+  echo
+
+  echo "## image"
+  # Wikimedia sends a file as an attachment when asked to.
+  launch image "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png?download" \
+    --env=QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+  if wait_count "$out/image.log" "^rift: session [0-9]*: a download was quarantined" 1 150; then
+    python3 -I -B "$here/ui-check.py" --image > "$out/ui-image.txt" 2>&1 || fail "image: $(tail -1 "$out/ui-image.txt")"
+    cat "$out/ui-image.txt"
+  else
+    fail "image: nothing was quarantined"
+  fi
+  finish
+  grep -E "^rift(-browser)?:" "$out/image.log"
+  clean image
   echo
 
   echo "## crash"

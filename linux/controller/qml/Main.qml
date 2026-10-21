@@ -70,6 +70,8 @@ ApplicationWindow {
                 source: rift.previewImage
                 fillMode: Image.PreserveAspectFit
                 cache: false
+                Accessible.role: Accessible.Graphic
+                Accessible.name: status === Image.Ready ? "Preview image" : "Preview image not shown"
             }
             ScrollView {
                 Layout.fillWidth: true

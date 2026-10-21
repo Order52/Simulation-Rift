@@ -9,14 +9,15 @@ rift-core, holds the marker); keep it in the vault; open and cancel the
 export warning; with --export, export it to that path through the file
 chooser portal (its dialog is answered with XTest: it belongs to the
 portal's backend, outside the app); allow a local host name; lock; refuse a
-wrong passphrase; unlock; delete the kept file.
+wrong passphrase; unlock; delete the kept file. With --image, only preview
+the quarantined image: a worker decodes it, and the window shows it.
 
 Text goes in through the accessible EditableText interface where Qt offers
 it (6.11), or else (6.10) by focusing the field through accessibility,
 giving the window X input focus and typing with XTest (xdotool), which
 --keyboard forces.
 
-Usage: python3 -I ui-check.py [--no-download] [--keyboard] [--export <path>]
+Usage: python3 -I ui-check.py [--no-download | --image] [--keyboard] [--export <path>]
 Exit 0: every step as expected; 1: a step failed (it says which).
 """
 
@@ -67,6 +68,7 @@ ROLES = {
     "label": {pyatspi.ROLE_LABEL},
     "text": {pyatspi.ROLE_TEXT, pyatspi.ROLE_ENTRY},
     "password text": {pyatspi.ROLE_PASSWORD_TEXT},
+    "image": {pyatspi.ROLE_IMAGE},
 }
 
 
@@ -156,9 +158,24 @@ def export_through_portal(app, path):
     print(f"exported through the portal to {path}")
 
 
+def preview_image(app):
+    press(app, "Preview")
+    note = label(app, "pixels, decoded by an isolated worker")
+    image = wait("the preview image", lambda: find_all(app, "image", lambda a: a.name == "Preview image"))[0]
+    extents = image.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
+    if extents.width < 1 or extents.height < 1:
+        raise Failed(f"the preview image has no size: {extents.width}x{extents.height}")
+    print(f"preview shows the image ({note[0].name}; on screen {extents.width}x{extents.height})")
+    press(app, "Close")
+
+
 def main():
     no_download = "--no-download" in sys.argv[1:]
     app = application()
+    if "--image" in sys.argv[1:]:
+        preview_image(app)
+        print("ui: all steps as expected")
+        return
 
     label(app, "No vault yet")
     type_into(app, "password text", "Passphrase", PASSPHRASE)
