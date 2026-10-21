@@ -30,3 +30,7 @@ all ten targets with coverage.
 coverage in an hour. Either their inputs are rejected early (both start with a format check), or the
 code is small. Campaign 3's coverage report is needed to tell which; until then, an hour without a
 finding says little about them.
+
+Campaign 3's coverage answers it: `intel_table` is saturated (small, straight-line code), while
+`vault_index` stops at authentication by design, so the decoder behind the MAC is not fuzzed
+([campaign-3.md](campaign-3.md)).
