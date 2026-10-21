@@ -415,7 +415,7 @@ Why: distributions ship Qt WebEngine at different versions and with different sa
 ### 9.2 Browser
 
 - **Engine.** Qt WebEngine Widgets 6.10 (Chromium-based), driven from a thin C++ layer called from Rust through cxx. One off-the-record `QWebEngineProfile` per session, in a browser host process that ends at every reset.
-- **Browser host in a no-network sub-sandbox [PoC Q2].** The controller starts the browser host with `flatpak-spawn --sandbox --no-network`, sharing only the display, the GPU and the (filtered) session bus. The host has its own network namespace with only loopback, and no access to the app's data. Qt WebEngine's network service runs inside the browser host. A process the host spawns through the portal has no network either (Q2).
+- **Browser host in a no-network sub-sandbox [PoC Q2].** The controller starts the browser host with `flatpak-spawn --sandbox --no-network`, sharing only the display and the (filtered) session bus. The GPU is not shared (the app renders in software), and the host's only files are its own state directory, which disposal deletes. The host has its own network namespace with only loopback, and no access to the app's data. Qt WebEngine's network service runs inside the browser host. A process the host spawns through the portal has no network either (Q2).
 - **Network lock (INV-14 on Linux) [PoC Q2].** Qt's application proxy points at a forwarder on the browser host's own loopback. The forwarder passes each connection to the controller over the session channel (`SCM_RIGHTS`). The controller serves it with `ForwardedEgress`, which applies the same checks as Android's proxy but has no listener and asks for no token: the socketpair authenticates the browser host. Escaped code in the browser host or a renderer reaches only what the proxy lets through, not even the host's loopback. This is stronger than Android, where loopback is shared.
 - **Session channel.** One `SOCK_SEQPACKET` socketpair, given to the browser host as its stdin. It carries postcard messages for navigation decisions, renderer reports, download hand-offs and forwarded connections.
 - **The renderer sandbox must be active, not just configured (INV-7) [PoC Q1].**
@@ -430,11 +430,17 @@ Why: distributions ship Qt WebEngine at different versions and with different sa
 
 ### 9.3 Workers **[PoC L2]**
 
-The controller spawns `rift-worker` with a `SOCK_SEQPACKET` socketpair on fd 3. stdin, stdout, and stderr go to `/dev/null`, and the environment is empty. The worker runs the lockdown sequence (§7.3), and the controller verifies it before sending input. Pixels are returned in a **sealed memfd** (`F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK`). The controller checks the seals before mapping, so the kernel guarantees the content cannot change after validation.
+The controller spawns one `rift-worker` per job, directly inside the app's Flatpak sandbox, with a `SOCK_SEQPACKET` socketpair as stdin. stdout goes to `/dev/null`, stderr to the controller's log, and the environment is empty. Before it reads a request, the worker closes every other descriptor, sets rlimits (no new processes, no core, 1 GiB of address space, 30 s of CPU), `no_new_privs`, a Landlock ruleset that handles every filesystem, network and scope right and grants none, and a seccomp allowlist that kills on anything else. `openat` and `sched_getaffinity` fail with `EACCES` instead of killing, because the rule compiler asks for the CPU count through `/proc`. The controller requires the worker's hello to report seccomp, `no_new_privs` and Landlock, and kills it at each step's deadline. Input goes in as a sealed memfd; pixels come back in one (`F_SEAL_WRITE | F_SEAL_GROW | F_SEAL_SHRINK | F_SEAL_SEAL`), whose seals and size the controller checks before reading, so the content cannot change after validation. The controller encodes the pixels as a PNG for the UI and decodes nothing untrusted itself.
 
 If Landlock or seccomp is unavailable, preview and scanning are disabled. Rift never runs a parser unconfined and never asks users to weaken system security.
 
+Rift on Linux scans and previews images and text; PDF files are not previewed, as the worker has no PDF renderer there.
+
 Bubblewrap is not used for workers. It needs user namespaces, which are blocked inside Flatpak and restricted on Ubuntu, and a seccomp allowlist is the stronger control for fd-only workers anyway. `flatpak-spawn --sandbox --no-network` may be added later as an extra layer.
+
+### 9.4 Vault
+
+rift-core's vault (§14) under the app's data directory, protected by a passphrase only: Linux has no platform key Rift trusts yet (the Secret portal is a later option). It locks on request, after five minutes without a vault action, and when the window is minimized or hidden. Export writes to a file the user chooses through the file chooser portal, after the same warning as on Android.
 
 ## 10. Rift Browser
 

@@ -11,7 +11,7 @@
 | 2: Android vertical slice | **Built; tested on emulators** ([report](phase-2.md)), and since 20 Oct on architecture 2.1: the browser is a separate app with its own UID behind a network lock, wiped by Android at every reset ([report](browser-isolation.md); S23–S28 and the whole earlier suite pass on API 36). Shell, browser sessions, captured downloads, isolated preview, reset and recovery. S1–S10, S12–S15, S19 and the image, PDF and text preview tests pass on API 36 and on API 35 with 16 KB pages (arm64), and on API 33 and 34 (x86_64, in CI). API 30 refuses browsing as designed. The R8 release build passes a smoke test. **Gate open:** a physical phone. |
 | 3: Scanner and signed intel | **Built and tested on the host and on Android emulators** ([report](phase-3.md)). Pack validation, verdicts with a versioned cache, an atomic snapshot store, TUF updates (offline import of a user-chosen folder through the system picker, and online updates through the core's own checked fetcher), a clock warning, and `rift-pack` with a harmless demo pack. On Android every download is scanned (core hash and type checks, then the rules in a fresh isolated worker, two at a time) and the verdict is shown. Release builds verify against a production root given at build time (`RIFT_INTEL_ROOT`). The release key policy is built and tested on the host: one key per holder, a 2-of-3 root, 2-of-2 offline targets, online snapshot and timestamp keys, and root rotation, with the device starting from the newest root it verified ([policy](key-policy.md)). **Open:** the key ceremony itself (no production key exists) and licensed real feeds. |
 | 4: Vault | **Built and tested on the host and the API 35 emulator** ([report](phase-4.md)): a Keystore key behind BiometricPrompt (or a passphrase), keep from quarantine, warned export, lock on request, in the background and when idle, and a no-plaintext-on-disk inventory. Kept files preview in an isolated worker until the vault locks; a recovery passphrase opens a vault whose key was lost. **Open:** a physical phone (the emulator's Keystore is software only). |
-| 5: Linux app | Not started. **Moved to the last step** and **to Qt instead of GTK4** (decided 20 Oct 2026); the design will be revised before any code. |
+| 5: Linux app | **Built and tested end to end in CI** (21 Oct 2026), on Qt instead of GTK4 (decided 20 Oct; §9 revised after PoCs Q1–Q4). [Report](phase-5-qt-design.md#the-app-built-21-oct-2026); open: a real window's vault and preview controls, a desktop distribution, online updates, an external review. |
 | 6: AI experiment | Not started; deferred and gated by design. |
 | 7: Hardening | **Started on Android** ([report](phase-7.md)): privacy measurements x1 (local work and updates move no byte on real networks; nothing scheduled) and x2 (browsing leaves only through the controller's proxy) pass on API 35; the dependency and licence inventory is written ([inventory](dependencies.md)). Both APKs carry generated third-party notices, shown in the app (l1). Android libraries are locked (`gradle.lockfile`) and their runtime classpaths scanned with OSV-Scanner on every push. Kill-fault rounds (F1–F4: the controller killed while keeping into the vault or installing the database) pass 8 of 8 on API 35. The live page watch (§10.5, w1) shows each session's status and what its pages tried; the threat database is now used for every address and every proxied request (finding 56). A full disk (F5/F6) and power cuts on the emulator (P1–P4) pass. Three hour-long fuzz campaigns over all ten targets: the first found finding 65, the others nothing; coverage is recorded, and shows the vault index decoder behind its MAC is not reached. **Open:** fault injection on a phone, release-grade fuzzing (with a keyed vault target), an external review, and release gates that need a phone. |
 
@@ -26,7 +26,7 @@ The original specification was reviewed and replaced by `docs/architecture.md`: 
 - **YARA-X** with the `pulley` interpreter (no JIT) as the only rule engine.
 - **age** for the vault and quarantine; ephemeral per-session keys crypto-shred quarantine.
 - **TUF** (`tough`) for signed intelligence updates, verifiable offline.
-- Linux ships as a **Flatpak** using WebKitGTK; workers lock themselves down with seccomp, Landlock and rlimits.
+- Linux ships as a **Flatpak** using WebKitGTK (since replaced by Qt WebEngine, architecture v2.2); workers lock themselves down with seccomp, Landlock and rlimits.
 
 ### 2.2 Phase 0 proofs of concept
 
@@ -209,7 +209,7 @@ Phase 2 findings, added to the list above: 15–26.
 
 | Limitation | Effect | Workaround |
 |---|---|---|
-| The Docker VM has ~6 GB with ~1.4 GB free; building YARA-X/Cranelift for Linux in Docker is killed (OOM) | Linux-only Rust tests (`no_threads`) cannot be run locally; they run only in CI | Give Docker Desktop ≥ 8 GB (Settings → Resources) or stop unrelated containers; meanwhile rely on GitHub CI, which runs them on Ubuntu. |
+| The Docker VM has ~6 GB; building YARA-X/Cranelift for Linux with several jobs is killed (OOM) | Linux builds in Docker are slow | Build with `cargo … -j 1` (or 2), which fits; the Linux workspace (Qt) builds and tests that way in a Fedora image with Qt 6. Flatpak itself runs only in CI. |
 | No physical Android device | All Android evidence is from emulators with software GPU | Connect a phone with USB debugging and run `poc/android-feasibility/run-poc.sh <dir>` (not yet tried on a phone). Without `adb root`, everything except the A1 renderer `/proc` check should still run. |
 | Apple Silicon cannot run x86_64 emulator images, and large image downloads over this connection are slow | x86_64 and API 33/34 could not run locally | The `android-emulator` CI job runs the suite on x86_64 API 33 and 34 with KVM and uploads the evidence. Local arm64 images: `sdkmanager --sdk_root=$HOME/Library/Android/sdk "system-images;android-NN;google_apis;arm64-v8a"`, create an AVD, then `android/run-tests.sh <dir>`. |
 | API 30 image has WebView 91 | Old engine; not representative of updated devices | Update WebView from Play on a `google_apis_playstore` image, or use a phone. |
@@ -266,7 +266,7 @@ Phase 2 findings, added to the list above: 15–26.
 11. Hardening: ~~privacy network checks~~ (x1, x2 on API 35; [phase-7.md](phase-7.md)) , ~~the dependency and licence inventory~~ ([dependencies.md](dependencies.md)) , ~~the in-app licence notices~~ (l1) and ~~an Android advisory check~~ and ~~kill-fault rounds~~ (F1–F4), ~~a full disk~~ (F5/F6) and ~~power cuts~~ (P1–P4, emulator); open: fuzz campaigns, the fault rounds on a phone's storage, release gates (§24), and an external security review before any release claim.
 
 **Phase 5: Linux (last, decided 20 Oct 2026)**
-12. A Qt desktop app on the shared core (not GTK4), with the worker lockdown and a fail-closed engine-sandbox check. The §9 design is revised for Qt and its PoCs redone first.
+12. ~~A Qt desktop app on the shared core (not GTK4), with the worker lockdown and a fail-closed engine-sandbox check; the §9 design revised for Qt and its PoCs redone first.~~ Done: PoCs Q1–Q4, then the app, tested end to end in CI ([phase-5-qt-design.md](phase-5-qt-design.md)). Open: the vault, previews and local-host exception in a real window, a desktop distribution with Wayland and a GPU, online updates, PDF previews, a platform key for the vault.
 
 ## 6. Reproducing the evidence
 
@@ -276,6 +276,7 @@ Phase 2 findings, added to the list above: 15–26.
 | Fuzzing | `cargo +nightly fuzz run <target> -- -max_total_time=60` (needs cargo-fuzz; `cargo +nightly fuzz list` shows the targets) |
 | Lints and policy | `cargo clippy --workspace --all-targets -- -D warnings` and `cargo deny check` |
 | Linux lockdown (L2/L3) | `poc/linux-worker-lockdown` in Docker or the `linux-worker-lockdown` CI job |
+| Linux app (Phase 5) | The `linux-app` CI workflow: vendors the crates, makes a demo database (`linux/flatpak/demo-intel.sh <key dir outside git>`), builds `linux/flatpak/org.simulationrift.Rift.yml` with `flatpak-builder`, and runs `xvfb-run -a dbus-run-session -- sh linux/e2e/run-ci.sh <out>` |
 | WebKitGTK check (L1) | `poc/linux-webkit-sandbox/run-in-docker.sh` |
 | TUF offline (X2) | `poc/tuf-offline/run-scenarios.sh poc/target/release/tuf-offline` (needs `tuftool`); on Android: build with `cargo ndk -t arm64-v8a -P 30 build --release -p tuf-offline`, then pass `poc/tuf-offline/adb-client.sh` as the client with `RIFT_X2_BINARY` set |
 | Android A1–A7 | `poc/android-feasibility/build.sh`, then `run-poc.sh <out-dir>` with one emulator or phone attached |

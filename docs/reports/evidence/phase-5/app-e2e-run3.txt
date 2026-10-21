@@ -1,0 +1,109 @@
+linux-app run 39534561407 (commit b1df90a). Findings, fixed in 8e98aca: the QML could not
+reach two-word properties and invokables (cxx-qt 0.10 keeps snake_case names), so the vault,
+preview and local-host controls did not work; loopback still bypassed the proxy (Qt WebEngine
+reads Chromium's proxy switches only with Qt's system proxy configuration); and the host check
+could not read a process whose first thread had exited.
+
+## page
+browser host 19638: net namespace own=True, interfaces=lo, filters=1
+engine 19654 type=browser Seccomp=2 filters=1 NoNewPrivs=1 own_vs_browser_host=- shares_controller_net=True
+engine 19668 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+engine 19688 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+problem: engine process 19654: namespaces ['mnt', 'net', 'ipc'] could not be read
+problem: engine process 19654 (browser) shares the controller's network
+verdict: 1 renderers, 2 problems
+UNEXPECTED: page: host check exit 1
+rift: demo threat database demo-20261021T024535Z installed, its rules compiled by a confined worker
+rift: session 1 started
+rift: session 1: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 1: renderer sandboxed
+rift-browser: page loaded
+rift: signal 15: destroying the session
+rift: session 1: proxy allowed 1, refused 0
+rift: session 1 ending: The browser window closed.
+rift: session 1 destroyed
+UNEXPECTED: page: the window's QML has errors
+
+## loopback
+rift: session 2 started
+rift: session 2: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 2: renderer sandboxed
+rift-browser: page did not load
+rift: signal 15: destroying the session
+rift: session 2: proxy allowed 0, refused 0
+rift: session 2 ending: The browser window closed.
+rift: session 2 destroyed
+UNEXPECTED: loopback: the proxy did not refuse it
+
+## crash
+rift: session 3 started
+rift: session 3: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 3: renderer sandboxed
+rift-browser: page loaded
+rift: session 3 ending: The browser window closed.
+rift: session 3: proxy allowed 1, refused 0
+rift: session 3 destroyed
+rift: signal 15: destroying the session
+
+## recover
+left after the kill: /home/runner/.var/app/org.simulationrift.Rift/sandbox/rift-browser-4 
+out/recover.log:rift: session 4 started
+out/recover.log:rift: session 4: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+out/recover.log:rift-browser: page loaded
+out/recover.log:rift-browser: renderer sandboxed
+out/recover.log:rift: session 4: renderer sandboxed
+out/recover.log:rift-browser: page loaded
+out/recover-next.log:rift: session 4 from an earlier run destroyed
+out/recover-next.log:rift: session 5 started
+out/recover-next.log:rift: session 5: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+out/recover-next.log:rift-browser: page loaded
+out/recover-next.log:rift-browser: renderer sandboxed
+out/recover-next.log:rift: session 5: renderer sandboxed
+out/recover-next.log:rift-browser: page loaded
+out/recover-next.log:rift: signal 15: destroying the session
+out/recover-next.log:rift: session 5: proxy allowed 1, refused 0
+out/recover-next.log:rift: session 5 ending: The browser window closed.
+out/recover-next.log:rift: session 5 destroyed
+
+## switch
+the switch did not reach the browser host; checking its renderers
+UNEXPECTED: switch: host check failed
+browser host 20996: net namespace own=True, interfaces=lo, filters=1
+engine 21012 type=browser Seccomp=2 filters=1 NoNewPrivs=1 own_vs_browser_host=- shares_controller_net=True
+engine 21026 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+engine 21054 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+problem: engine process 21012: namespaces ['mnt', 'net', 'ipc'] could not be read
+problem: engine process 21012 (browser) shares the controller's network
+verdict: 1 renderers, 2 problems
+rift: session 6 started
+rift: session 6: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 6: renderer sandboxed
+rift-browser: page loaded
+rift: signal 15: destroying the session
+rift: session 6: proxy allowed 1, refused 0
+rift: session 6 ending: The browser window closed.
+rift: session 6 destroyed
+
+page: host check exit 1
+page: the window's QML has errors
+loopback: the proxy did not refuse it
+switch: host check failed
+
+QML warnings in page.log:
+qrc:/qt/qml/org/simulationrift/app/qml/Main.qml:58:5: QML Connections: Detected function "onPreviewSerialChanged" in Connections element. This is probably intended to be a signal handler but no signal of the target matches the name.
+qrc:/qt/qml/org/simulationrift/app/qml/Main.qml:39:5: QML Dialog: Binding loop detected for property "implicitHeight":
+qrc:/qt-project.org/imports/QtQuick/Controls/Fusion/Dialog.qml:18:5
+qt.qml.context: qrc:/qt/qml/org/simulationrift/app/qml/Main.qml:35:5 Parameter "visibility" is not declared. Injection of parameters into signal handlers is deprecated. Use JavaScript functions with formal parameters instead.
+qrc:/qt/qml/org/simulationrift/app/qml/Main.qml:64:9: Unable to assign [undefined] to QString
+qrc:/qt/qml/org/simulationrift/app/qml/Main.qml:76:17: Unable to assign [undefined] to QString
+qrc:/qt/qml/org/simulationrift/app/qml/Main.qml:83:17: Unable to assign [undefined] to QUrl
+qrc:/qt/qml/org/simulationrift/app/qml/Main.qml:96:21: Unable to assign [undefined] to QString
+qrc:/qt/qml/org/simulationrift/app/qml/Main.qml:257:13: Unable to assign [undefined] to QString

@@ -1,6 +1,6 @@
 # Phase 5: the Linux app on Qt (design revision and PoCs)
 
-**Status (21 Oct 2026): proposed, not externally reviewed; PoCs Q1–Q4 pass.** On 20 Oct the Linux app moved from GTK4 + WebKitGTK to Qt, and was made the last step after Android (architecture §22). This document proposed the replacement for the GTK4 design, and listed the questions that had to be answered by measurement before any app code was written. All four PoCs pass, and §9 of the [architecture](../architecture.md) now describes the Qt design (v2.2, 21 Oct). Nothing here is verified unless a PoC result below says so.
+**Status (21 Oct 2026): built and tested end to end in CI; not externally reviewed.** PoCs Q1–Q4 pass, and the app is described in [The app](#the-app-built-21-oct-2026). On 20 Oct the Linux app moved from GTK4 + WebKitGTK to Qt, and was made the last step after Android (architecture §22). This document proposed the replacement for the GTK4 design, and listed the questions that had to be answered by measurement before any app code was written. All four PoCs pass, and §9 of the [architecture](../architecture.md) now describes the Qt design (v2.2, 21 Oct). Nothing here is verified unless a PoC result below says so.
 
 ## What carries over unchanged
 
@@ -62,7 +62,7 @@ The PoCs settle the questions this design depended on: all four pass (results be
 | Process | Runs | Sandbox | Holds |
 |---|---|---|---|
 | controller `rift` | Rust `main`, QML UI through cxx-qt, the platform facade (`rift-ffi`'s Rust API, the same code the Android app calls through UniFFI) | the Flatpak app sandbox, with the network | the vault, intelligence, settings, the egress proxy, the worker supervisor |
-| browser host `rift-browser`, one per session | Rust `main`, Qt WebEngine Widgets in C++ through cxx | `flatpak-spawn --sandbox --no-network`: its own network namespace with only loopback, no app data, display and GPU shared, a session bus for the portal | one off-the-record profile; nothing that outlives the session |
+| browser host `rift-browser`, one per session | Rust `main`, Qt WebEngine Widgets in C++ through cxx | `flatpak-spawn --sandbox --no-network`: its own network namespace with only loopback, no app data, the display shared (not the GPU: the app built on this design renders in software), a session bus for the portal | one off-the-record profile; nothing that outlives the session |
 | renderers | Chromium | the engine's sandbox, spawned through the portal: seccomp-bpf on Flatpak's, mount, pid, IPC and network namespaces of their own (Q1, Q2) | one site's page |
 | workers `rift-worker` | Rust | Landlock and seccomp, rlimits, no network (Q4) | one file |
 
@@ -151,6 +151,47 @@ The PoCs settle the questions this design depended on: all four pass (results be
 - **none** (negative control): everything is allowed, except ptrace of the parent, which Flatpak's own seccomp filter already denies. That row is inconclusive about Rift's filter, and fd-only denies it in any case.
 
 What this does not show: the PoC ran in the Freedesktop runtime directly, not in Rift's app with the QtWebEngine BaseApp, and in GitHub's VM rather than on a desktop distribution.
+
+## The app (built 21 Oct 2026)
+
+Built in the `linux/` workspace on the shared Rust core, as designed above, and tested end to end in CI (`linux-app` workflow, `linux/e2e/run-ci.sh`): the Flatpak is built on GitHub's Ubuntu 24.04 runner, its Rust tests run inside the SDK, and the installed app is driven under Xvfb with a session bus while `linux/e2e/host-check.py` reads its processes from the host, as root.
+
+| Part | What it is |
+|---|---|
+| `rift` (controller) | Rust `main` and a QML window through cxx-qt 0.10. Sessions, the forwarded proxy, navigation decisions, downloads and quarantine through `rift-ffi`'s Rust API (the code the Android app calls through UniFFI). Refuses to run outside Flatpak. |
+| `rift-browser` (browser host) | Rust `main` and a C++ Qt WebEngine Widgets window through cxx, one per session, in `flatpak-spawn --sandbox --no-network --sandbox-flag=share-display --sandbox-flag=allow-dbus`, with only its own state directory, which disposal deletes. No GPU. Refuses the engine's sandbox switches. |
+| `rift-worker` | One process per job, confined by itself before it reads anything (§9.3 of the architecture): descriptors closed, rlimits, `no_new_privs`, Landlock with no rights, a seccomp allowlist. |
+| Threat database | A test build carries a demo database, signed in CI with keys made for the run outside the checkout (`linux/flatpak/demo-intel.sh`); the controller verifies it and has a worker compile its rules before installing it. A release carries none. |
+| Vault | rift-core's vault with a passphrase (no platform key on Linux yet); keep, delete, export after a warning through the file chooser portal; locks on request, after five idle minutes, and when the window is minimized. |
+| Previews | Text escaped by rift-core; images decoded by a worker, whose pixels the controller encodes as a PNG for QML. No PDF preview (the worker has no PDF renderer on Linux). |
+
+**End-to-end cases.** Run 6 (39539643040 on ba3ed6f, [evidence](evidence/phase-5/app-e2e-run6.txt)) is the first in which every case passes; runs 1–5 found the problems listed below.
+
+| Case | What is checked | Result |
+|---|---|---|
+| intel | the demo database is installed, its rules compiled by a worker that reported seccomp, `no_new_privs` and Landlock | passes |
+| page | a public page loads through the controller's proxy; the renderer passes the check in the browser host and the controller; from the host, the browser host has its own network namespace with only `lo`, no engine process shares the controller's network, and the renderer has two seccomp filters against the browser host's one, `NoNewPrivs`, and mount, pid, network and IPC namespaces of its own; SIGTERM destroys the session and its files; the window's QML loads without a warning | passes |
+| loopback | `http://127.0.0.1:8765/` goes to the proxy, which refuses it (allowed 0, refused 2); nothing reaches the local server | passes |
+| download | a page's download is refused to the engine, re-fetched by the controller into quarantine, and scanned by a confined worker inside Flatpak: httpbin's attachment holding the demo marker is reported "Known malicious" | passes |
+| crash | killing the browser host ends and destroys the session | passes |
+| recover | killing the controller leaves no browser host; the next start destroys the session it left | passes |
+| switch | `QTWEBENGINE_DISABLE_SANDBOX` and `--no-sandbox` in the app's environment do not reach the browser host (`flatpak-spawn` does not pass the environment), and its renderers are sandboxed | passes |
+
+**What the end-to-end runs found** (each run's evidence is in [`evidence/phase-5/`](evidence/phase-5/)):
+
+1. **No page ever loaded** (run 1): the renderer could start while the view took its page, before its signal was connected, so the browser host never reported it, and the controller, which loads the address only after a verified renderer, waited. Fixed by connecting first and checking the current renderer after each load.
+2. **Loopback went around Rift's proxy** (runs 2 and 3). Chromium bypasses a proxy for loopback unless told not to. Inside the sub-sandbox loopback is the browser host's own, so nothing reached the host's services, but those connections escaped Rift's checks, and a user's local-host exception could not work. Android removes the implicit rule; on Qt the engine now gets the proxy as Chromium switches with `<-loopback>`. That needed a second fix: Qt WebEngine reads those switches only when Qt Network uses the system proxy configuration, and builds its own rules (which keep the bypass) when an application proxy is set (found in Qt's `proxy_config_service_qt.cpp`). If the switches were ignored, the engine would connect directly from a namespace with no network.
+3. **The vault, preview and local-host controls did not work** (run 3): cxx-qt 0.10 keeps Rust's snake_case names unless `#[auto_cxx_name]` is set, so QML saw `vaultStatus`, `createVault` and the rest as undefined. Unit tests of the Rust side had passed. The test now fails on any QML warning, and the window was also run offscreen in Docker.
+4. **The host check misread processes it could not see into** (runs 2 and 3): a namespace it could not read counted as shared. It runs as root now, reads namespaces through any live thread (one engine process's first thread had exited), skips only zombies, and reports any namespace it cannot read as a problem.
+5. **A QML binding loop in the export warning** under the runtime's Fusion style (Qt 6.10; runs 4 and 5), which Qt 6.11 in Docker does not show. The warning is now inline under the kept file, as on Android, and closes whenever the list changes.
+6. **A failed vault action could leave the window waiting** (found driving the window through accessibility in Docker, where a debug build's age could not load its messages and panicked): a panic in a control thread now shows "Rift hit an internal error and did not finish this action". A release build embeds age's messages, so the panic itself was the test setup's.
+
+**Not shown.**
+
+- **The vault, preview, export and local-host controls in the Flatpak.** `linux/e2e/ui-check.py` drives them through accessibility (AT-SPI): create, preview, keep, the export warning, a local host, lock, a wrong passphrase, unlock, delete. In Docker, outside Flatpak, the vault steps pass; in CI it runs after the download case from the commit after ba3ed6f. Writing an export through the file chooser portal is not exercised (CI has no portal backend for it), nor is an image preview in the window (a worker's image output is tested on its own).
+- Wayland, a GPU, a real desktop session, and distributions other than Ubuntu 24.04 in GitHub's VM.
+- Online updates of the threat database on Linux (the Android app has them; the Linux app installs only the build's demo database).
+- An external review.
 
 ## Risks already known
 

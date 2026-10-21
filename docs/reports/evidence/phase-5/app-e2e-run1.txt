@@ -1,0 +1,80 @@
+linux-app run 39530026917 (commit 816ca7e): the first end-to-end run of the app.
+The browser host loaded about:blank but never reported a renderer, so no page loaded
+(fixed in 3158430). The cleanup check also looked in the wrong directory.
+
+## page
+UNEXPECTED: page: the page did not load
+rift: session 1 started
+rift: session 1: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift: signal 15: destroying the session
+rift: session 1: proxy allowed 0, refused 0
+rift: session 1 ending: The browser window closed.
+rift: session 1 destroyed
+UNEXPECTED: page: no renderer check
+UNEXPECTED: page: nothing went through the proxy
+UNEXPECTED: page: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+
+## confirm
+UNEXPECTED: confirm: no confirmation asked
+rift: session 2 started
+rift: session 2: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift: signal 15: destroying the session
+rift: session 2: proxy allowed 0, refused 0
+rift: session 2 ending: The browser window closed.
+rift: session 2 destroyed
+UNEXPECTED: confirm: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+
+## crash
+UNEXPECTED: crash: the page did not load
+UNEXPECTED: crash: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+rift: session 3 started
+rift: session 3: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift: session 3 ending: The browser window closed.
+rift: session 3: proxy allowed 0, refused 0
+rift: session 3 destroyed
+rift: signal 15: destroying the session
+
+## recover
+UNEXPECTED: recover: the page did not load
+left after the kill: /home/runner/.var/app/org.simulationrift.Rift/sandbox/rift-browser-4 
+UNEXPECTED: recover: the next page did not load
+out/recover.log:rift: session 4 started
+out/recover.log:rift: session 4: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+out/recover.log:rift-browser: page loaded
+out/recover-next.log:rift: session 4 from an earlier run destroyed
+out/recover-next.log:rift: session 5 started
+out/recover-next.log:rift: session 5: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+out/recover-next.log:rift-browser: page loaded
+out/recover-next.log:rift: signal 15: destroying the session
+out/recover-next.log:rift: session 5: proxy allowed 0, refused 0
+out/recover-next.log:rift: session 5 ending: The browser window closed.
+out/recover-next.log:rift: session 5 destroyed
+UNEXPECTED: recover: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+
+## switch
+UNEXPECTED: switch: neither refused nor loaded
+rift: session 6 started
+rift: session 6: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift: signal 15: destroying the session
+rift: session 6: proxy allowed 0, refused 0
+rift: session 6 ending: The browser window closed.
+rift: session 6 destroyed
+UNEXPECTED: switch: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+
+page: the page did not load
+page: no renderer check
+page: nothing went through the proxy
+page: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+confirm: no confirmation asked
+confirm: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+crash: the page did not load
+crash: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+recover: the page did not load
+recover: the next page did not load
+recover: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions
+switch: neither refused nor loaded
+switch: session directories left: /home/runner/.var/app/org.simulationrift.Rift/data/rift/sessions/sessions

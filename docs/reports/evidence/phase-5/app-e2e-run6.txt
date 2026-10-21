@@ -1,0 +1,114 @@
+linux-app run 39539643040 (commit ba3ed6f): every case passes (page, loopback, download,
+crash, recover, switch), with no QML warning. Environment:
+Linux runnervmxehtw 7.0.0-1017-azure #17~24.04.1-Ubuntu SMP PREEMPT Thu Sep 24 18:46:57 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Flatpak 1.14.6
+qtwebengine application base	io.qt.qtwebengine.BaseApp		6.10	flathub
+Mesa	org.freedesktop.Platform.GL.default	26.2.4	25.08	flathub
+Mesa (Extra)	org.freedesktop.Platform.GL.default	26.2.4	25.08-extra	flathub
+Codecs Extra Extension	org.freedesktop.Platform.codecs-extra		25.08-extra	flathub
+Rust stable	org.freedesktop.Sdk.Extension.rust-stable	1.98.1	25.08	flathub
+Adwaita theme	org.kde.KStyle.Adwaita		6.10	flathub
+KDE Application Platform	org.kde.Platform		6.10	flathub
+KDE Software Development Kit	org.kde.Sdk		6.10	flathub
+Rift	org.simulationrift.Rift		master	rift-origin
+
+## page
+browser host 19404: net namespace own=True, interfaces=lo, filters=1
+engine 19427: exited, not yet reaped (skipped)
+engine 19441 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+engine 19468 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+verdict: 1 renderers, 0 problems
+rift: demo threat database demo-20261021T033945Z installed, its rules compiled by a confined worker
+rift: session 1 started
+rift: session 1: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 1: renderer sandboxed
+rift-browser: page loaded
+rift: signal 15: destroying the session
+rift: session 1: proxy allowed 1, refused 0
+rift: session 1 ending: The browser window closed.
+rift: session 1 destroyed
+
+## loopback
+rift: session 2 started
+rift: session 2: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 2: renderer sandboxed
+rift-browser: page did not load
+rift: signal 15: destroying the session
+rift: session 2: proxy allowed 0, refused 2
+rift: session 2 ending: The browser window closed.
+rift: session 2 destroyed
+
+## download
+rift: session 3 started
+rift: session 3: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 3: renderer sandboxed
+rift-browser: page did not load
+rift: session 3: a download was quarantined; scan: Known malicious
+rift: signal 15: destroying the session
+rift: session 3: proxy allowed 1, refused 0
+rift: session 3 ending: The browser window closed.
+rift: session 3 destroyed
+
+## crash
+rift: session 4 started
+rift: session 4: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 4: renderer sandboxed
+rift-browser: page loaded
+rift: session 4 ending: The browser window closed.
+rift: session 4: proxy allowed 1, refused 0
+rift: session 4 destroyed
+rift: signal 15: destroying the session
+
+## recover
+left after the kill: /home/runner/.var/app/org.simulationrift.Rift/sandbox/rift-browser-5 
+out/recover.log:rift: session 5 started
+out/recover.log:rift: session 5: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+out/recover.log:rift-browser: page loaded
+out/recover.log:rift-browser: renderer sandboxed
+out/recover.log:rift: session 5: renderer sandboxed
+out/recover.log:rift-browser: page loaded
+out/recover-next.log:rift: session 5 from an earlier run destroyed
+out/recover-next.log:rift: session 6 started
+out/recover-next.log:rift: session 6: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+out/recover-next.log:rift-browser: page loaded
+out/recover-next.log:rift-browser: renderer sandboxed
+out/recover-next.log:rift: session 6: renderer sandboxed
+out/recover-next.log:rift-browser: page loaded
+out/recover-next.log:rift: signal 15: destroying the session
+out/recover-next.log:rift: session 6: proxy allowed 1, refused 0
+out/recover-next.log:rift: session 6 ending: The browser window closed.
+out/recover-next.log:rift: session 6 destroyed
+
+## switch
+the switch did not reach the browser host; checking its renderers
+browser host 21022: net namespace own=True, interfaces=lo, filters=1
+engine 21038: exited, not yet reaped (skipped)
+engine 21053 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+engine 21079 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+verdict: 1 renderers, 0 problems
+rift: session 7 started
+rift: session 7: browser host Qt WebEngine 6.10.2 (Chromium 134.0.6998.208)
+rift-browser: page loaded
+rift-browser: renderer sandboxed
+rift: session 7: renderer sandboxed
+rift-browser: page loaded
+rift: signal 15: destroying the session
+rift: session 7: proxy allowed 1, refused 0
+rift: session 7 ending: The browser window closed.
+rift: session 7 destroyed
+
+
+## page: the host check (as root)
+browser host 19404: net namespace own=True, interfaces=lo, filters=1
+engine 19427: exited, not yet reaped (skipped)
+engine 19441 type=zygote Seccomp=2 filters=1 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+engine 19468 type=renderer Seccomp=2 filters=2 NoNewPrivs=1 own_vs_browser_host=mnt,pid,net,ipc shares_controller_net=False
+verdict: 1 renderers, 0 problems
