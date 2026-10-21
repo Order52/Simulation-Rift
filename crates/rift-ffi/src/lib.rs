@@ -293,7 +293,7 @@ struct SessionExtras {
     cache: rift_core::scan::VerdictCache,
     verdicts: Vec<(String, Verdict)>,
     /// The browser's only way to the network; dropping it closes every tunnel.
-    egress: Option<rift_core::egress::Egress>,
+    egress: Option<egress::Proxy>,
 }
 
 impl SessionExtras {
@@ -1628,6 +1628,59 @@ mod tests {
         assert_ne!(fresh.token, endpoint.token);
         assert_eq!(
             connect_through(&fresh, &target).unwrap(),
+            "HTTP/1.1 403 Forbidden",
+            "exceptions do not carry over"
+        );
+    }
+
+    #[test]
+    fn the_forwarded_proxy_follows_the_session_and_ends_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        let proxy = sessions.forwarded_egress(generation, None).unwrap();
+        assert!(Arc::ptr_eq(
+            &proxy,
+            &sessions.forwarded_egress(generation, None).unwrap()
+        ));
+        assert!(
+            matches!(
+                sessions.egress(generation, None),
+                Err(EgressFailure::Start { .. })
+            ),
+            "one kind of proxy per session"
+        );
+        let target = format!("localhost:{}", serve(b"through the proxy"));
+        let ask = |proxy: &rift_core::egress::ForwardedEgress| {
+            use std::io::Write as _;
+            let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let mut engine = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            proxy.serve(listener.accept().unwrap().0).unwrap();
+            engine
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            engine
+                .write_all(format!("CONNECT {target} HTTP/1.1\r\n\r\n").as_bytes())
+                .unwrap();
+            let mut line = String::new();
+            let _read =
+                std::io::BufRead::read_line(&mut std::io::BufReader::new(engine), &mut line);
+            line.trim_end().to_owned()
+        };
+        assert_eq!(ask(&proxy), "HTTP/1.1 403 Forbidden");
+        assert!(sessions.allow_local_host(generation, "localhost".into()));
+        assert_eq!(ask(&proxy), "HTTP/1.1 200 Connection Established");
+        let stats = sessions.egress_stats(generation).unwrap();
+        assert_eq!(
+            (stats.allowed, stats.denied, stats.unauthenticated),
+            (1, 1, 0)
+        );
+        sessions.reset().unwrap();
+        assert_eq!(ask(&proxy), "", "closed unserved after the reset");
+        let next = sessions.start().unwrap();
+        let fresh = sessions.forwarded_egress(next, None).unwrap();
+        assert_eq!(
+            ask(&fresh),
             "HTTP/1.1 403 Forbidden",
             "exceptions do not carry over"
         );

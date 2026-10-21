@@ -1,11 +1,15 @@
-//! The browser's egress proxy for the Android controller (docs/architecture.md
-//! §8.8, INV-14). One proxy per session: it starts when the browser first
-//! asks for it, follows the session's local-host exceptions, and stops when
-//! the session ends, before the browser is wiped.
+//! The browser's egress proxy (docs/architecture.md §8.8, §9.2, INV-14). One
+//! proxy per session: it starts when the browser first asks for it, follows
+//! the session's local-host exceptions, and stops when the session ends,
+//! before the browser is wiped. Android's listens on loopback behind a
+//! token; Linux's has no listener and serves the connections the browser
+//! host forwards ([`Sessions::forwarded_egress`]).
 
 use std::sync::Arc;
 
-use rift_core::egress::{Egress, EgressPolicy, Refusal, Screen};
+use rift_core::egress::{
+    Denial, Egress, EgressCounts, EgressPolicy, ForwardedEgress, Refusal, Screen,
+};
 use rift_core::text::escape_for_display;
 use rift_core::urlcanon::CanonicalUrl;
 
@@ -73,25 +77,25 @@ impl Sessions {
             .current(generation)
             .ok_or(EgressFailure::NoActiveSession)?;
         if extras.egress.is_none() {
-            let screen = intel.map(|intel| Arc::new(IntelScreen(intel)) as Arc<dyn Screen>);
-            let started = Egress::start(
-                EgressPolicy {
-                    local_hosts: extras.local_hosts.clone(),
-                    ..EgressPolicy::default()
-                },
-                screen,
-            )
-            .map_err(|e| EgressFailure::Start {
-                detail: e.to_string(),
-            })?;
-            extras.egress = Some(started);
+            let started =
+                Egress::start(policy(&extras.local_hosts), screen(intel)).map_err(|e| {
+                    EgressFailure::Start {
+                        detail: e.to_string(),
+                    }
+                })?;
+            extras.egress = Some(Proxy::Loopback(started));
         }
-        let egress = extras.egress.as_ref().ok_or(EgressFailure::Poisoned)?;
-        Ok(EgressEndpoint {
-            port: egress.port(),
-            token: egress.token().to_owned(),
-            realm: egress.realm().to_owned(),
-        })
+        match extras.egress.as_ref() {
+            Some(Proxy::Loopback(egress)) => Ok(EgressEndpoint {
+                port: egress.port(),
+                token: egress.token().to_owned(),
+                realm: egress.realm().to_owned(),
+            }),
+            Some(Proxy::Forwarded(_)) => Err(EgressFailure::Start {
+                detail: "this session's proxy serves forwarded connections only".into(),
+            }),
+            None => Err(EgressFailure::Poisoned),
+        }
     }
 
     /// What the proxy did in this session; None if it never started.
@@ -119,6 +123,83 @@ impl Sessions {
                 .collect(),
         })
     }
+}
+
+impl Sessions {
+    /// Linux: this session's forwarded proxy (§9.2), started on first use.
+    /// The caller serves each connection the browser host forwards with
+    /// [`ForwardedEgress::serve`]; only connections from that browser
+    /// host's channel belong there. `reset` stops it, which closes every
+    /// tunnel, and connections served after that are closed unserved.
+    pub fn forwarded_egress(
+        &self,
+        generation: u64,
+        intel: Option<Arc<Intel>>,
+    ) -> Result<Arc<ForwardedEgress>, EgressFailure> {
+        let mut state = self.lock()?;
+        let extras = state
+            .current(generation)
+            .ok_or(EgressFailure::NoActiveSession)?;
+        if extras.egress.is_none() {
+            let started = ForwardedEgress::new(policy(&extras.local_hosts), screen(intel));
+            extras.egress = Some(Proxy::Forwarded(Arc::new(started)));
+        }
+        match extras.egress.as_ref() {
+            Some(Proxy::Forwarded(egress)) => Ok(Arc::clone(egress)),
+            Some(Proxy::Loopback(_)) => Err(EgressFailure::Start {
+                detail: "this session's proxy listens on loopback".into(),
+            }),
+            None => Err(EgressFailure::Poisoned),
+        }
+    }
+}
+
+/// A session's proxy, whichever kind the platform uses.
+#[derive(Debug)]
+pub(crate) enum Proxy {
+    Loopback(Egress),
+    Forwarded(Arc<ForwardedEgress>),
+}
+
+impl Proxy {
+    pub(crate) fn stop(&self) {
+        match self {
+            Self::Loopback(egress) => egress.stop(),
+            Self::Forwarded(egress) => egress.stop(),
+        }
+    }
+
+    pub(crate) fn set_local_hosts(&self, hosts: Vec<String>) {
+        match self {
+            Self::Loopback(egress) => egress.set_local_hosts(hosts),
+            Self::Forwarded(egress) => egress.set_local_hosts(hosts),
+        }
+    }
+
+    fn counts(&self) -> EgressCounts {
+        match self {
+            Self::Loopback(egress) => egress.counts(),
+            Self::Forwarded(egress) => egress.counts(),
+        }
+    }
+
+    fn denials(&self) -> Vec<Denial> {
+        match self {
+            Self::Loopback(egress) => egress.denials(),
+            Self::Forwarded(egress) => egress.denials(),
+        }
+    }
+}
+
+fn policy(local_hosts: &[String]) -> EgressPolicy {
+    EgressPolicy {
+        local_hosts: local_hosts.to_vec(),
+        ..EgressPolicy::default()
+    }
+}
+
+fn screen(intel: Option<Arc<Intel>>) -> Option<Arc<dyn Screen>> {
+    intel.map(|intel| Arc::new(IntelScreen(intel)) as Arc<dyn Screen>)
 }
 
 fn describe(refusal: &Refusal) -> String {
