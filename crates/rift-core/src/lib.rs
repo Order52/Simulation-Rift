@@ -5,6 +5,7 @@
 
 pub mod download;
 pub mod egress;
+pub mod filters;
 pub mod heuristics;
 pub mod intel;
 pub mod pack;

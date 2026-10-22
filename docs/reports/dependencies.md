@@ -55,6 +55,7 @@ Owner: the project maintainer (Order52) is the only maintainer, so every row has
 | `url`, `idna`, `unicode-security` | 2.5.8, 1.1.0, 0.1.2 | Controller | URL canonicalization and lookalike detection | servo/rust-url, unicode-rs |
 | `hmac`, `sha2`, `scrypt`, `chacha20poly1305`, `x25519-dalek` | as locked | Controller | Index MAC, hashes, and age's primitives | RustCrypto, dalek-cryptography |
 | `postcard`, `serde` | 1.1.3, 1.0.229 | Both | The worker protocol and on-disk formats (fuzzed: `protocol_response`, `vault_index`) | jamesmunns/postcard, serde-rs |
+| `adblock` (with `flatbuffers`, `psl`, `addr`, `seahash`) | 0.13.3 | Controller | Matching EasyList-syntax filter lists for the content filters (§10.9); built without its single-thread feature, so the engine is shared between Binder threads | brave/adblock-rust (MPL-2.0) |
 | `yara-x` (with `wasmtime`'s Pulley interpreter) | 1.21.0, 45.0.3 | Worker | Rule scanning of untrusted files, inside the isolated worker | VirusTotal/yara-x, bytecodealliance |
 | `image`, `png`, `zune-jpeg`, `image-webp` | 0.25.10, 0.18.1, 0.5.15, 0.2.4 | Worker | Decoding untrusted images, inside the isolated worker | image-rs, etemesi254 |
 | `seccompiler` | 0.5.0 | Worker | The parser thread's seccomp filter | firecracker-microvm |

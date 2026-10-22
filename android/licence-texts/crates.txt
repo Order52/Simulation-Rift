@@ -27,3 +27,5 @@ ascii_tree 0.1.1 generic-mit
 cookie-factory 0.3.3 generic-mit
 io_tee 0.1.1 generic-apache
 typed-path 0.9.3 generic-apache
+flatbuffers 25.12.19 generic-apache
+seahash 4.1.0 generic-mit

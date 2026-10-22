@@ -20,6 +20,8 @@ uniffi::setup_scaffolding!();
 
 mod ai;
 mod egress;
+mod filters;
+pub use filters::{ContentFilters, FilterFetchFailure, Hiding, fetch_filter_list};
 mod intake;
 pub use ai::{Ai, AiFailure, AiLevel, AiView, LinkCheck};
 mod scan;
