@@ -5,7 +5,9 @@ import android.app.Application
 import android.app.Service
 import android.content.Intent
 import android.os.Environment
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.Process
 import android.util.Log
 import java.io.File
@@ -18,6 +20,8 @@ import org.simulationrift.bridge.Rift
  * instance after a wipe reports on an app in which nothing has run yet.
  */
 class SessionService : Service() {
+
+    private val main = Handler(Looper.getMainLooper())
 
     private val binder = object : ISession.Stub() {
         override fun pid(): Int {
@@ -33,7 +37,16 @@ class SessionService : Service() {
         override fun wipe(): Boolean {
             Rift.requireCaller(this@SessionService, Rift.CONTROLLER_PACKAGE)
             Log.i(TAG, "system wipe requested in pid ${Process.myPid()}")
-            return getSystemService(ActivityManager::class.java).clearApplicationUserData()
+            // Answered before the system kills this process for the clear, so
+            // the controller can tell a request that was made from a process
+            // that died before making it. A refusal leaves this process
+            // running, and the controller fails the reset when it does not stop.
+            main.post {
+                if (!getSystemService(ActivityManager::class.java).clearApplicationUserData()) {
+                    Log.e(TAG, "Android refused to clear the browser app's data")
+                }
+            }
+            return true
         }
     }
 

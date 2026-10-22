@@ -13,6 +13,7 @@ import android.util.Log
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicReference
 import org.simulationrift.bridge.ISession
 import org.simulationrift.bridge.Rift
 import org.simulationrift.core.BrowserDisposal
@@ -71,10 +72,12 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
      * old one could have changed.
      */
     private fun wipeBrowser() {
-        val cleared = CompletableFuture<Unit>()
+        // Replaced as each request is made: a clear still running for an
+        // earlier, killed launch confirms nothing about this one.
+        val cleared = AtomicReference(CompletableFuture<Unit>())
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
-                if (intent.data?.schemeSpecificPart == Rift.BROWSER_PACKAGE) cleared.complete(Unit)
+                if (intent.data?.schemeSpecificPart == Rift.BROWSER_PACKAGE) cleared.get().complete(Unit)
             }
         }
         val filter = IntentFilter(Intent.ACTION_PACKAGE_DATA_CLEARED).apply { addDataScheme("package") }
@@ -85,20 +88,9 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
             context.registerReceiver(receiver, filter)
         }
         try {
-            val (old, oldPid, died) = instanceToWipe()
-            try {
-                val accepted = try {
-                    old.session.wipe()
-                } catch (e: RemoteException) {
-                    true // the usual outcome: the process died during the call
-                }
-                if (!accepted) throw DisposalException.Failed("Android refused to clear the browser app's data")
-                await(died, "the browser app did not stop for the wipe")
-            } finally {
-                old.close()
-            }
+            val oldPid = requestWipe(cleared)
             val started = System.nanoTime()
-            await(cleared, "Android did not confirm that the browser app's data was cleared", CLEAR_TIMEOUT_MS)
+            await(cleared.get(), "Android did not confirm that the browser app's data was cleared", CLEAR_TIMEOUT_MS)
             Log.i(TAG, "browser data cleared after ${(System.nanoTime() - started) / 1_000_000} ms")
             checkFresh(oldPid)
             wipedThisLaunch = true
@@ -107,26 +99,62 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
         }
     }
 
-    /** §15 step 4: a new process, and not one file anywhere in the browser app. */
-    private fun checkFresh(oldPid: Int) {
-        val fresh = retrying("fresh browser instance") { Bound.connect(context) }
-        try {
-            val pid = fresh.session.pid()
-            if (pid == oldPid) throw DisposalException.Failed("the browser process survived the wipe (pid $pid)")
-            val files = fresh.session.inventory()
-            if (files.isNotEmpty()) {
-                throw DisposalException.Failed(files.take(10).joinToString("; ") { "browser file remains after the wipe: $it" })
-            }
-            Log.i(TAG, "browser wiped: pid $oldPid -> $pid, no files")
-        } catch (e: RemoteException) {
-            throw DisposalException.Failed("the fresh browser instance did not answer: $e")
-        } finally {
-            fresh.close()
+    /**
+     * Asks a running instance to have the system clear the browser app, then
+     * waits for the system to stop it. An instance that dies before it
+     * answers never asked (it crashed, or the system was still stopping the
+     * app for a killed launch), so a new instance is asked, a bounded number
+     * of times. Returns the pid of the instance that asked.
+     */
+    private fun requestWipe(cleared: AtomicReference<CompletableFuture<Unit>>): Int {
+        val (running, accepted) = firstAnswer(
+            WIPE_ATTEMPTS,
+            next = ::instanceToWipe,
+            ask = {
+                cleared.set(CompletableFuture())
+                try {
+                    it.bound.session.wipe()
+                } catch (e: RemoteException) {
+                    Log.w(TAG, "the browser died before it asked for the wipe: $e")
+                    null
+                }
+            },
+            onDied = { Log.w(TAG, "browser instance to wipe, attempt $it of $WIPE_ATTEMPTS died before answering") },
+        ) ?: throw DisposalException.Failed("the browser app died $WIPE_ATTEMPTS times before it asked for the wipe")
+        running.use {
+            if (!accepted) throw DisposalException.Failed("Android refused to clear the browser app's data")
+            await(it.died, "the browser app did not stop for the wipe")
         }
+        return running.pid
+    }
+
+    /**
+     * §15 step 4: a new process, and not one file anywhere in the browser
+     * app. An instance that dies before it answers (the system was still
+     * stopping the app) is replaced; what an instance reports is never retried.
+     */
+    private fun checkFresh(oldPid: Int) {
+        val (pid, files) = retrying("fresh browser instance") {
+            val fresh = Bound.connect(context)
+            try {
+                fresh.session.pid() to fresh.session.inventory()
+            } catch (e: RemoteException) {
+                throw DisposalException.Failed("the fresh browser instance did not answer: $e")
+            } finally {
+                fresh.close()
+            }
+        }
+        if (pid == oldPid) throw DisposalException.Failed("the browser process survived the wipe (pid $pid)")
+        if (files.isNotEmpty()) {
+            throw DisposalException.Failed(files.take(10).joinToString("; ") { "browser file remains after the wipe: $it" })
+        }
+        Log.i(TAG, "browser wiped: pid $oldPid -> $pid, no files")
     }
 
     /** A running browser instance to wipe: its binding, its pid, and a future completed when it dies. */
-    private data class Running(val bound: Bound, val pid: Int, val died: CompletableFuture<Unit>)
+    private data class Running(val bound: Bound, val pid: Int, val died: CompletableFuture<Unit>) : AutoCloseable {
+        override fun close() = bound.close()
+    }
 
     private fun instanceToWipe(): Running = retrying("browser instance to wipe") {
         val bound = Bound.connect(context)
@@ -240,6 +268,7 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
         private const val CLEAR_TIMEOUT_MS = 30_000L
         private const val BIND_TIMEOUT_MS = 10_000L
         private const val BIND_ATTEMPTS = 3
+        private const val WIPE_ATTEMPTS = 2
 
         /** Time for a clear still running from a killed launch to finish. */
         private const val BIND_RETRY_PAUSE_MS = 500L
@@ -262,4 +291,32 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
             Regex("cache/oat_primary/[a-z0-9_]+/base\\.art"),
         )
     }
+}
+
+/**
+ * Asks instances from [next] for the wipe until one answers, at most
+ * [attempts] times. [ask] returns an instance's answer, or null when it died
+ * before answering; those are closed and reported to [onDied]. Returns the
+ * instance that answered, still open, with its answer; null if every one
+ * died first. An instance is closed if asking it throws.
+ */
+internal fun <T : AutoCloseable> firstAnswer(
+    attempts: Int,
+    next: () -> T,
+    ask: (T) -> Boolean?,
+    onDied: (attempt: Int) -> Unit = {},
+): Pair<T, Boolean>? {
+    for (attempt in 1..attempts) {
+        val instance = next()
+        val answer = try {
+            ask(instance)
+        } catch (e: Throwable) {
+            instance.close()
+            throw e
+        }
+        if (answer != null) return instance to answer
+        instance.close()
+        onDied(attempt)
+    }
+    return null
 }

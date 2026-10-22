@@ -17,7 +17,8 @@ interface ISession {
     /**
      * ActivityManager.clearApplicationUserData() on the browser app itself:
      * the system kills every process of the package and deletes all its
-     * data. The call usually does not return, because this process dies.
+     * data. Returns true once the request is queued, just before it is made,
+     * so a call that fails instead means this process died before asking.
      */
     boolean wipe();
 }

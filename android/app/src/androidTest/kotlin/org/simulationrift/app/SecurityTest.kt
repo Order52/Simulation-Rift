@@ -1323,10 +1323,14 @@ class SecurityTest {
             assertEquals("show", outsider("overlay" to "show").getString("overlay"))
 
             // The control: an ordinary app's window, under the overlay, with a field autofill is asked about.
-            val outsiderWindow = Intent().setComponent(ComponentName(OUTSIDER, "$OUTSIDER.OutsiderActivity")).putExtra("field", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // A fresh task: the overlay command's window may still be closing,
+            // and an intent for the same activity then went to it ("intent has
+            // been delivered to currently running top-most instance") and closed
+            // with it, so the field never showed (H3 on CI's API 33 and 34).
+            val outsiderWindow = Intent().setComponent(ComponentName(OUTSIDER, "$OUTSIDER.OutsiderActivity")).putExtra("field", true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             context.startActivity(outsiderWindow)
-            // On CI's API 33 and 34 emulators the window sometimes never showed
-            // (cause not yet seen): start it once more, then record what was in front.
+            // Started once more if it still does not show, then what was in front is recorded.
             val field = device.wait(Until.findObject(By.pkg(OUTSIDER).clazz("android.widget.EditText")), UI_TIMEOUT_MS)
                 ?: run {
                     context.startActivity(outsiderWindow)
@@ -1943,7 +1947,8 @@ class SecurityTest {
     }
 
     private fun outsider(vararg extras: Pair<String, Any>): Bundle {
-        val intent = Intent().setComponent(ComponentName(OUTSIDER, "$OUTSIDER.OutsiderActivity"))
+        // A fresh task, so a command never reaches the previous one's closing window (H3).
+        val intent = Intent().setComponent(ComponentName(OUTSIDER, "$OUTSIDER.OutsiderActivity")).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
         for ((key, value) in extras) {
             when (value) {
                 is Int -> intent.putExtra(key, value)

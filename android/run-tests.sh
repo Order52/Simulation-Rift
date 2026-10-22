@@ -399,7 +399,9 @@ if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
     "$adb" shell settings put secure accessibility_enabled 1
     sleep 3
     front() { "$adb" shell dumpsys window | tr -d '\r' | sed -n 's/.*mCurrentFocus=Window{[0-9a-f]* u0 \([^ }]*\)}.*/\1/p' | head -1; }
-    "$adb" shell am start -n $outsider/.OutsiderActivity --ez field true >/dev/null
+    # A fresh task: an outsider window still closing would take the intent
+    # and close with it (H3 on CI).
+    "$adb" shell am start --activity-clear-task -n $outsider/.OutsiderActivity --ez field true >/dev/null
     sleep 4
     shown="outsider: $(front)"
     "$adb" shell am start -n $pkg/.MainActivity >/dev/null
