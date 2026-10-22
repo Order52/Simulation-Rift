@@ -5,14 +5,10 @@ name: linux-app
 # and the end-to-end test (linux/e2e/run-ci.sh) run against the installed
 # app, checked from the host.
 
+# Linux is on the to-do list and not supported now (STATUS.md): this runs
+# only when started by hand, so Android work is not held up by it.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - linux/**
-      - crates/**
-      - Cargo.lock
-      - .github/workflows/linux-app.yml
 
 permissions:
   contents: read

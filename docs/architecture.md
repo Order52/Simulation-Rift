@@ -431,7 +431,7 @@ Build: a debug build carries the debug browser (`:browser:assembleDebug`). A rel
 
 ## 9. Linux platform
 
-> **Future work (v2.3).** Android comes first; the Linux app is not a release target yet. Its code and CI stay, kept building and passing, and it follows the same scope (no vault since 2.3).
+> **On the to-do list; not supported now (2.5).** Android comes first and Linux is not a release target. Its code stays, but it is no longer built or tested on each push (the `linux-app` workflow runs by hand only), so it may not build against the current core until it is picked up. It would follow the same scope (no vault since 2.3). Before 2.5 it was kept building and passing.
 >
 > **Revised 21 Oct 2026 (v2.2).** The Linux app uses Qt, not GTK4 and WebKitGTK, and is built last, after Android (§22). The reviewed v2.0 GTK4 design is in this file's history (v2.1, commit 2040c5c). The evidence for this section is PoCs Q1–Q4 in [phase-5-qt-design.md](reports/phase-5-qt-design.md), which also has the process and message details.
 

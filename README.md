@@ -1,6 +1,6 @@
 # Rift
 
-Open any link, and any image or PDF, without letting it near your phone. Rift is a local Android app (Linux later) with two jobs:
+Open any link, and any image or PDF, without letting it near your phone. Rift is a local Android app (Linux is on the to-do list and not supported now) with two jobs:
 
 - **Check a link before you open it.** Paste it, or share it to Rift from any app: a sheet comes up over that app with a verdict (*Known malicious*, *Looks dangerous*, *Warning signs*, *Rift won't open this* or *No known threats found*, never "safe"), **See what's wrong** for the reasons, and **Open safely**. The check runs on the phone in microseconds and sends nothing anywhere: the threat database, the address checks (lookalikes of well-known sites, shorteners, links that hide their real host) and **Rift AI**, a model of phishing and malware addresses trained on public feeds ([how well it does](docs/reports/rift-ai.md)).
 - **Open it safely and watch what it does.** Links open in a sealed, disposable browser: a separate app with its own Linux user, no permissions, and no network except Rift's checking proxy. Everything it held is wiped by Android when the session ends. While the page is open, the **live check** lists what it tries: a listed address, your local network, a connection around the proxy, a download, and every device feature it asks for.
