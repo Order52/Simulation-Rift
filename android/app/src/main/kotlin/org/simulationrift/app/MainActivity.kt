@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
+import android.provider.Settings
 import android.text.format.Formatter
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -43,6 +44,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -148,6 +150,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Back from Android's "install unknown apps" setting.
+        if (BrowserSetup.state.value == BrowserSetup.State.NeedsPermission && packageManager.canRequestPackageInstalls()) {
+            BrowserSetup.install(this)
+        }
         // The week may have moved on while Rift was in the background.
         WeeklyStats.refresh()
     }
@@ -264,6 +270,7 @@ class MainActivity : ComponentActivity() {
             }
             val status = LocalStatusColors.current
             val (label, container, content) = when {
+                state == Core.State.NeedsBrowser -> Triple("Setup", MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
                 state is Core.State.Failed -> Triple("Stopped", MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
                 state !is Core.State.Active -> Triple("Starting", MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface)
                 lock == NetworkLock.State.Active -> Triple("Protected", status.safeContainer, status.onSafeContainer)
@@ -305,6 +312,7 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when (state) {
                     Core.State.Opening -> Text("Preparing a fresh session…", style = MaterialTheme.typography.titleMedium)
+                    Core.State.NeedsBrowser -> BrowserSetupContent()
                     is Core.State.Resetting -> Text("Destroying session ${state.generation}…", style = MaterialTheme.typography.titleMedium)
                     is Core.State.Failed -> {
                         Text("Session cleanup failed", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
@@ -363,6 +371,50 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** First run, or after an update of Rift: install the sealed browser Rift carries (§8.10). */
+    @Composable
+    private fun BrowserSetupContent() {
+        val setup by BrowserSetup.state.collectAsState()
+        val update = (setup as? BrowserSetup.State.Needed)?.update == true
+        Text(if (update) "Update the sealed browser" else "One step left", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(
+            if (update) "Rift was updated, and its sealed browser needs the matching version. It comes inside Rift."
+            else "Rift opens links in its own sealed browser: a separate app with its own Linux user, no permissions, " +
+                "and no access to Rift or your files. It comes inside Rift; Android asks you to confirm the install.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        when (val current = setup) {
+            BrowserSetup.State.Installing -> Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.testTag("browser-installing")) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(12.dp))
+                Text("Installing…")
+            }
+            BrowserSetup.State.NeedsPermission -> {
+                Text(
+                    "Android needs your permission for Rift to install apps. Turn on \"Allow from this source\" for Rift, then come back.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("browser-permission"),
+                )
+                Button(
+                    onClick = { startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))) },
+                    modifier = Modifier.fillMaxWidth().height(52.dp).testTag("browser-settings"),
+                ) { Text("Open settings") }
+            }
+            else -> {
+                if (current is BrowserSetup.State.Failed) {
+                    Text(current.reason, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("browser-failure"))
+                }
+                Button(onClick = { BrowserSetup.install(this@MainActivity) }, modifier = Modifier.fillMaxWidth().height(52.dp).testTag("install-browser")) {
+                    Icon(painterResource(R.drawable.ic_lock), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (update) "Update sealed browser" else "Install sealed browser")
+                }
+            }
+        }
+        // Checking a link needs no browser.
+        AddressField(0, mayBrowse = false)
     }
 
     @Composable
@@ -882,6 +934,8 @@ class MainActivity : ComponentActivity() {
                 "anywhere: it only takes away the browser's direct network access, so its one way out is Rift's proxy." to true
             is NetworkLock.State.Lost -> "The network lock stopped: ${lock.reason}." to true
             is NetworkLock.State.Unavailable -> "The network lock cannot run: ${lock.reason}." to true
+            NetworkLock.State.TurnedOff -> "Network lock off, as you chose: no VPN. Pages still reach websites only through " +
+                "Rift's proxy, which checks every connection and refuses local and private addresses." to false
         }
         var open by remember { mutableStateOf(false) }
         val expanded = open || problem || isReduced
@@ -899,6 +953,24 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Network lock", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Shown by Android as a VPN. It routes nothing anywhere: it cuts the browser off from every network but Rift's proxy.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = lock != NetworkLock.State.TurnedOff,
+                        onCheckedChange = { on ->
+                            NetworkLock.turn(this@MainActivity, on)
+                            if (on) turnOnLock()
+                        },
+                        modifier = Modifier.testTag("lock-switch"),
+                    )
+                }
                 Text(
                     summary,
                     style = MaterialTheme.typography.bodyMedium,
@@ -907,8 +979,13 @@ class MainActivity : ComponentActivity() {
                 )
                 if (isReduced) {
                     Text(
-                        "This session runs with reduced isolation: pages can reach your local network through WebRTC, " +
-                            "and a compromised browser is not limited to Rift's proxy.",
+                        if (Hardening.status.collectAsState().value.network == Hardening.Measure.InEffect) {
+                            "This session runs without the network lock. Extra isolation's firewall (root) still keeps the browser " +
+                                "to Rift's proxy, WebRTC included."
+                        } else {
+                            "This session runs with reduced isolation: pages can reach your local network through WebRTC, " +
+                                "and a compromised browser is not limited to Rift's proxy."
+                        },
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.testTag("reduced-session"),
                     )

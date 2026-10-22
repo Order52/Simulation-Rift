@@ -38,6 +38,8 @@ The Android debug build works end to end on emulators, and its browser is now is
 
 **Extra isolation (optional, 2.5):** with Shizuku or Sui, Rift's helper (shell or root, in its own process) has Android ignore the browser app's clipboard and clear the browser app at each reset itself; with root, a firewall lets the browser's UID reach only its proxy on loopback and the lock's VPN. Tested by z1 on API 34 (Shizuku as shell) and API 35 (Shizuku as root); the CI suites skip it, because they run no Shizuku ([architecture §8.9](docs/architecture.md)).
 
+**One file, a lock switch (2.5):** Rift's APK carries the browser's and installs it on first launch through Android's own installer, after you allow Rift to install apps, so the browser stays a separate app with its own UID. The **Network lock** switch on the home screen turns the VPN off for people who need their own VPN: sessions then run with reduced isolation, labelled, and still only through Rift's proxy. Release builds are arm64 only: 23.2 MB, down from 47.8 MB. Tested by s28c on API 34 and 35 and the install by hand on API 34 ([architecture §8.8, §8.10](docs/architecture.md)).
+
 **What it does not do:** without root, escaped browser code can still reach **loopback** (other apps' local servers on the phone), which no Android VPN covers; only one VPN can run on a device, so users of another VPN get reduced isolation or nothing; the proxy does not see inside HTTPS; and a WebView exploit still has the current session's own browsing data. These are listed in [architecture §24](docs/architecture.md).
 
 ## What works today (Android debug build)
@@ -111,6 +113,7 @@ Android first; Linux is the last step.
 | Rust tests and lints | `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo deny check` |
 | Android apps (debug): controller, browser, outsider test app | `sh android/build.sh` (demo signing keys go to `~/.local/share/simulation-rift/demo-keys`, the outsider's throwaway key to `android/build/`, both outside version control) |
 | Android suite on one attached emulator | `sh android/run-tests.sh <evidence-dir>` (installs all three apps and grants the VPN consent a user would give) |
-| Install only | `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` and `adb install -r android/browser/build/outputs/apk/debug/browser-debug.apk`, then open Rift and allow the network lock |
+| Install only | `adb install -r android/app/build/outputs/apk/debug/app-debug.apk`: one file. Open Rift, tap Install, allow Rift to install apps and confirm Android's prompt (it installs the browser it carries, §8.10), then allow the network lock. A smaller debug build for a phone: add `-Prift.abis=arm64-v8a` |
+| Release build | `./gradlew :browser:assembleRelease`, sign the browser with the release key, then `./gradlew :app:assembleRelease -Prift.signedBrowserApk=<signed browser APK>` and sign Rift with the same key (arm64 only, about 23 MB) |
 
 Further reading: [architecture](docs/architecture.md); the detailed status and history in [project-status.md](docs/reports/project-status.md); the reports for phases [0](docs/reports/phase-0.md), [1](docs/reports/phase-1.md), [2](docs/reports/phase-2.md), [3](docs/reports/phase-3.md), [4](docs/reports/phase-4.md) and the [browser isolation](docs/reports/browser-isolation.md) report; the raw evidence in [`docs/reports/evidence/`](docs/reports/evidence/).

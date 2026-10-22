@@ -122,6 +122,17 @@ Shizuku 13.6.0 (from its GitHub release, signer `CN=Rikka`, certificate SHA-256 
 
 Not tested: Sui (Magisk); a physical phone; a reboot with root Shizuku (the rules are expected to be gone and re-made at the next session). The CI suites run no Shizuku, so z1 is skipped there.
 
+## One file, a lock switch, a smaller APK (§8.8, §8.10, §18; 22 Oct 2026)
+
+| ID | Test | Result |
+|---|---|---|
+| s28c | Network lock switched off, then on | **Pass on API 34 and API 35, in the full suite (53 of 53 on each, z1 included) and alone.** Off: the VPN went away, the session ended, the next session ran reduced with the label shown, s2 loaded through the proxy, and `NetworkLock.start` kept it off. On: the lock was active again and the next session was locked. |
+| z1 (root, lock off) | With the lock off and root firewall on, the browser's UID connects to the host's address and to its proxy | **Pass**, API 35 (root Shizuku), in the full suite: 10.0.2.2:8766 refused, the session's proxy reachable. |
+| (by hand) | First launch with no browser installed, API 34 | The setup card, Android's "install unknown apps" setting, Android's confirmation, the browser installed; no VPN before the install, and after it the VPN listed the browser's UIDs (`10199`, `20199`), the LAN probe timed out, and session 1 was locked. |
+| (size) | Release build, arm64 only | Rift's APK 47.8 MB → 23.2 MB, carrying the 2 MB release browser. |
+
+Not tested: an update of the browser through the setup card (Rift updated with a different browser); the one-file flow on a phone; a release build carrying a browser signed with the real key.
+
 ## Fault injection
 
 The host kills the controller with `SIGKILL` (as the OS or a crash would) at a random moment while it writes, then starts it again and checks what is left. The test controller writes in a loop and logs each completed step, so the host knows how far it got before the kill. `RIFT_FAULT_ONLY=1` runs only these rounds; `RIFT_FAULT_ROUNDS` sets their number (8 by default).
@@ -169,6 +180,9 @@ What this does not cover: real flash storage and its firmware (a phone's disk ma
 25. **The outsider's window sometimes did not show** (finding 76, found by h3). A second launch reached the previous, closing window. Each command now starts it in a fresh task.
 26. **Extra isolation could leave the browser's clipboard blocked** (findings 81 and 83, found by z1). Undoing with `default` stored a mode the clipboard service also refuses, and clearing Rift's data with the switch on lost the record that anything was changed. The helper now restores `allow`, and Rift undoes leftovers whenever a Shizuku that allowed it is running.
 27. **The helper outlived Rift** (finding 84). Shizuku's end-the-helper call carries no interface token and was refused; the helper now answers it.
+28. **The network lock started before there was a browser to lock** (finding 85). Found while building the one-file install: the VPN applied to no app. It now starts after the install.
+29. **Switching the lock off left the VPN up** (finding 86, found by s28c). Android stays bound to the VPN service while its tun is open; the service now closes the tun itself.
+30. **z1 probed the previous session's firewall rules** (finding 87). A race in the test; it now waits for the rules written for the new port.
 
 ## Release gates (§24)
 

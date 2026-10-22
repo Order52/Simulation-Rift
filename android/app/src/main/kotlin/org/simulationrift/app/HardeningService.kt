@@ -59,29 +59,31 @@ class HardeningService(context: Context?) : IHardening.Stub() {
 
     /*
      * The rules, in the form `iptables -S` prints them, so they can be read
-     * back exactly. Loopback is open to the proxy's port only; anything
-     * routed into a VPN goes on to it (the network lock, whose drops are
-     * listed); everything else is refused, so the browser stays off the
-     * network even if the VPN is gone.
+     * back exactly. Loopback is open to the proxy's port only. With the
+     * network lock on, anything routed into a VPN goes on to it (the lock,
+     * whose drops are listed); with it off, a VPN may be the user's own,
+     * which would carry the browser past the proxy, so nothing goes there.
+     * Everything else is refused, so the browser stays off the network even
+     * if the VPN is gone.
      */
-    private fun ipv4Rules(port: Int) = listOf(
+    private fun ipv4Rules(port: Int, intoVpn: Boolean) = listOfNotNull(
         "-d 127.0.0.1/32 -o lo -p tcp -m tcp --dport $port -j RETURN",
-        "-o tun+ -j RETURN",
+        "-o tun+ -j RETURN".takeIf { intoVpn },
         "-p tcp -j REJECT --reject-with tcp-reset",
         "-j REJECT --reject-with icmp-port-unreachable",
     )
 
-    private val ipv6Rules = listOf(
-        "-o tun+ -j RETURN",
+    private fun ipv6Rules(intoVpn: Boolean) = listOfNotNull(
+        "-o tun+ -j RETURN".takeIf { intoVpn },
         "-p tcp -j REJECT --reject-with tcp-reset",
         "-j REJECT --reject-with icmp6-port-unreachable",
     )
 
-    override fun lockNetwork(browserUid: Int, proxyPort: Int): String? {
+    override fun lockNetwork(browserUid: Int, proxyPort: Int, intoVpn: Boolean): String? {
         if (Process.myUid() != 0) return "needs root"
         badUid(browserUid)?.let { return it }
         if (proxyPort !in 1024..65535) return "port $proxyPort is out of range"
-        for ((tool, rules) in listOf("iptables" to ipv4Rules(proxyPort), "ip6tables" to ipv6Rules)) {
+        for ((tool, rules) in listOf("iptables" to ipv4Rules(proxyPort, intoVpn), "ip6tables" to ipv6Rules(intoVpn))) {
             val jump = jump(browserUid)
             if (inEffect(tool, rules, jump)) continue
             // Rewritten only as a session's browser registers: the browser

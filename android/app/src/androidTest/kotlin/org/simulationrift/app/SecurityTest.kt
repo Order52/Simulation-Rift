@@ -989,6 +989,41 @@ class SecurityTest {
         report("s28b", "generation $generation ran with reduced isolation, labelled; $next did not")
     }
 
+    /**
+     * The network lock's switch (§8.8): off is kept across launches, ends the
+     * session, and every session after it runs reduced (labelled) with pages
+     * still going through the proxy; on starts the lock again and sessions
+     * are locked once more.
+     */
+    @Test
+    fun s28c_theLockCanBeTurnedOffAndOn() {
+        awaitLock()
+        val locked = activeGeneration()
+        try {
+            instrumentation.runOnMainSync { NetworkLock.turn(context, false) }
+            val off = activeGenerationAfter(locked)
+            assertEquals(NetworkLock.State.TurnedOff, NetworkLock.state.value)
+            assertEquals("a session after the lock is off runs reduced", off, Core.reduced.value)
+            assertTrue("the choice is kept", File(context.filesDir, "rift/network-lock-off").exists())
+            // A later start (a new launch) keeps it off.
+            NetworkLock.start(context, userAction = false)
+            assertEquals(NetworkLock.State.TurnedOff, NetworkLock.state.value)
+            val page = visit("s2", "/s2.html")
+            assertNotNull("a page loads through the proxy: $page", page)
+            assertNotNull("label", device.wait(Until.findObject(By.res("reduced")), UI_TIMEOUT_MS))
+            screenshot("s28c-off")
+            instrumentation.runOnMainSync { NetworkLock.turn(context, true) }
+            awaitLock()
+            val on = activeGenerationAfter(off)
+            assertNotEquals(on, Core.reduced.value)
+            assertFalse(File(context.filesDir, "rift/network-lock-off").exists())
+            report("s28c", "lock off: session $off reduced and labelled, a page loaded through the proxy; lock on: session $on locked")
+        } finally {
+            if (NetworkLock.state.value == NetworkLock.State.TurnedOff) instrumentation.runOnMainSync { NetworkLock.turn(context, true) }
+            awaitLock()
+        }
+    }
+
     private fun escapeProbe(stale: Long): Bundle = ask(
         Intent().setComponent(ComponentName(Rift.BROWSER_PACKAGE, "${Rift.BROWSER_PACKAGE}.EscapeProbeActivity"))
             .putExtra("fixturePort", FIXTURE_PORT)
@@ -1753,7 +1788,24 @@ class SecurityTest {
                 val proxy = Core.egressPort() ?: throw AssertionError("no proxy port")
                 assertFalse("the browser app reached another loopback service", browserReaches(FIXTURE_PORT))
                 assertTrue("the browser app could not reach its proxy", browserReaches(proxy))
-                "root: loopback $FIXTURE_PORT reachable before: $loopbackOff, after: false; proxy $proxy reachable"
+                // Without the network lock, the firewall alone keeps the browser off the network.
+                val withLock = activeGeneration()
+                instrumentation.runOnMainSync { NetworkLock.turn(context, false) }
+                try {
+                    val unlocked = activeGenerationAfter(withLock)
+                    openBrowser(unlocked, null)
+                    awaitCondition("the rules for the unlocked session", SESSION_TIMEOUT_MS) {
+                        val port = Core.egressPort()
+                        Hardening.status.value.network == Hardening.Measure.InEffect && port != null && port != proxy && Hardening.firewallPort == port
+                    }
+                    assertFalse("without the lock the browser app reached the host's address", browserReaches(FIXTURE_PORT, "10.0.2.2"))
+                    assertTrue("without the lock the browser app could not reach its proxy", browserReaches(Core.egressPort()!!))
+                } finally {
+                    instrumentation.runOnMainSync { NetworkLock.turn(context, true) }
+                    awaitLock()
+                }
+                "root: loopback $FIXTURE_PORT reachable before: $loopbackOff, after: false; proxy $proxy reachable; " +
+                    "lock off: 10.0.2.2:$FIXTURE_PORT refused, proxy reachable"
             } else {
                 assertTrue("${Hardening.status.value.network}", Hardening.status.value.network is Hardening.Measure.Pending)
                 "shell: no firewall; loopback $FIXTURE_PORT reachable: $loopbackOff"
@@ -1825,9 +1877,9 @@ class SecurityTest {
      * `port` (run-as, debug builds). UiAutomation splits a command at
      * spaces without a shell, so the shell's command is passed as one word.
      */
-    private fun browserReaches(port: Int): Boolean {
+    private fun browserReaches(port: Int, host: String = "127.0.0.1"): Boolean {
         // Connect, send nothing, leave a second later (API 34's toybox has no -z).
-        val command = "run-as ${Rift.BROWSER_PACKAGE} toybox nc -w 2 -q 1 127.0.0.1 $port </dev/null; echo rc=\$?"
+        val command = "run-as ${Rift.BROWSER_PACKAGE} toybox nc -w 2 -q 1 $host $port </dev/null; echo rc=\$?"
         val out = device.executeShellCommand("sh -c " + command.replace(" ", "\${IFS}"))
         return out.contains("rc=0").also { if (!it && !out.contains("rc=")) throw AssertionError("probe gave: $out") }
     }

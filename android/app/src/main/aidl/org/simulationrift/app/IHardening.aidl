@@ -17,8 +17,12 @@ interface IHardening {
     /** Has Android clear the browser app's data, which stops every process of it. */
     String clearBrowser() = 3;
 
-    /** Root only: the browser app's UID may connect to loopback port `proxyPort` and its VPN, nothing else. */
-    String lockNetwork(int browserUid, int proxyPort) = 4;
+    /**
+     * Root only: the browser app's UID may connect to loopback port
+     * `proxyPort` and, when `intoVpn` (Rift's network lock is on), into a
+     * VPN; nothing else.
+     */
+    String lockNetwork(int browserUid, int proxyPort, boolean intoVpn) = 4;
 
     /** Root only: removes the rules of lockNetwork. */
     String unlockNetwork(int browserUid) = 5;

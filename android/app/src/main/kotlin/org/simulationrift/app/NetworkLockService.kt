@@ -11,6 +11,7 @@ import android.system.Os
 import android.system.OsConstants
 import android.system.StructPollfd
 import android.util.Log
+import java.io.File
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
@@ -43,7 +44,16 @@ object NetworkLock {
         data class Lost(val reason: String) : State
 
         data class Unavailable(val reason: String) : State
+
+        /**
+         * The user turned the lock off in Rift (kept across launches): every
+         * session then runs with reduced isolation, labelled as such.
+         */
+        data object TurnedOff : State
     }
+
+    /** Where the user's choice to turn the lock off is kept, under rift-core's directory. */
+    private const val OFF_FILE = "rift/network-lock-off"
 
     /**
      * What the lock has dropped in session count `epoch` ([newSession]):
@@ -74,15 +84,57 @@ object NetworkLock {
      * an explicit call with `userAction` restarts it.
      */
     fun start(context: Context, userAction: Boolean) {
+        if (File(context.filesDir, OFF_FILE).exists()) {
+            _state.value = State.TurnedOff
+            return
+        }
         val current = _state.value
         if (current == State.Active || current == State.Starting) return
         if (current is State.Lost && !userAction) return
+        // The VPN names the browser app; without it, Android set up a VPN
+        // that applied to no app at all (found with the one-file setup, §8.10).
+        try {
+            context.packageManager.getApplicationInfo(Rift.BROWSER_PACKAGE, 0)
+        } catch (e: PackageManager.NameNotFoundException) {
+            unavailable("the sealed browser is not installed yet")
+            return
+        }
         if (VpnService.prepare(context) != null) {
             _state.value = State.NeedsConsent
             return
         }
         _state.value = State.Starting
         context.startService(Intent(context, NetworkLockService::class.java))
+    }
+
+    /** At start-up, before the first session (Core.ensureStarted): the user's choice. */
+    fun init(context: Context) {
+        if (File(context.filesDir, OFF_FILE).exists()) _state.value = State.TurnedOff
+    }
+
+    /**
+     * The user's switch. Off stops the VPN (not reported as a lost lock) and
+     * is kept; on forgets that, and the home screen then starts the lock,
+     * asking for Android's VPN consent if needed. Either way the current
+     * session ends, so no session changes its isolation while it runs.
+     */
+    fun turn(context: Context, on: Boolean) {
+        val file = File(context.filesDir, OFF_FILE)
+        if (on) {
+            file.delete()
+            _state.value = State.Off
+        } else {
+            file.parentFile?.mkdirs()
+            file.createNewFile()
+            // Before the tun closes, so its end is not taken for a lost lock.
+            _state.value = State.TurnedOff
+            // Android stays bound to a VPN service while its tun is open, so
+            // stopService alone would leave the VPN up: the service closes it.
+            if (NetworkLockService.tun != null) {
+                context.startService(Intent(context, NetworkLockService::class.java).setAction(NetworkLockService.ACTION_STOP))
+            }
+        }
+        Core.networkLockTurned()
     }
 
     /**
@@ -151,7 +203,12 @@ object NetworkLock {
 class NetworkLockService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (tun == null) establish()
+        if (intent?.action == ACTION_STOP) {
+            close()
+            stopSelf()
+        } else if (tun == null) {
+            establish()
+        }
         return START_NOT_STICKY
     }
 
@@ -265,18 +322,20 @@ class NetworkLockService : VpnService() {
         }
     }
 
-    private companion object {
-        const val TUN_V4 = "10.111.0.1"
-        const val TUN_V6 = "fd00:7269:6674::1"
-        const val MAX_PACKET = 32_767
-        const val POLL_MS = 500
-        const val PUBLISH_MS = 1_000L
-        const val MAX_DESTINATIONS = 32
+    internal companion object {
+        /** The user turned the lock off ([NetworkLock.turn]). */
+        const val ACTION_STOP = "org.simulationrift.app.STOP_NETWORK_LOCK"
+        private const val TUN_V4 = "10.111.0.1"
+        private const val TUN_V6 = "fd00:7269:6674::1"
+        private const val MAX_PACKET = 32_767
+        private const val POLL_MS = 500
+        private const val PUBLISH_MS = 1_000L
+        private const val MAX_DESTINATIONS = 32
 
         @Volatile var tun: ParcelFileDescriptor? = null
 
         /** "TCP 10.0.2.2:8766" for the diagnostics list; bounds-checked against `n`. */
-        fun describe(p: ByteArray, n: Int): String {
+        private fun describe(p: ByteArray, n: Int): String {
             if (n < 1) return "empty packet"
             return when ((p[0].toInt() shr 4) and 0xF) {
                 4 -> {

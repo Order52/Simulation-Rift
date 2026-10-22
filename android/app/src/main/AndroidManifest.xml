@@ -14,6 +14,10 @@
          Shizuku's own permission, granted only through Shizuku's prompt, and
          gives no access to the device; without Shizuku it does not exist. -->
 
+    <!-- Installs the sealed browser Rift carries, after the user allows it and
+         confirms Android's install screen (§8.10). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- The browser app must be visible to bind and start it (API 30). -->
     <queries>
         <package android:name="org.simulationrift.browser" />

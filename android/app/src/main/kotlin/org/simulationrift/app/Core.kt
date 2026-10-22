@@ -77,6 +77,13 @@ object Core {
 
         /** Nothing is presented as fresh until [retry] succeeds (INV-8). */
         data class Failed(val message: String) : State
+
+        /**
+         * The sealed browser Rift carries is not installed yet, or another
+         * version is (§8.10): no session starts until it is. Checking links
+         * works meanwhile. [BrowserSetup.state] says what is needed.
+         */
+        data object NeedsBrowser : State
     }
 
     private class RegisteredBrowser(val generation: Long, val binder: IBrowser, val mode: NetworkMode) {
@@ -259,6 +266,8 @@ object Core {
             disposal = AndroidBrowserDisposal(app)
             WeeklyStats.open(app)
             Hardening.init(app)
+            // The user's network lock choice, before the first session starts.
+            NetworkLock.init(app)
             updating.execute {
                 // An update's working copy left by a kill during an install (found by
                 // F4). First on the update executor, so before any new install.
@@ -291,6 +300,13 @@ object Core {
         }
     }
 
+    /** Android installed the sealed browser Rift carries (BrowserSetup): sessions can start. */
+    fun browserInstalled() {
+        // The lock could not start without the browser to apply to.
+        NetworkLock.start(app, userAction = false)
+        worker.execute { if (_state.value == State.NeedsBrowser) openAndStart() }
+    }
+
     /** After a failure: reopen, which repeats any unfinished cleanup first. */
     fun retry() = worker.execute {
         if (_state.value is State.Failed) openAndStart()
@@ -320,6 +336,10 @@ object Core {
     private fun openAndStart() {
         _state.value = State.Opening
         if (database == null) openIntel()
+        if (!BrowserSetup.ready(app)) {
+            _state.value = State.NeedsBrowser
+            return
+        }
         val opened = try {
             Sessions.open(File(app.filesDir, "rift").path, disposal)
         } catch (e: SessionFailure) {
@@ -357,6 +377,8 @@ object Core {
             val generation = opened.start().toLong()
             // Before the generation is current, so its first decision is watched.
             watch = Watch(generation, PageWatcher(NetworkLock.newSession(), WeeklyStats::count))
+            // With the lock turned off, every session runs reduced, and says so.
+            if (NetworkLock.state.value == NetworkLock.State.TurnedOff) _reduced.value = generation
             currentGeneration = generation
             _state.value = State.Active(generation, recovered)
             Log.i(TAG, "session $generation active" + (recovered?.let { "; recovered interrupted session $it" } ?: ""))
@@ -412,6 +434,11 @@ object Core {
         if (_reduced.value == generation) return
         _notice.value = "Session $generation ended because the network lock stopped. Turn the lock on again to keep browsing isolated."
         reset(generation)
+    }
+
+    /** The user turned the lock on or off: the current session ends, and the next one runs as chosen. */
+    fun networkLockTurned() {
+        currentGeneration?.let { reset(it) }
     }
 
     fun dismissNotice() {

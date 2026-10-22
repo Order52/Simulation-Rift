@@ -67,6 +67,41 @@ android {
     }
 }
 
+// The sealed browser is a separate app (its own UID, ADR-04) shipped inside
+// this APK, so Rift is one file to install; Rift installs it on first run
+// (§8.10, BrowserSetup). Debug builds embed the debug browser of the same
+// build. A release build embeds a browser APK already signed with the same
+// key, given as -Prift.signedBrowserApk=<path>: there is no unsigned or
+// silently missing fallback.
+val embeddedBrowser = "generated-browser"
+val embedBrowserDebug = tasks.register<Copy>("embedBrowserDebug") {
+    dependsOn(":browser:assembleDebug")
+    from(rootProject.file("browser/build/outputs/apk/debug/browser-debug.apk"))
+    into(layout.buildDirectory.dir("$embeddedBrowser/debug/browser"))
+    rename { "rift-browser.apk" }
+}
+val signedBrowser = providers.gradleProperty("rift.signedBrowserApk")
+val embedBrowserRelease = tasks.register<Copy>("embedBrowserRelease") {
+    doFirst {
+        if (!signedBrowser.isPresent) {
+            throw GradleException(
+                "A release build embeds the sealed browser signed with the release key: " +
+                    "build :browser:assembleRelease, sign it, and pass -Prift.signedBrowserApk=<signed APK>.",
+            )
+        }
+    }
+    from(signedBrowser.map { listOf(file(it)) }.orElse(emptyList()))
+    into(layout.buildDirectory.dir("$embeddedBrowser/release/browser"))
+    rename { "rift-browser.apk" }
+}
+android.sourceSets.getByName("debug").assets.directories += "build/$embeddedBrowser/debug"
+android.sourceSets.getByName("release").assets.directories += "build/$embeddedBrowser/release"
+tasks.matching {
+    (it.name.startsWith("merge") && it.name.endsWith("Assets")) || it.name.contains("lint", ignoreCase = true)
+}.configureEach {
+    if (name.contains("Release", ignoreCase = true)) dependsOn(embedBrowserRelease) else dependsOn(embedBrowserDebug)
+}
+
 // Release builds are for phones: arm64 only (x86_64 is over half the APK).
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->

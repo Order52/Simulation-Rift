@@ -90,6 +90,10 @@ object Hardening {
     /** The current session's proxy port, once its browser has registered. */
     @Volatile private var sessionPort: Int? = null
 
+    /** The proxy port the firewall rules in effect were written for; null without them. */
+    @Volatile var firewallPort: Int? = null
+        private set
+
     private val choiceFile get() = File(app.filesDir, CHOICE_FILE)
 
     private fun choice(): String? = try {
@@ -238,6 +242,7 @@ object Hardening {
         if (problems.isEmpty()) {
             setChoice(null)
             helper = null
+            firewallPort = null
             try {
                 Shizuku.unbindUserService(args, connection, true)
             } catch (e: RuntimeException) {
@@ -257,7 +262,8 @@ object Hardening {
     }
 
     private fun applyNetwork(connected: IHardening, port: Int) {
-        val problem = connected.lockNetwork(browserUid(), port)
+        val problem = connected.lockNetwork(browserUid(), port, NetworkLock.state.value != NetworkLock.State.TurnedOff)
+        firewallPort = if (problem == null) port else null
         _status.update { it.copy(network = problem?.let(Measure::Problem) ?: Measure.InEffect) }
         if (problem != null) Log.e(TAG, "network rules not in effect: $problem")
     }
