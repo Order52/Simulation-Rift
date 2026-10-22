@@ -243,6 +243,15 @@ object Core {
         return result
     }
 
+    /**
+     * [check], once the threat database has been opened or has failed to,
+     * for a check that may come first after a cold start (a shared link).
+     */
+    fun checkWhenOpened(input: String): LinkCheck {
+        if (!intelOpened.await(INTEL_OPEN_WAIT_S, TimeUnit.SECONDS)) Log.w(TAG, "checking before the threat database was opened")
+        return check(input)
+    }
+
     fun ensureStarted(context: Context) {
         check(Application.getProcessName() == context.packageName) { "rift-core runs in the main process only" }
         if (started.compareAndSet(false, true)) {
@@ -794,6 +803,8 @@ object Core {
     }
 
     private const val INTEL_OPEN_TIMEOUT_S = 30L
+    /** How long a shared link's check waits for the database before going without it (and saying so). */
+    private const val INTEL_OPEN_WAIT_S = 5L
     private const val DEMO_INTEL = "intel-demo"
     private const val PRODUCTION_ROOT = "intel-root/root.json"
     private const val UPDATE_SOURCE = "intel-root/update-url.txt"

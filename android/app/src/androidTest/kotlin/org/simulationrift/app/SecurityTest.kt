@@ -399,6 +399,64 @@ class SecurityTest {
     }
 
     /** Hands `intent` to Rift's home screen as another app's link or share would. */
+    /**
+     * Sharing to Rift (§10.1): a shared link is checked at once and the
+     * verdict shown in a sheet over the sharing app, with what was found on
+     * request, and opened only by Open safely, which goes through the
+     * core's checks again. Text without a link gets no Open. A picture that
+     * another app shares, readable only through its grant, still reaches
+     * the viewer through the sheet's activity.
+     */
+    @Test
+    fun n7_sharedLinksGetAVerdictBeforeOpening() {
+        share("Have a look: hxxps://paypa1[.]com/login (urgent)")
+        // A cold start of the controller can come first.
+        val title = device.wait(Until.findObject(By.res("check-title")), PAGE_TIMEOUT_MS)
+            ?: run { screenshot("n7-no-verdict"); throw AssertionError("no verdict") }
+        val verdict = title.text
+        assertTrue(verdict, verdict in setOf("Warning signs", "Looks dangerous"))
+        assertNotNull(device.findObject(By.res("share-summary")))
+        assertNull("details are folded", device.findObject(By.res("share-details")))
+        assertNull("nothing is opened yet", device.findObject(By.res("trusted-bar")))
+        screenshot("n7-sheet")
+        device.findObject(By.res("share-why")).click()
+        assertNotNull(device.wait(Until.findObject(By.res("share-details")), UI_TIMEOUT_MS))
+        assertNotNull(device.findObject(By.textContains("looks like paypal.com")))
+        screenshot("n7-details")
+        device.findObject(By.res("share-why")).click()
+        assertTrue(device.wait(Until.gone(By.res("share-details")), UI_TIMEOUT_MS))
+        device.findObject(By.res("share-open")).click()
+        // The core asks again before loading, in the sealed browser.
+        assertNotNull("the warning before loading", device.wait(Until.findObject(By.res("interstitial")), PAGE_TIMEOUT_MS))
+        assertNotNull(device.findObject(By.textContains("paypa1.com/login")))
+
+        // Text without a link: a reason, and nothing to open.
+        share("no link in here")
+        device.wait(Until.findObject(By.res("check-title").text("Rift won't open this")), PAGE_TIMEOUT_MS)
+            ?: run { screenshot("n7-no-refusal"); throw AssertionError("text without a link") }
+        assertNull(device.findObject(By.res("share-open")))
+        device.findObject(By.res("share-close")).click()
+        assertTrue(device.wait(Until.gone(By.res("share-sheet")), UI_TIMEOUT_MS))
+
+        // A picture from another app, through its grant.
+        val generation = activeGeneration()
+        assertEquals("sent", outsider("share" to "picture").text("share"))
+        awaitCondition("the shared picture quarantined") { Core.downloads.value.any { it.file?.displayName == "rift-n7.png" } }
+        val file = Core.downloads.value.firstNotNullOf { it.file?.takeIf { f -> f.displayName == "rift-n7.png" } }
+        assertEquals("another app", file.source)
+        assertNotNull("the viewer", device.wait(Until.findObject(By.res("viewer")), UI_TIMEOUT_MS))
+        awaitCondition("a preview of the shared picture") { Core.previews.value[file.id]?.bitmap != null }
+        assertEquals(300, Core.previews.value[file.id]!!.bitmap!!.width)
+        report("n7", "verdict $verdict; refused text; picture ${file.size} bytes from ${file.source} in session $generation")
+    }
+
+    private fun share(text: String) {
+        context.startActivity(
+            Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+                .setPackage(context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+
     private fun fromAnotherApp(intent: Intent) {
         context.startActivity(intent.setClassName(context.packageName, MainActivity::class.java.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }

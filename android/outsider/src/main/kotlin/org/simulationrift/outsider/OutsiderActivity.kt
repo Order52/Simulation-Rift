@@ -39,6 +39,17 @@ class OutsiderActivity : Activity() {
             })
             return
         }
+        // n7: shares a picture to Rift as a gallery would, with a read grant.
+        if (intent.getStringExtra("share") == "picture") {
+            startActivity(
+                Intent(Intent.ACTION_SEND).setType("image/png").setPackage(CONTROLLER)
+                    .putExtra(Intent.EXTRA_STREAM, OutsiderFiles.URI)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+            )
+            receiver?.send(0, Bundle().apply { putString("share", "sent") })
+            finish()
+            return
+        }
         intent.getStringExtra("overlay")?.let { overlay ->
             val allowed = Settings.canDrawOverlays(this)
             if (allowed || overlay == "hide") startService(Intent(this, OutsiderOverlay::class.java).putExtra("stop", overlay == "hide"))

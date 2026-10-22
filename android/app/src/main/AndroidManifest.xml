@@ -42,15 +42,9 @@
                 <data android:scheme="http" />
                 <data android:scheme="https" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-            <!-- Files another app opens or shares with Rift go into the
-                 session's quarantine, to be scanned and viewed in isolated
-                 workers (§11.1). Rift opens the types it can show; any file
-                 can be shared to it to be scanned. -->
+            <!-- Files another app opens with Rift go into the session's
+                 quarantine, to be scanned and viewed in isolated workers
+                 (§11.1). Rift opens the types it can show. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -59,6 +53,20 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+        </activity>
+
+        <!-- The one share target: a shared link is checked and the verdict
+             shown over the sharing app; any shared file is passed to the
+             home screen to be scanned. In a task of its own, so a share
+             never brings back the home screen's task instead of a sheet. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Rift.Sheet">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

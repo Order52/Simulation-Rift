@@ -15,4 +15,11 @@
         <item name="android:windowLightNavigationBar">@bool/rift_light_bars</item>
         <item name="android:windowSplashScreenBackground" tools:targetApi="31">@color/rift_window</item>
     </style>
+    <!-- The share sheet's window: see-through, so the sheet shows over the sharing app. -->
+    <style name="Theme.Rift.Sheet">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>
