@@ -940,6 +940,12 @@ object Core {
         watcher(generation)?.attempt(kind, origin.take(MAX_ORIGIN_CHARS))
     }
 
+    /** A page was given a decoy (§10.5). Validated like [reportAttempt]; the detail is bounded and made safe to show. */
+    fun reportDecoy(generation: Long, kind: String, origin: String, detail: String) {
+        if (browser?.generation != generation || kind !in PageWatch.Decoy.ALL) return
+        watcher(generation)?.decoy(kind, origin.take(MAX_ORIGIN_CHARS), detail.take(MAX_DECOY_DETAIL_CHARS))
+    }
+
     /** `generation`'s page watch, up to date, or null if it is not the current session. */
     fun pageWatch(generation: Long): PageWatch? {
         val watcher = watcher(generation)?.takeIf { generation == currentGeneration } ?: return null
@@ -958,12 +964,13 @@ object Core {
         },
         "Watched: requests for location, camera, microphone, files and fullscreen; connections to your local network; " +
             "connections around the proxy; every download, scanned in an isolated worker.",
-        "Not seen: what scripts do inside the page, what you type into it, the contents of HTTPS traffic, and what a page writes to the clipboard.",
+        "Not seen: most of what scripts do inside the page, what you type into it, and the contents of HTTPS traffic.",
         ("Reduced isolation: there is no network lock in this session, so connections around the proxy are neither stopped nor seen.")
             .takeIf { _reduced.value == generation },
     )
 
     private const val MAX_ORIGIN_CHARS = 2_048
+    private const val MAX_DECOY_DETAIL_CHARS = 200
 
     /** The browser registered for disposal, detached so no further calls reach it. */
     internal fun detachBrowser(): IBrowser? = browser?.binder.also { browser = null }

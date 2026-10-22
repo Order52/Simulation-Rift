@@ -112,6 +112,13 @@ class SecurityTest {
             assertTrue("$key: ${results.getString(key)}", results.getString(key).startsWith("DENIED"))
         }
         assertTrue(results.getString("geolocation"), results.getString("geolocation").startsWith("DENIED"))
+        // The page went around the decoys (D1), and the watch says so.
+        val past = awaitWatch(activeGeneration()) { it.containsAll(setOf("camera", "location")) }
+        assertTrue("seen: $past", past.containsAll(setOf("camera", "location")))
+        assertTrue(
+            "${Core.pageWatch(activeGeneration())?.events}",
+            Core.pageWatch(activeGeneration())!!.events.filter { it.code in setOf("camera", "location") }.all { "past Rift's decoys" in it.text },
+        )
         assertFalse(results.getString("clipboard_read").startsWith("ALLOWED"))
         assertTrue(results.getString("file_fetch").startsWith("DENIED"))
         assertTrue(results.getString("content_fetch").startsWith("DENIED"))
@@ -1208,9 +1215,9 @@ class SecurityTest {
     /**
      * A page that asks for the location, camera and microphone, loads from a
      * listed address, probes the LAN, uses WebRTC and opens a file chooser;
-     * then a listed address and a listed download. The session's live watch,
-     * fed only by Rift's enforcement points, must show each, the browser's
-     * bar must say "Danger", and the page must have got nothing.
+     * then a listed address and a listed download. The session's live watch
+     * must show each, the browser's bar must say "Danger", and the page must
+     * have got only decoys (D1).
      */
     @Test
     fun w1_liveWatchShowsWhatThePageTried() {
@@ -1219,7 +1226,7 @@ class SecurityTest {
         val generation = resetAndAwait(activeGeneration())
         val page = visit("w1", "/watch.html")
         for (key in listOf("geolocation", "camera", "microphone")) {
-            assertTrue("$key: ${page.optString(key)}", page.optString(key).startsWith("DENIED"))
+            assertTrue("$key: ${page.optString(key)}", page.optString(key).startsWith("ALLOWED"))
         }
         // "lan" settles either way (an opaque no-cors response is the proxy's
         // 403 too); the proxy's own record of the refusal is checked below.
@@ -1227,7 +1234,10 @@ class SecurityTest {
         val upload = device.wait(Until.findObject(By.text("Upload a file")), UI_TIMEOUT_MS)
         assertNotNull("the page's upload button", upload)
         upload!!.click()
-        val expected = setOf("location", "camera", "microphone", "known-malicious-request", "local-network", "direct-connection", "files")
+        val expected = setOf(
+            PageWatch.Decoy.LOCATION, PageWatch.Decoy.CAMERA, PageWatch.Decoy.MICROPHONE, PageWatch.Decoy.FILES,
+            "known-malicious-request", "local-network", "direct-connection",
+        )
         val seen = awaitWatch(generation) { codes -> codes.containsAll(expected) }
         assertTrue("seen: $seen; page: ${http("/results?test=w1")}; proxy refused: ${Core.egressStats()?.recent}", seen.containsAll(expected))
         assertEquals(PageWatch.Level.DANGER, Core.pageWatch(generation)?.level)
@@ -1263,6 +1273,61 @@ class SecurityTest {
         val next = resetAndAwait(generation)
         assertEquals(emptyList<PageWatch.Event>(), Core.pageWatch(next)?.events)
         assertNull("the old session's watch is gone", Core.pageWatch(generation))
+    }
+
+    /**
+     * Decoys (§10.5): a page that asks for the camera, microphone, devices,
+     * location, permission states, notifications, the clipboard, the battery,
+     * vibration, the motion sensors and a file gets made-up answers that work
+     * as the real ones would, and the live watch lists each request. No real
+     * reading reaches the page: its motion events are all made up (none
+     * trusted), and its file is a generated photo.
+     */
+    @Test
+    fun d1_decoysAnswerAndTheWatchSaysWhat() {
+        val generation = resetAndAwait(activeGeneration())
+        val page = visit("d1", "/decoys.html")
+        val text = { key: String -> page.optString(key) }
+        assertTrue("media: ${text("media")}", text("media").startsWith("video=live audio=live label=Front camera size=640x480"))
+        assertEquals("audioinput:Microphone,videoinput:Front camera,audiooutput:Speaker", text("devices"))
+        assertTrue("geolocation: ${text("geolocation")}", text("geolocation").startsWith("ALLOWED"))
+        // Android's WebView has no Permissions API to answer.
+        val permissions = text("permission_camera") != "UNAVAILABLE"
+        if (permissions) assertEquals("granted", text("permission_camera"))
+        assertEquals("granted granted", text("notification"))
+        assertFalse(text("notification_error"), page.has("notification_error"))
+        assertEquals("OK", text("clipboard_write"))
+        assertEquals("\"\"", text("clipboard_read"))
+        assertEquals("0.82", text("battery"))
+        assertEquals("true", text("vibrate"))
+        val (readings, trusted) = Regex("""(\d+) trusted=(\d+)""").matchEntire(text("motion"))!!.destructured
+        assertTrue("motion: ${text("motion")}", readings.toInt() > 0)
+        assertEquals("motion: ${text("motion")}", "0", trusted)
+        assertEquals("true", text("looks_native"))
+
+        // The file chooser needs a tap on the page (a user gesture).
+        val upload = device.wait(Until.findObject(By.text("Upload a photo")), UI_TIMEOUT_MS)
+        assertNotNull("the page's upload button", upload)
+        upload!!.click()
+        val deadline = SystemClock.elapsedRealtime() + PAGE_TIMEOUT_MS
+        var file = ""
+        while (file.isEmpty() && SystemClock.elapsedRealtime() < deadline) {
+            file = JSONObject(http("/results?test=d1")).optString("file")
+            if (file.isEmpty()) SystemClock.sleep(100)
+        }
+        assertTrue("file: $file", Regex("""IMG_\d{8}_\d{6}\.jpg \d+ image/jpeg jpeg=true""").matches(file))
+
+        val expected = PageWatch.Decoy.FROM_PAGES - PageWatch.Decoy.SCREEN + PageWatch.Decoy.FILES -
+            setOfNotNull(PageWatch.Decoy.PERMISSION_CHECK.takeUnless { permissions })
+        val seen = awaitWatch(generation) { it.containsAll(expected) }
+        assertTrue("missing: ${expected - seen}", seen.containsAll(expected))
+        val watch = Core.pageWatch(generation)!!
+        assertEquals(PageWatch.Level.WARNING, watch.level)
+        assertTrue("${watch.coverage}", watch.coverage.any { it.startsWith("Decoys:") })
+        device.findObject(By.res("watch-status"))?.click()
+        assertNotNull(device.wait(Until.findObject(By.res("watch-list")), UI_TIMEOUT_MS))
+        screenshot("d1-list")
+        report("d1", "page: $page; file: $file; watch: " + watch.events.joinToString(" | ") { "${it.level} ${it.code} x${it.count}: ${it.text}" })
     }
 
     /**

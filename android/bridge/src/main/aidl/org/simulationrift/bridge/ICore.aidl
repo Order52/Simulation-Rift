@@ -55,6 +55,14 @@ interface ICore {
      */
     oneway void reportAttempt(long generation, String kind, String origin);
 
+    /**
+     * A page was given a decoy instead of what it asked for (§10.5): `kind`
+     * is one of PageWatch.Decoy, `origin` the page's origin as the engine
+     * gave it, `detail` a short note (a notification's title, what a page
+     * tried to put on the clipboard). The core validates and bounds all three.
+     */
+    oneway void reportDecoy(long generation, String kind, String origin, String detail);
+
     /** This session's page watch, encoded by PageWatch; empty for any other generation. */
     Bundle pageWatch(long generation);
 }

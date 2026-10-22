@@ -86,16 +86,21 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
         notes.filterNot { it.code.startsWith("intel-") }.forEach { record(Level.NOTE, it.code, host, "$host: ${it.text}") }
     }
 
+    /** Whether this session's pages get decoys (null until the browser says). */
+    @Volatile private var decoys: Boolean? = null
+
     /** Something the engine refused that only it sees; `kind` and `origin` come from the browser app. */
     fun attempt(kind: String, origin: String) {
         val host = hostOf(origin)
+        // With decoys in place the engine is only asked by a page that got past them.
+        val how = if (decoys == true) "asked the browser engine directly, past Rift's decoys, for" else "asked for"
         when (kind) {
             PageWatch.Attempt.LOCATION -> record(Level.WARNING, kind, host,
-                "$host asked for your location. Denied: the browser app has no location permission, and Rift answers no.")
+                "$host $how your location. Denied: the browser app has no location permission, and Rift answers no.")
             PageWatch.Attempt.CAMERA -> record(Level.WARNING, kind, host,
-                "$host asked for the camera. Denied: the browser app has no camera permission, and Rift answers no.")
+                "$host $how the camera. Denied: the browser app has no camera permission, and Rift answers no.")
             PageWatch.Attempt.MICROPHONE -> record(Level.WARNING, kind, host,
-                "$host asked for the microphone. Denied: the browser app has no microphone permission, and Rift answers no.")
+                "$host $how the microphone. Denied: the browser app has no microphone permission, and Rift answers no.")
             PageWatch.Attempt.MIDI -> record(Level.WARNING, kind, host, "$host asked for full access to MIDI devices. Denied.")
             PageWatch.Attempt.PROTECTED_MEDIA -> record(Level.NOTE, kind, host,
                 "$host asked for a protected-media (DRM) identifier for this device. Denied.")
@@ -104,6 +109,57 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
             PageWatch.Attempt.FULLSCREEN -> record(Level.NOTE, kind, host,
                 "$host asked for fullscreen, which would hide Rift's bar. Refused.")
         }
+    }
+
+    /**
+     * A page was given a decoy (§10.5). `kind` was checked against
+     * [PageWatch.Decoy] by the core; `detail` is the page's own text, so it
+     * is made safe to show and quoted, never trusted.
+     */
+    fun decoy(kind: String, origin: String, detail: String) {
+        val host = hostOf(origin)
+        val said = displaySafe(detail).take(MAX_QUOTE)
+        val quoted = if (said.isBlank()) "" else " (\u201c$said${if (detail.length > MAX_QUOTE) "\u2026" else ""}\u201d)"
+        when (kind) {
+            PageWatch.Decoy.ACTIVE -> decoys = true
+            PageWatch.Decoy.UNAVAILABLE -> decoys = false
+            PageWatch.Decoy.CAMERA -> record(Level.WARNING, kind, host,
+                "$host turned on the camera. Rift gave it a made-up video; your camera was not used.")
+            PageWatch.Decoy.MICROPHONE -> record(Level.WARNING, kind, host,
+                "$host turned on the microphone. Rift gave it made-up silence; your microphone was not used.")
+            PageWatch.Decoy.SCREEN -> record(Level.WARNING, kind, host,
+                "$host asked to record your screen. Rift gave it a made-up video.")
+            PageWatch.Decoy.DEVICES -> record(Level.NOTE, kind, host,
+                "$host listed this device's cameras and microphones. Rift listed made-up ones.")
+            PageWatch.Decoy.LOCATION -> record(Level.WARNING, kind, host,
+                "$host asked where you are. Rift gave it a made-up location; your real location was not used.")
+            PageWatch.Decoy.PERMISSION_CHECK -> PERMISSION_NAMES[detail]?.let { name ->
+                record(Level.NOTE, kind, "$host $detail", "$host checked whether it may use $name. Rift told it yes, for the decoy.")
+            }
+            PageWatch.Decoy.NOTIFICATION -> record(Level.NOTE, kind, host,
+                "$host tried to send you notifications$quoted. Rift told it yes and showed nothing.")
+            PageWatch.Decoy.CLIPBOARD_READ -> record(Level.WARNING, kind, host,
+                "$host tried to read your clipboard. Rift gave it nothing.")
+            PageWatch.Decoy.CLIPBOARD_WRITE -> record(Level.WARNING, kind, host,
+                "$host tried to put text on your clipboard$quoted. Rift told it that worked and left your clipboard unchanged.")
+            PageWatch.Decoy.MOTION -> record(Level.NOTE, kind, host,
+                "$host read the motion sensors. Rift gave it a phone lying still; the real sensors' readings never reached it.")
+            PageWatch.Decoy.BATTERY -> record(Level.NOTE, kind, host,
+                "$host read the battery level. Rift gave it a made-up one.")
+            PageWatch.Decoy.VIBRATE -> record(Level.NOTE, kind, host,
+                "$host tried to vibrate the phone. Nothing happened.")
+            PageWatch.Decoy.FILES -> record(Level.WARNING, kind, host,
+                "$host asked you to choose a file$quoted. Rift gave it a made-up file; none of your files was shared.")
+        }
+    }
+
+    /** What the decoys cover, for the watch's coverage list. */
+    private fun decoyCoverage(): String? = when (decoys) {
+        true -> "Decoys: a page that asks for the camera, microphone, screen, location, files, notifications, clipboard, " +
+            "motion sensors or battery gets something made up, and is listed here. Nothing real is given. " +
+            "A page can tell it is a decoy if it looks closely, and can add made-up decoy reports about itself."
+        false -> "Decoys are not available with this device's browser engine: those requests are refused instead."
+        null -> null
     }
 
     /** New refusals by this session's proxy (by sequence number, so each is seen once). */
@@ -172,7 +228,7 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
         val extra = if (unlisted == 0) emptyList() else listOf(
             PageWatch.Event(0, Level.NOTE, "unlisted", "$unlisted more kinds of activity are not listed.", unlisted, SystemClock.elapsedRealtime()),
         )
-        return PageWatch(listed + extra, coverage)
+        return PageWatch(listed + extra, coverage + listOfNotNull(decoyCoverage()))
     }
 
     private fun defaultTally(level: Level, code: String): Tally? = when {
@@ -188,5 +244,14 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
         const val MAX_EVENTS = 64
         const val MAX_COUNT = 9_999
         const val MAX_SUBJECT = 120
+        const val MAX_QUOTE = 60
+
+        /** The permissions decoys.js answers for, as the watch names them. */
+        val PERMISSION_NAMES = mapOf(
+            "camera" to "the camera", "microphone" to "the microphone", "geolocation" to "your location",
+            "notifications" to "notifications", "push" to "push notifications", "clipboard-read" to "your clipboard",
+            "clipboard-write" to "your clipboard", "accelerometer" to "the motion sensors", "gyroscope" to "the motion sensors",
+            "magnetometer" to "the compass",
+        )
     }
 }

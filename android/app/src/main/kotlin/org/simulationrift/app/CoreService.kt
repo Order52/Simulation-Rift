@@ -70,6 +70,11 @@ class CoreService : Service() {
             Core.reportAttempt(generation, kind, origin)
         }
 
+        override fun reportDecoy(generation: Long, kind: String, origin: String, detail: String) {
+            checkCaller()
+            Core.reportDecoy(generation, kind, origin, detail)
+        }
+
         override fun pageWatch(generation: Long): Bundle {
             checkCaller()
             return Core.pageWatch(generation)?.toBundle() ?: Bundle()

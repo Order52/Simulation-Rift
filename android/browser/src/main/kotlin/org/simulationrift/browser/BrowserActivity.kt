@@ -68,6 +68,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
@@ -141,6 +142,7 @@ class BrowserActivity : ComponentActivity() {
     }
     /** When each kind of attempt from each origin was last reported, so a page cannot flood the core. */
     private val reported = HashMap<String, Long>()
+    private val decoys by lazy { Decoys(this, ::reportDecoy) }
 
     private val browserBinder = object : IBrowser.Stub() {
         /** Returns once finish() has run, so the activity is not restored after the kill. */
@@ -295,6 +297,25 @@ class BrowserActivity : ComponentActivity() {
     }
 
     /**
+     * Reports a decoy given to a page (one of [PageWatch.Decoy]); throttled
+     * like [reportAttempt], except the browser's own once-a-session reports.
+     */
+    private fun reportDecoy(kind: String, origin: String, detail: String) {
+        if (kind != PageWatch.Decoy.ACTIVE && kind != PageWatch.Decoy.UNAVAILABLE) {
+            val key = "$kind $origin"
+            val now = SystemClock.elapsedRealtime()
+            if (reported[key]?.let { now - it < ATTEMPT_REPORT_MS } == true) return
+            if (reported.size >= MAX_REPORTED) reported.clear()
+            reported[key] = now
+        }
+        try {
+            core?.reportDecoy(generation, kind, origin, detail)
+        } catch (e: RemoteException) {
+            exitProcess("core unreachable")
+        }
+    }
+
+    /**
      * Asks keyboards not to learn from what is typed into pages
      * (`IME_FLAG_NO_PERSONALIZED_LEARNING`), and keeps pages from autofill
      * services (§10.7): the engine still tells the system that a field was
@@ -322,7 +343,9 @@ class BrowserActivity : ComponentActivity() {
         // setting on the window does not reach the engine's virtual views.
         importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
         settings.apply {
-            javaScriptEnabled = true // sites need it; no bridge is ever added (INV-6)
+            // Sites need it. No Java object is ever exposed to pages (INV-6);
+            // the decoys' report channel takes strings only (Decoys).
+            javaScriptEnabled = true
             domStorageEnabled = true
             allowFileAccess = false
             allowContentAccess = false
@@ -359,6 +382,8 @@ class BrowserActivity : ComponentActivity() {
         }
         webViewClient = Client()
         webChromeClient = Chrome()
+        // Before any page loads: decoys for what pages ask for (§10.5).
+        reportDecoy(if (decoys.install(this)) PageWatch.Decoy.ACTIVE else PageWatch.Decoy.UNAVAILABLE, "", "")
         // The engine only reports the download; the core fetches it again
         // into encrypted quarantine (§8.5). Downloads generated inside the
         // page (blob:, data:) never reach this listener (PoC A3).
@@ -389,6 +414,8 @@ class BrowserActivity : ComponentActivity() {
     )
 
     private fun openTyped(input: String) {
+        // A new address is for seeing its page: the live check folds back to its bar.
+        watchOpen = false
         val url = try {
             core?.typedAddress(input)
         } catch (e: RemoteException) {
@@ -492,14 +519,24 @@ class BrowserActivity : ComponentActivity() {
             reportAttempt(PageWatch.Attempt.LOCATION, origin)
         }
 
-        // The per-session file-chooser toggle is not built yet, so uploads are denied.
+        // A made-up file, never one of the user's: the browser app cannot
+        // read the user's files, and no picker is shown.
         override fun onShowFileChooser(
             webView: WebView,
             filePathCallback: ValueCallback<Array<android.net.Uri>>,
             fileChooserParams: FileChooserParams,
         ): Boolean {
-            reportAttempt(PageWatch.Attempt.FILES, webView.url)
-            return false
+            val accepts = fileChooserParams.acceptTypes.filter { it.isNotBlank() }
+            val file = try {
+                decoys.file(fileChooserParams.acceptTypes)
+            } catch (e: java.io.IOException) {
+                Log.w(TAG, "decoy file not written: $e")
+                reportAttempt(PageWatch.Attempt.FILES, webView.url)
+                return false
+            }
+            filePathCallback.onReceiveValue(arrayOf(android.net.Uri.fromFile(file)))
+            reportDecoy(PageWatch.Decoy.FILES, webView.url.orEmpty(), if (accepts.isEmpty()) "any file" else "accepts ${accepts.joinToString(", ")}")
+            return true
         }
 
         // Fullscreen would cover the trusted indicator (INV-6), so it is refused.
@@ -634,7 +671,9 @@ class BrowserActivity : ComponentActivity() {
                 modifier = Modifier.testTag("watch-status"),
             )
             if (watchOpen && current != null) {
-                Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState()).testTag("watch-list")) {
+                // At most a third of the window, so the page keeps most of a small screen.
+                val most = (LocalConfiguration.current.screenHeightDp / 3).coerceAtMost(260).dp
+                Column(Modifier.heightIn(max = most).verticalScroll(rememberScrollState()).testTag("watch-list")) {
                     val now = SystemClock.elapsedRealtime()
                     current.events.forEach { event ->
                         val times = if (event.count > 1) " ×${event.count}" else ""

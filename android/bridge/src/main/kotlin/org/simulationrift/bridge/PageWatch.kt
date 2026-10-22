@@ -6,7 +6,7 @@ import android.os.Bundle
  * What the current session's pages have tried, as Rift's enforcement points
  * saw it (§10.5): the core's navigation checks, its proxy, the network lock,
  * download scans, and the browser engine's own permission callbacks. Pages
- * cannot write to it: no script is injected and nothing a page says is read.
+ * cannot write to it, except decoy reports ([Decoy]) about themselves.
  * Plain Kotlin, so the browser can show it without the Rust library.
  */
 data class PageWatch(val events: List<Event>, val coverage: List<String>) {
@@ -45,6 +45,37 @@ data class PageWatch(val events: List<Event>, val coverage: List<String>) {
         const val FULLSCREEN = "fullscreen"
 
         val ALL = setOf(LOCATION, CAMERA, MICROPHONE, MIDI, PROTECTED_MEDIA, FILES, FULLSCREEN)
+    }
+
+    /**
+     * What a page asked for and was given a decoy instead (§10.5), reported
+     * to the core by kind with a short detail. [FROM_PAGES] arrive through
+     * Rift's script in the page, so a page could also make them up about
+     * itself; [FILES] comes from the engine's file chooser, and [ACTIVE] and
+     * [UNAVAILABLE] from the browser, once per session.
+     */
+    object Decoy {
+        const val CAMERA = "decoy-camera"
+        const val MICROPHONE = "decoy-microphone"
+        const val SCREEN = "decoy-screen"
+        const val DEVICES = "decoy-devices"
+        const val LOCATION = "decoy-location"
+        const val PERMISSION_CHECK = "decoy-permission-check"
+        const val NOTIFICATION = "decoy-notification"
+        const val CLIPBOARD_READ = "decoy-clipboard-read"
+        const val CLIPBOARD_WRITE = "decoy-clipboard-write"
+        const val MOTION = "decoy-motion"
+        const val BATTERY = "decoy-battery"
+        const val VIBRATE = "decoy-vibrate"
+        const val FILES = "decoy-files"
+        const val ACTIVE = "decoys-active"
+        const val UNAVAILABLE = "decoys-unavailable"
+
+        val FROM_PAGES = setOf(
+            CAMERA, MICROPHONE, SCREEN, DEVICES, LOCATION, PERMISSION_CHECK, NOTIFICATION,
+            CLIPBOARD_READ, CLIPBOARD_WRITE, MOTION, BATTERY, VIBRATE,
+        )
+        val ALL = FROM_PAGES + setOf(FILES, ACTIVE, UNAVAILABLE)
     }
 
     companion object {

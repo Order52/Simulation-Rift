@@ -175,7 +175,7 @@ Each invariant has a test ID in §23. An invariant without a passing test is rep
 | INV-3 | Every worker message is size-checked before decoding (control messages ≤ 64 KiB) and validated after decoding: type, version, job ID, session generation, counts, dimensions, stride, and byte length. Worker output is untrusted. |
 | INV-4 | Stored objects are immutable and identified by an app-generated ID. Each records the SHA-256 of its plaintext. A verdict is bound to (sha256, engine version, intel snapshot ID, policy version). Different bytes mean a different object and no inherited verdict. |
 | INV-5 | A failed, timed-out, crashed, or unsupported check produces **Not fully scanned**. It never produces **Not flagged**. |
-| INV-6 | The browser exposes no JavaScript interface or message channel to web content. File and content access are disabled. `intent:`, `file:`, `content:`, and custom schemes are never forwarded automatically. Mixed content is never allowed. Multiple windows are disabled. A persistent trusted indicator survives fullscreen. The file chooser is denied unless the user enables it for the session. |
+| INV-6 | The browser exposes no JavaScript interface (no Java object) to web content; its only message channel is the decoys' (§10.5): strings only, one-way, under a per-session name removed before page scripts run, each message checked against a fixed list of kinds, bounded, and attributed to the origin the engine reports. File and content access are disabled. `intent:`, `file:`, `content:`, and custom schemes are never forwarded automatically. Mixed content is never allowed. Multiple windows are disabled. A persistent trusted indicator survives fullscreen. The file chooser never gives a page a file of the user's: it gives a made-up one (§10.5). |
 | INV-7 | Browsing is refused if the engine's renderer sandbox cannot be confirmed. On Android that means the renderer is not multi-process or WebView is below the minimum version. On Linux that means the WebKit sandbox is not active. If the renderer crashes, the session is torn down and the app does not crash. |
 | INV-8 | Session reset terminates the session's processes, deletes session data, and verifies the deletion. Only then does it report success, and it advances the session generation. Results from older generations are rejected. A failed cleanup is shown as failed. On Android the browser app is wiped by the system (`clearApplicationUserData`), which kills all its processes and deletes all its data, at every reset and before the first session after a launch. |
 | INV-9 | Quarantine plaintext is written to persistent storage only in encrypted form. Preview plaintext lives in RAM-backed fds (memfd/ashmem) **[PoC A7/L3]**. |
@@ -484,7 +484,26 @@ Host-level enforcement of all engine traffic through `androidx.webkit.ProxyContr
 
 ### 10.5 Live page watch
 
-While a page is open, the trusted UI shows, as it happens, what the page has tried to do and a status for the session. It is built only from **enforcement points the page cannot speak through**: native WebView callbacks in the browser app, and the controller's own proxy, network lock, navigation policy and download pipeline. No script is injected into pages and no channel is opened to them (INV-6), so a page can neither hide from the watch by detecting it nor feed it false reports.
+While a page is open, the trusted UI shows, as it happens, what the page has tried to do and a status for the session. Most of it is built from **enforcement points the page cannot speak through**: native WebView callbacks in the browser app, and the controller's own proxy, network lock, navigation policy and download pipeline. The decoys below add what a page asks of the browser's JavaScript APIs; those reports come from a script running inside the page, so a page can avoid or forge them about itself, but cannot use them to hide what the enforcement points see.
+
+**Decoys (2.5).** A page is never refused outright for a device feature; it is given something made up that works, so a phishing or spying page carries on as if it had won and shows what it was after. Before any page script, in every frame, the browser injects a script (`addDocumentStartJavaScript`, assets/decoys.js) that replaces the engine's functions on their prototypes, disguised as native:
+
+| The page asks for | It gets |
+|---|---|
+| Camera, screen recording (`getUserMedia`, `getDisplayMedia`) | A live 640×480 video of a dim room with a moving light, drawn on a canvas |
+| Microphone | A live track of near-silence with a little hiss |
+| The list of cameras and microphones | One made-up camera, microphone and speaker |
+| Location (`getCurrentPosition`, `watchPosition`) | A position near one of eight city centres, chosen per session, with jitter |
+| Permission states, where the engine has the API (Android's WebView does not) | "granted" for the decoyed features |
+| Notifications and push | Permission "granted"; nothing is shown; a push subscription fails as a push-service error |
+| The clipboard | Reads find it empty; writes and `execCommand("copy")` report success and change nothing |
+| Motion and orientation sensors | Readings of a phone lying still; the real sensors' (trusted) events are stopped before any page listener |
+| Battery, vibration | 82 %, charging; vibration reports success and does nothing |
+| A file (`<input type=file>`) | A generated photo (JPEG), a one-page PDF or a text note, by what the page accepts, written to the browser app's cache and wiped with it |
+
+Each request is reported once every two seconds per kind over a `WebMessageListener` whose name is random per session and deleted from the page before the page runs; the browser accepts only known kinds and at most 1 KiB, takes the origin from the engine, and forwards it to the core (`ICore.reportDecoy`, checked and bounded again there). The file chooser is reported by the browser itself. The engine's refusals are kept underneath: a page that reaches the engine's own functions (from a frame the script does not cover) is still refused by `onPermissionRequest`, `onGeolocationPermissionsShowPrompt` and Android, and the watch says it asked "past Rift's decoys". Tested by d1 (every decoy answers, the watch lists each, no trusted motion event reaches the page) and s2 (the engine still refuses).
+
+**Limits.** A page that looks closely can tell these are decoys (the video's frames come from a canvas; the timings are not a real device's). A page can post made-up decoy reports about itself. Where the WebView lacks document-start scripts or message listeners, there are no decoys, the engine's refusals apply, and the watch says so.
 
 | What the page tries | Where Rift sees it | What happens |
 |---|---|---|
@@ -492,9 +511,11 @@ While a page is open, the trusted UI shows, as it happens, what the page has tri
 | Load anything (a frame, script, image, WebSocket) from a listed host, or a listed plain-HTTP URL | Egress proxy, with the threat database (core) | Refused before the name is resolved (§10.3) |
 | Open an address Rift AI rates High | Navigation policy, with Rift AI (core) | Asks before loading, with the score and what stood out (§16) |
 | Connect to a host (or plain-HTTP URL) Rift AI rates High | Egress proxy, with Rift AI (core) | Allowed, and noted as a warning (`ai-request`); never refused for it (§16) |
-| Get the device's location | `onGeolocationPermissionsShowPrompt` (browser) | Denied. The browser app holds no location permission, so Android refuses even if the callback were bypassed |
-| Use the camera, microphone, MIDI or protected media | `onPermissionRequest` (browser) | Denied; the browser app holds none of these permissions |
-| Ask for a file from the device (upload) | `onShowFileChooser` (browser) | Denied (INV-6) |
+| Get the device's location | Decoys; past them, `onGeolocationPermissionsShowPrompt` (browser) | A made-up location. Past the decoys, denied: the browser app holds no location permission, so Android refuses even if the callback were bypassed |
+| Use the camera, microphone or screen | Decoys; past them, `onPermissionRequest` (browser) | A made-up stream. Past the decoys, denied; the browser app holds none of these permissions |
+| Use MIDI or protected media | `onPermissionRequest` (browser) | Denied |
+| Read or write the clipboard, read the motion sensors or battery, send notifications, vibrate | Decoys (browser) | Made-up answers; nothing real is read or changed |
+| Ask for a file from the device (upload) | `onShowFileChooser` (browser) | A made-up file (INV-6) |
 | Go fullscreen (which would hide the trusted bar) | `onShowCustomView` (browser) | Refused (INV-6) |
 | Open another app (`intent:`, `market:`, custom schemes) | Navigation policy (core) | Blocked |
 | Reach the local network, the device itself, or a link-local address | Egress proxy (core) | Refused (INV-13) |
@@ -504,7 +525,7 @@ While a page is open, the trusted UI shows, as it happens, what the page has tri
 
 **Status.** *Danger*: a known-malicious address, request or downloaded file. *Warning*: a request for location, camera, microphone, MIDI or files; a link to another app; a suspicious or lookalike address; an address or connection Rift AI rates High; an attempt on the local network; traffic around the proxy; a suspicious file. *Note*: an unencrypted page and other address notes, a protected-media or fullscreen request, a download, and a file that was not flagged or not fully scanned. With no Danger or Warning the status is *Nothing suspicious seen so far*, shown with what is watched. There is never a "safe" status. The status is the **session's**, not the current page's: what one page did can stay in the session (its storage, a service worker, a compromised renderer), so only a reset clears it.
 
-**Not seen** (the UI says so): what scripts do inside the page (fingerprinting, reading what is typed into the page, writing to the clipboard, mining), the content of HTTPS traffic (so path-level indicators match plain HTTP only), and pop-ups (the engine refuses them without a callback). The network lock's own background traffic (router and neighbour discovery, multicast, and the system's DNS and private-DNS checks to the lock's resolver address) is dropped but not reported.
+**Not seen** (the UI says so): most of what scripts do inside the page (fingerprinting, reading what is typed into the page, mining), the content of HTTPS traffic (so path-level indicators match plain HTTP only), and pop-ups (the engine refuses them without a callback). The network lock's own background traffic (router and neighbour discovery, multicast, and the system's DNS and private-DNS checks to the lock's resolver address) is dropped but not reported.
 
 **Channel.** The browser reports what only the engine sees over the signature-checked Binder interface (`ICore.reportAttempt(generation, kind, origin)`: one-way, at most once a second per kind and origin; the core accepts only the current generation's registered browser and a known kind, and caps the origin). The core merges these with its own observations into one bounded log per session (64 kinds of event, repeats counted; a full list makes room for a higher level by dropping a lower one), which the browser's trusted bar polls once a second (`ICore.pageWatch`) and the home screen shows. The core reads its own sources (proxy refusals by sequence number, the lock's drops counted per session) when the log is read, so the browser cannot suppress them. Browser-reported events are only as trustworthy as the browser process: code that escaped the renderer *and* took over the browser process could suppress or forge them, which is why the core's own events and the wipe at reset do not depend on them. Tested by w1.
 
@@ -514,7 +535,7 @@ Besides the browser's separate UID, the network lock and the wipe (§8.3, §8.8,
 
 - **Recents:** both apps' windows disable their recents screenshot (`setRecentsScreenshotEnabled(false)`, API 33+), so page images, and the names and previews of downloaded files, are not stored by the system for the task switcher. Tested by H1 for the browser, which decodes the snapshot Android stores.
 - **Keyboard:** every text field asks the keyboard not to learn (`IME_FLAG_NO_PERSONALIZED_LEARNING`): fields in pages (set by the browser's WebView) and Rift's own fields in both apps (set through Compose's `InterceptPlatformTextInput`), so addresses and words typed into a hostile page should not enter the keyboard's dictionary. Keyboards may ignore the flag. Tested by h2.
-- **Not closed:** a page can still write to the system clipboard after a user gesture; there is no WebView control for it (§24).
+- **Clipboard:** the decoys (§10.5) answer a page's clipboard API and `execCommand("copy")` without touching the system clipboard. Not closed: a page that reaches the engine's own functions (past the decoys) can still write to it after a user gesture; there is no WebView control for it (§24).
 
 ### 10.7 Other apps on the same device
 
