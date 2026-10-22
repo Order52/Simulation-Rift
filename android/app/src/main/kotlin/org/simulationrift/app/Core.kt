@@ -266,6 +266,7 @@ object Core {
             disposal = AndroidBrowserDisposal(app)
             WeeklyStats.open(app)
             Hardening.init(app)
+            ContentFilter.init(app)
             // The user's network lock choice, before the first session starts.
             NetworkLock.init(app)
             updating.execute {
@@ -986,6 +987,9 @@ object Core {
         if (browser?.generation != generation || kind !in PageWatch.Decoy.ALL) return
         watcher(generation)?.decoy(kind, origin.take(MAX_ORIGIN_CHARS), detail.take(MAX_DECOY_DETAIL_CHARS))
     }
+
+    /** Whether `generation` is the current session with its browser registered: the only one the content filters answer. */
+    fun isBrowser(generation: Long): Boolean = browser?.generation == generation
 
     /** `generation`'s page watch, up to date, or null if it is not the current session. */
     fun pageWatch(generation: Long): PageWatch? {

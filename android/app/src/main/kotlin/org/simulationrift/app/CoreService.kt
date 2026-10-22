@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.IBinder
 import org.simulationrift.bridge.IBrowser
 import org.simulationrift.bridge.ICore
+import org.simulationrift.bridge.PageHiding
 import org.simulationrift.bridge.Rift
 import org.simulationrift.core.DownloadInfo
 
@@ -73,6 +74,26 @@ class CoreService : Service() {
         override fun reportDecoy(generation: Long, kind: String, origin: String, detail: String) {
             checkCaller()
             Core.reportDecoy(generation, kind, origin, detail)
+        }
+
+        override fun filtersOn(generation: Long): Boolean {
+            checkCaller()
+            return Core.isBrowser(generation) && ContentFilter.active()
+        }
+
+        override fun blockRequest(generation: Long, url: String, page: String, kind: String): Boolean {
+            checkCaller()
+            return Core.isBrowser(generation) && ContentFilter.blocks(url, page, kind)
+        }
+
+        override fun hidingFor(generation: Long, url: String): Bundle {
+            checkCaller()
+            return (if (Core.isBrowser(generation)) ContentFilter.hiding(url) else PageHiding.NONE).toBundle()
+        }
+
+        override fun genericHiding(generation: Long, classes: List<String>, ids: List<String>, exceptions: List<String>): String {
+            checkCaller()
+            return if (Core.isBrowser(generation)) ContentFilter.generic(classes, ids, exceptions) else ""
         }
 
         override fun pageWatch(generation: Long): Bundle {

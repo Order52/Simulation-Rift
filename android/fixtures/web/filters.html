@@ -1,0 +1,18 @@
+<!doctype html><html data-test="f1"><meta charset="utf-8"><title>F1 content filters</title>
+<script src="/report.js"></script>
+<body>
+<div id="content">Article text</div>
+<div class="ad-banner" id="banner">Buy now</div>
+<div id="sign-in-popup">Sign in with Google</div>
+<script src="/ads/banner.js"></script>
+<script>
+// F1: an ad script, an ad element and a sign-in pop-up, with and without the user's rules.
+const shown = id => getComputedStyle(document.getElementById(id)).display !== "none";
+setTimeout(async () => {
+  await report("ad_script", window.adLoaded ? "LOADED" : "BLOCKED");
+  await report("banner", shown("banner") ? "SHOWN" : "HIDDEN");
+  await report("popup", shown("sign-in-popup") ? "SHOWN" : "HIDDEN");
+  await report("content", shown("content") ? "SHOWN" : "HIDDEN");
+  await report("done", "1");
+}, 4500);
+</script>

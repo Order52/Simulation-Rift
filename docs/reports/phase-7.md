@@ -133,6 +133,19 @@ Not tested: Sui (Magisk); a physical phone; a reboot with root Shizuku (the rule
 
 Not tested: an update of the browser through the setup card (Rift updated with a different browser); the one-file flow on a phone; a release build carrying a browser signed with the real key.
 
+## Content filters and tabs (§10.9, 22 Oct 2026)
+
+| ID | Test | Result |
+|---|---|---|
+| (unit) | `rift-core::filters`: host and path rules, exceptions, `$third-party`, `$script`, unknown request kinds, bad addresses, selector sanitising, CSS bounds, empty set | 8 of 8 pass |
+| f1 | A page with an ad script, an ad element and a sign-in pop-up, under the user's own rules | **Pass on API 34 and API 35, in the full suite (54 of 54 on each) and alone.** Filters on: the script blocked, the element hidden by a site rule, the pop-up hidden by a generic rule, the article shown, the bar showed the count; off: everything loaded and shown. |
+| (by hand, host) | The ten real lists (EasyList, EasyPrivacy, uBlock filters, annoyances, privacy, badware, unbreak, quick fixes, Fanboy social, cookie list; 7 MB) | Built in 0.2 s, +60 MB process memory, 3 to 10 µs per request check (20,000 checks in 68 to 215 ms). Blocked Google ad and analytics scripts, DoubleClick, a cookie-banner script; did not block a CDN script or the first-party page. The Facebook SDK and Google sign-in scripts are not blocked by any list's network rules (see finding 88). |
+| (by hand, API 34) | Download the lists from the Filters tab, then open a news site | 10 lists, 217,850 rules loaded; the site loaded with the bar showing 12 requests blocked. |
+| z1, s28c | Rerun after the change (root Shizuku on API 35, granted by hand after the emulator was restarted) | Pass |
+| l1 | Licences, now behind the About tab | The About tab shows the authors' names; the licence button opens the notices; Back returns to the tabs. |
+
+Not tested: on a phone; memory or battery on a phone; how many sites the default lists break (they ship the lists' own unbreak and quick-fix lists, and each list has a switch); the Fanboy annoyance list.
+
 ## Fault injection
 
 The host kills the controller with `SIGKILL` (as the OS or a crash would) at a random moment while it writes, then starts it again and checks what is left. The test controller writes in a loop and logs each completed step, so the host knows how far it got before the kill. `RIFT_FAULT_ONLY=1` runs only these rounds; `RIFT_FAULT_ROUNDS` sets their number (8 by default).

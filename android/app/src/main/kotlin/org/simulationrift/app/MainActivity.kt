@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -48,6 +49,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -65,6 +69,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -237,25 +242,61 @@ class MainActivity : ComponentActivity() {
                 FileScreen(it)
                 return@Surface
             }
-            Column(
-                Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Header(state, lock, active != null && active.generation == reduced)
-                NoticeCard()
-                SessionCard(state, lock, mayBrowse, reduced)
-                if (active != null) WatchCard(active.generation)
-                DashboardCard()
-                if (active != null) FilesCard()
-                ProtectionCard(lock, active?.generation, reduced)
-                ExtraIsolationCard()
-                IntelCard()
-                TextButton(
-                    onClick = { showingNotices = true },
-                    modifier = Modifier.align(Alignment.CenterHorizontally).testTag("notices-open"),
-                ) { Text("Open-source licences") }
+            // One screen for each part, instead of one long scroll.
+            var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.surface,
+                bottomBar = {
+                    NavigationBar(Modifier.testTag("tabs")) {
+                        Tab.entries.forEach { entry ->
+                            NavigationBarItem(
+                                selected = tab == entry,
+                                onClick = { tab = entry },
+                                icon = { Icon(painterResource(entry.icon), contentDescription = null) },
+                                label = { Text(entry.label, maxLines = 1) },
+                                modifier = Modifier.testTag("tab-${entry.name.lowercase()}"),
+                            )
+                        }
+                    }
+                },
+            ) { padding ->
+                Column(
+                    Modifier.fillMaxSize().padding(padding).verticalScroll(remember(tab) { ScrollState(0) }).padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    when (tab) {
+                        Tab.HOME -> {
+                            Header(state, lock, active != null && active.generation == reduced)
+                            NoticeCard()
+                            SessionCard(state, lock, mayBrowse, reduced)
+                            if (active != null) WatchCard(active.generation)
+                            if (active != null) FilesCard()
+                        }
+                        Tab.FILTERS -> FiltersTab()
+                        Tab.ACTIVITY -> {
+                            Text("Activity", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                            DashboardCard()
+                        }
+                        Tab.SECURITY -> {
+                            Text("Security", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                            ProtectionCard(lock, active?.generation, reduced)
+                            ExtraIsolationCard()
+                            IntelCard()
+                        }
+                        Tab.ABOUT -> AboutTab(onLicences = { showingNotices = true })
+                    }
+                }
             }
         }
+    }
+
+    /** The home screen's parts, in the order of the bar at the bottom. */
+    private enum class Tab(val label: String, val icon: Int) {
+        HOME("Home", R.drawable.ic_home),
+        FILTERS("Filters", R.drawable.ic_filter),
+        ACTIVITY("Activity", R.drawable.ic_chart),
+        SECURITY("Security", R.drawable.ic_shield),
+        ABOUT("About", R.drawable.ic_info),
     }
 
     /** The logo, the name, and one word on whether browsing is protected now. */
@@ -1219,7 +1260,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun format(n: Int): String = NumberFormat.getIntegerInstance().format(n)
+internal fun format(n: Int): String = NumberFormat.getIntegerInstance().format(n)
 
 /** The notice assets, in the order shown. */
 private val NOTICE_FILES = listOf(

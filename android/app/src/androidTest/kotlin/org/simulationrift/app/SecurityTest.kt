@@ -1024,6 +1024,42 @@ class SecurityTest {
         }
     }
 
+    /**
+     * Content filters (§10.9), with the user's own rules (no list is
+     * downloaded in a test): a script is blocked, an element is hidden by
+     * a site rule and a sign-in pop-up by a generic one, the article stays;
+     * with filtering off the same page shows everything.
+     */
+    @Test
+    fun f1_filtersBlockAdsAndHideElements() {
+        try {
+            ContentFilter.setEnabled(true)
+            ContentFilter.setCustom("! test rules\n/ads/banner.js\nlocalhost##.ad-banner\n###sign-in-popup\n")
+            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) { ContentFilter.state.value.ready && ContentFilter.active() }
+            val blockedBefore = ContentFilter.state.value.blocked
+            val on = visit("f1", "/filters.html")
+            assertEquals("the ad script", "BLOCKED", on.getString("ad_script"))
+            assertEquals("the ad element", "HIDDEN", on.getString("banner"))
+            assertEquals("the sign-in pop-up", "HIDDEN", on.getString("popup"))
+            assertEquals("the article", "SHOWN", on.getString("content"))
+            assertNotNull("the bar counts what was blocked", device.wait(Until.findObject(By.res("filter-count").textContains("blocked")), UI_TIMEOUT_MS))
+            screenshot("f1-on")
+            ContentFilter.countNow()
+            assertTrue("the controller counted it", ContentFilter.state.value.blocked > blockedBefore)
+
+            ContentFilter.setEnabled(false)
+            awaitCondition("filtering is off", SESSION_TIMEOUT_MS) { !ContentFilter.state.value.ready }
+            val off = visit("f1", "/filters.html")
+            assertEquals("LOADED", off.getString("ad_script"))
+            assertEquals("SHOWN", off.getString("banner"))
+            assertEquals("SHOWN", off.getString("popup"))
+            report("f1", "filters on: script blocked, element and pop-up hidden, article shown; off: everything shown")
+        } finally {
+            ContentFilter.setCustom("")
+            ContentFilter.setEnabled(true)
+        }
+    }
+
     private fun escapeProbe(stale: Long): Bundle = ask(
         Intent().setComponent(ComponentName(Rift.BROWSER_PACKAGE, "${Rift.BROWSER_PACKAGE}.EscapeProbeActivity"))
             .putExtra("fixturePort", FIXTURE_PORT)
@@ -1303,12 +1339,15 @@ class SecurityTest {
             // Once on API 33 in CI the home screen had no scrollable view after
             // 10 s (cause unknown); the message now says what was in front.
             assertNotNull("home screen shown; in front: ${device.currentPackageName}", device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
-            // The button is at the end of the home screen.
+            // The button is on the About tab.
+            requireNotNull(device.wait(Until.findObject(By.res("tab-about")), UI_TIMEOUT_MS)) { "About tab" }.click()
+            assertNotNull(device.wait(Until.findObject(By.res("about-authors").text("Ali Alakber and Teeba Nazar")), UI_TIMEOUT_MS))
             scrollHomeTo(By.res("notices-open"), "the licences button").click()
             assertNotNull(device.wait(Until.findObject(By.res("notices")), UI_TIMEOUT_MS))
             assertNotNull(device.wait(Until.findObject(By.textStartsWith("Android libraries in this app")), UI_TIMEOUT_MS))
             device.pressBack()
-            assertTrue("Back returns to the home screen", device.wait(Until.gone(By.res("notices")), UI_TIMEOUT_MS))
+            assertTrue("Back returns to the tabs", device.wait(Until.gone(By.res("notices")), UI_TIMEOUT_MS))
+            requireNotNull(device.wait(Until.findObject(By.res("tab-home")), UI_TIMEOUT_MS)) { "tabs" }.click()
             assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
         } finally {
             home.finish()

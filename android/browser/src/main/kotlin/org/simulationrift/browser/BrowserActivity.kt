@@ -33,6 +33,7 @@ import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -81,14 +82,17 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import androidx.webkit.WebViewMediaIntegrityApiStatusConfig
+import java.io.ByteArrayInputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.simulationrift.bridge.Fact
 import org.simulationrift.bridge.IBrowser
 import org.simulationrift.bridge.ICore
 import org.simulationrift.bridge.NavigationDecision
 import org.simulationrift.bridge.NetworkMode
+import org.simulationrift.bridge.PageHiding
 import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.SessionGrant
@@ -131,6 +135,16 @@ class BrowserActivity : ComponentActivity() {
     private var watch by mutableStateOf<PageWatch?>(null)
     private var watchAnswered by mutableStateOf(false)
     private var watchOpen by mutableStateOf(false)
+    /**
+     * The content filters (§10.9): whether the core has them on, asked for each
+     * page; the address of the page being shown, for the filters' third-party
+     * rules; and how many requests were blocked in this window.
+     */
+    @Volatile private var filtering = false
+    @Volatile private var pageUrl = ""
+    private val blockedCount = AtomicInteger()
+    private var blocked by mutableStateOf(0)
+    private var filtersShown by mutableStateOf(false)
     private val polling = Handler(Looper.getMainLooper())
     // Off the UI thread: a reset holds the session while it shuts this window down.
     private val watchReader = Executors.newSingleThreadExecutor { Thread(it, "rift-watch") }
@@ -259,10 +273,87 @@ class BrowserActivity : ComponentActivity() {
             lockWatch = NetworkLock.watch(this) { exitProcess("network lock lost") }
         }
         webView = createWebView()
+        refreshFiltering()
         screen = Screen.Page
         polling.removeCallbacks(poll)
         polling.post(poll)
         intent.getStringExtra(Rift.EXTRA_URL)?.let(::openTyped)
+    }
+
+    // ---- Content filters (§10.9) -----------------------------------------------------
+
+    /** Whether the core has the filters on, asked for each page. */
+    private fun refreshFiltering() {
+        val connected = core ?: return
+        filtering = try {
+            connected.filtersOn(generation)
+        } catch (e: RemoteException) {
+            false
+        }
+        filtersShown = filtering
+    }
+
+    /**
+     * Hides what the lists say to hide on the page at `url`: the core builds
+     * the style rules from selectors it has checked, and they are injected
+     * as a style element. `generic` also asks for the rules that go with the
+     * class names and ids the page uses. Nothing flows from the page to the
+     * core except those names, read here with a script's return value (the
+     * page has no way to call anything: INV-6).
+     */
+    private fun hideElements(view: WebView, url: String, generic: Boolean) {
+        val connected = core ?: return
+        watchReader.execute {
+            try {
+                val hiding = PageHiding.fromBundle(connected.hidingFor(generation, url))
+                runOnUiThread { if (view.url == url) injectStyle(view, hiding.css, "rift-hide") }
+                if (!generic || hiding.genericHidden) return@execute
+                runOnUiThread {
+                    if (view.url != url) return@runOnUiThread
+                    view.evaluateJavascript(PAGE_NAMES_SCRIPT) { value ->
+                        val (classes, ids) = pageNames(value)
+                        if (classes.isEmpty() && ids.isEmpty()) return@evaluateJavascript
+                        watchReader.execute {
+                            try {
+                                val css = connected.genericHiding(generation, classes, ids, hiding.exceptions)
+                                if (css.length <= MAX_GENERIC_CSS_CHARS) runOnUiThread { if (view.url == url) injectStyle(view, css, "rift-hide-generic") }
+                            } catch (e: RemoteException) {
+                                exitProcess("core unreachable")
+                            }
+                        }
+                    }
+                }
+            } catch (e: RemoteException) {
+                exitProcess("core unreachable")
+            }
+        }
+    }
+
+    private fun injectStyle(view: WebView, css: String, id: String) {
+        if (css.isEmpty()) return
+        view.evaluateJavascript(
+            "(function(){var s=document.getElementById('$id');if(!s){s=document.createElement('style');s.id='$id';" +
+                "(document.head||document.documentElement).appendChild(s)}s.textContent=${org.json.JSONObject.quote(css)}})()",
+            null,
+        )
+    }
+
+    /** The class names and ids the script returned, bounded; nothing else of the page is read. */
+    private fun pageNames(value: String?): Pair<List<String>, List<String>> {
+        if (value == null || value == "null" || value.length > MAX_NAMES_REPLY_CHARS) return emptyList<String>() to emptyList()
+        return try {
+            val text = org.json.JSONTokener(value).nextValue() as? String ?: return emptyList<String>() to emptyList()
+            val parsed = org.json.JSONObject(text)
+            val read = { key: String ->
+                val array = parsed.optJSONArray(key)
+                (0 until (array?.length() ?: 0).coerceAtMost(MAX_NAMES)).mapNotNull { array?.optString(it)?.takeIf { n -> n.isNotEmpty() && n.length <= MAX_NAME_CHARS } }
+            }
+            read("c") to read("i")
+        } catch (e: org.json.JSONException) {
+            emptyList<String>() to emptyList()
+        } catch (e: ClassCastException) {
+            emptyList<String>() to emptyList()
+        }
     }
 
     // ---- Live page watch (§10.5) --------------------------------------------------
@@ -429,6 +520,9 @@ class BrowserActivity : ComponentActivity() {
 
     private fun load(url: String, decisionNotes: List<Fact>) {
         notes = decisionNotes
+        // Before the engine starts the page: onPageStarted comes after its first subresources (found by F1).
+        pageUrl = url
+        refreshFiltering()
         screen = Screen.Page
         webView?.loadUrl(url)
     }
@@ -450,6 +544,8 @@ class BrowserActivity : ComponentActivity() {
             return when (val d = decide(url)) {
                 is NavigationDecision.Proceed -> {
                     notes = d.notes
+                    pageUrl = url
+                    refreshFiltering()
                     false
                 }
                 else -> {
@@ -461,6 +557,34 @@ class BrowserActivity : ComponentActivity() {
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             address = url
+            pageUrl = url
+            refreshFiltering()
+        }
+
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+            // Pages are the core's to judge (decide); the filters take away what a page loads.
+            if (!filtering || request.isForMainFrame) return null
+            val connected = core ?: return null
+            val isBlocked = try {
+                connected.blockRequest(generation, request.url.toString(), pageUrl, ContentKind.of(request))
+            } catch (e: RemoteException) {
+                return null
+            }
+            if (!isBlocked) return null
+            blocked = blockedCount.incrementAndGet()
+            return WebResourceResponse("text/plain", "utf-8", 403, "Blocked by Rift", emptyMap(), ByteArrayInputStream(ByteArray(0)))
+        }
+
+        override fun onPageCommitVisible(view: WebView, url: String) {
+            if (filtering) hideElements(view, url, generic = false)
+        }
+
+        override fun onPageFinished(view: WebView, url: String) {
+            if (filtering) {
+                hideElements(view, url, generic = true)
+                // Content added after the load.
+                polling.postDelayed({ if (filtering && view.url == url) hideElements(view, url, generic = true) }, LATE_HIDING_MS)
+            }
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
@@ -641,6 +765,13 @@ class BrowserActivity : ComponentActivity() {
                 )
             }
             status?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("status")) }
+            if (filtersShown) {
+                Text(
+                    if (blocked == 0) "Content filters on" else "Content filters: $blocked ${if (blocked == 1) "request" else "requests"} blocked",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 4.dp).testTag("filter-count"),
+                )
+            }
             if (webView != null) WatchPanel()
         }
     }
@@ -746,6 +877,18 @@ class BrowserActivity : ComponentActivity() {
         private const val WATCH_POLL_MS = 1_000L
         private const val ATTEMPT_REPORT_MS = 1_000L
         private const val MAX_REPORTED = 256
+        private const val LATE_HIDING_MS = 2_500L
+        private const val MAX_NAMES = 1_500
+        private const val MAX_NAME_CHARS = 100
+        private const val MAX_NAMES_REPLY_CHARS = 300_000
+        private const val MAX_GENERIC_CSS_CHARS = 250_000
+
+        /** The class names and ids in the page, as JSON; the only thing read back from it. */
+        private const val PAGE_NAMES_SCRIPT = "(function(){var c={},i={},nc=0,ni=0;" +
+            "document.querySelectorAll('[class]').forEach(function(e){if(typeof e.className!=='string')return;" +
+            "e.className.split(/\\s+/).forEach(function(n){if(n&&!c[n]&&nc<1500){c[n]=1;nc++}})});" +
+            "document.querySelectorAll('[id]').forEach(function(e){var n=e.id;if(n&&!i[n]&&ni<1500){i[n]=1;ni++}});" +
+            "return JSON.stringify({c:Object.keys(c),i:Object.keys(i)})})()"
 
         /** The generation whose WebView data directory this process uses; fixed once set. */
         @Volatile private var processGeneration: Long? = null

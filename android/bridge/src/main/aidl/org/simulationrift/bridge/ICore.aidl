@@ -65,4 +65,28 @@ interface ICore {
 
     /** This session's page watch, encoded by PageWatch; empty for any other generation. */
     Bundle pageWatch(long generation);
+
+    /**
+     * Whether the content filters (§10.9) are on and loaded now. Asked once
+     * for each page, so the browser does not make a call for every request
+     * while they are off.
+     */
+    boolean filtersOn(long generation);
+
+    /**
+     * Whether a subresource request is blocked by the content filters:
+     * `page` is the address of the page that makes it, `kind` one of the
+     * filter engine's request kinds. The core bounds and validates both.
+     */
+    boolean blockRequest(long generation, String url, String page, String kind);
+
+    /**
+     * What to hide on the page at `url`, encoded by PageHiding: style rules
+     * the core made itself from the lists, and the exceptions to pass back
+     * to [genericHiding].
+     */
+    Bundle hidingFor(long generation, String url);
+
+    /** The style rules for the class names and ids a page uses; bounded like the rest. */
+    String genericHiding(long generation, in List<String> classes, in List<String> ids, in List<String> exceptions);
 }
