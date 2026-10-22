@@ -1283,25 +1283,23 @@ class SecurityTest {
         }
         allowFixtureHost()
         openBrowser(activeGeneration(), fixture("/type.html"))
-        val fields = { device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty() }
         // The page's field first, while no keyboard covers it; then the address
         // bar, which stays above the keyboard. (Back to hide a keyboard can
         // reach the browser too, and close it, once the keyboard is gone.)
-        val deadline = SystemClock.elapsedRealtime() + PAGE_TIMEOUT_MS
-        var page = fields().firstOrNull { it.resourceName != "address" }
-        while (page == null && SystemClock.elapsedRealtime() < deadline) {
-            SystemClock.sleep(200)
-            page = fields().firstOrNull { it.resourceName != "address" }
-        }
-        val field = page ?: run {
+        val field = awaitFresh(PAGE_TIMEOUT_MS) { pageFields().firstOrNull() } ?: run {
             screenshot("h2-no-field")
-            throw AssertionError("the page's text field: ${fields().map { it.resourceName }}")
+            throw AssertionError("the page's text field")
         }
         var since = lastInputStart()
         assertLearningOff(Rift.BROWSER_PACKAGE, since, "the page's text field") { field.click() }
         since = lastInputStart()
+        // Read afresh: with the keyboard up, API 34 kept the browser's old tree
+        // and the address bar was not found (H2 on CI).
         assertLearningOff(Rift.BROWSER_PACKAGE, since, "the browser's address bar") {
-            (device.wait(Until.findObject(By.res("address")), UI_TIMEOUT_MS) ?: throw AssertionError("address bar")).click()
+            (awaitFresh { device.findObject(By.res("address")) } ?: run {
+                screenshot("h2-no-address")
+                throw AssertionError("address bar")
+            }).click()
         }
         report("h2", "learning off in the home screen's address field, the browser's address bar and a page's field")
     }
@@ -1358,15 +1356,6 @@ class SecurityTest {
 
             allowFixtureHost()
             openBrowser(activeGeneration(), fixture("/sign-in.html"))
-            // The page's fields. The engine redraws them as the page settles, and
-            // a field found a moment earlier was stale when read (H3, API 34):
-            // stale ones are skipped and the fields looked for again.
-            val pageFields = {
-                freshTree()
-                device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty().filter {
-                    try { it.resourceName != "address" } catch (e: StaleObjectException) { false }
-                }
-            }
             awaitCondition("the page's sign-in fields") { pageFields().size >= 2 }
             val overPage = overlaid("h3-browser")
             assertTrue("${percent(overPage)} of the browser's window is under the overlay", overPage < 0.02)
@@ -1980,6 +1969,19 @@ class SecurityTest {
      */
     private fun freshTree() {
         if (android.os.Build.VERSION.SDK_INT >= 34) InstrumentationRegistry.getInstrumentation().uiAutomation.clearCache()
+    }
+
+    /**
+     * The page's text fields in the browser (not its address bar), read
+     * afresh. The engine redraws them as the page settles, and a field found
+     * a moment earlier was stale when read (H3, API 34): stale ones are
+     * skipped, so the caller looks again.
+     */
+    private fun pageFields(): List<UiObject2> {
+        freshTree()
+        return device.wait(Until.findObjects(By.pkg(Rift.BROWSER_PACKAGE).clazz("android.widget.EditText")), UI_TIMEOUT_MS).orEmpty().filter {
+            try { it.resourceName != "address" } catch (e: StaleObjectException) { false }
+        }
     }
 
     /** [find]'s first non-null result, reading the screen afresh each time, or null after [timeoutMs]. */
