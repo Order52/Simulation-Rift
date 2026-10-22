@@ -204,6 +204,8 @@ mod tests {
             "https://paypa1-secure.workers.dev/login",
             "https://chase-online-verify.netlify.app/login",
             "http://192.168.4.20/bank/login.php",
+            "https://metamask-wallet-restore.pages.dev/",
+            "https://appleid-verify-account.web.app/",
         ] {
             let view = ai.assess(url.into()).unwrap();
             assert!(
@@ -218,6 +220,8 @@ mod tests {
             "https://hello-world.workers.dev/",
             "https://shop.local-hardware.de/kontakt",
             "https://www.uot.edu.ly/",
+            "https://my-portfolio.pages.dev/",
+            "https://todo-app-3f2a1.web.app/",
         ] {
             let view = ai.assess(url.into()).unwrap();
             assert_eq!(view.level, AiLevel::Low, "{url}: {view:?}");

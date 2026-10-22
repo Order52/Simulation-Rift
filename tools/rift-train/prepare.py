@@ -39,10 +39,17 @@ def write(name, lines):
                 n += 1
     print(f"{name}: {n}")
 
-# Phishing.Database, ACTIVE links (MIT).
-phish = [l.strip() for l in open(os.path.join(src, "phishing-db-active.txt"), encoding="utf-8", errors="replace")]
-phish = [l for l in phish if l.startswith(("http://", "https://"))]
-write("phishing-db.txt", phish)
+# Phishing.Database, ACTIVE links (MIT). The single phishing-links-ACTIVE.txt
+# stopped changing on 22 December 2025; the live list has since been the
+# files in phishing-links-ACTIVE/, joined here as phishing-db-now.txt.
+def links(lines):
+    return [l.strip() for l in lines if l.strip().startswith(("http://", "https://"))]
+
+phish_2025 = links(open(os.path.join(src, "phishing-db-active.txt"), encoding="utf-8", errors="replace"))
+write("phishing-db.txt", phish_2025)
+phish_now = links(read_optional("phishing-db-now.txt"))
+write("phishing-db-now.txt", phish_now)
+phish = phish_2025 + phish_now
 
 # URLhaus hosts, through malware-filter's CC0 mirror: domains and addresses.
 malware_hosts = set()
@@ -90,6 +97,24 @@ for line in read_optional("cc-platforms.txt"):
     if url and url not in listed and host not in malware_hosts and host not in phish_hosts:
         platforms.append(url)
 write("commoncrawl-platforms.txt", platforms)
+
+# Sites on the platforms Common Crawl barely covers (pages.dev, web.app...),
+# linked from GitHub READMEs (gh_platforms.py); filtered the same way. Also
+# left out: hosts named like a brand or a sign-in, which on GitHub are often
+# "clones" of real sites, so as benign examples they would teach the wrong
+# thing even when the project means no harm.
+LOOKS_LIKE_A_FAKE = ("amazon", "amzn", "paypal", "apple", "icloud", "microsoft", "office", "outlook",
+                     "netflix", "facebook", "instagram", "whatsapp", "google", "gmail", "bank", "login",
+                     "signin", "sign-in", "verify", "wallet", "metamask", "coinbase", "binance",
+                     "steam", "roblox", "discord", "telegram", "clone")
+github = []
+for line in read_optional("gh-platforms.txt"):
+    url = line.strip()
+    host = host_of(url)
+    if (url and url not in listed and host not in malware_hosts and host not in phish_hosts
+            and not any(word in host for word in LOOKS_LIKE_A_FAKE)):
+        github.append(url)
+write("github-platforms.txt", github)
 
 # PhiUSIIL (UCI, CC BY 4.0): label 1 is legitimate, 0 is phishing.
 legit, phishing = [], []

@@ -14,7 +14,8 @@ Public Suffix List
   ("xn--") form (tools/rift-train/prepare.py makes them). The source form is
   at the address above.
 
-Phishing.Database (ACTIVE links)
+Phishing.Database (ACTIVE links: phishing-links-ACTIVE.txt of December 2025
+and the phishing-links-ACTIVE/ split files of October 2026)
   https://github.com/Phishing-Database/Phishing.Database
   MIT License
   Copyright (c) 2018-2025 Mitchell Krog - github.com/mitchellkrogza
@@ -54,3 +55,8 @@ Tranco list of the most visited sites
 
 Common Crawl (CC-MAIN-2026-39 index): ordinary pages, used as examples of
   benign addresses. https://commoncrawl.org/terms-of-use
+
+GitHub code search (fetched 22 Oct 2026): links in public README.md files to
+  sites on pages.dev, web.app and firebaseapp.com, used as examples of benign
+  addresses. Only the addresses were used, not the files' other contents.
+  https://docs.github.com/en/site-policy/github-terms/github-terms-of-service

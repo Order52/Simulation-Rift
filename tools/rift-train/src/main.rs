@@ -2,7 +2,7 @@
 //! sites it never saw (docs/architecture.md §16, docs/reports/rift-ai.md).
 //!
 //! ```text
-//! rift-train [--bits N] [--epochs N] [--seed N] --out <model.bin> --report <report.json>
+//! rift-train [--bits N] [--epochs N] [--l2 X] [--seed N] --out <model.bin> --report <report.json>
 //!            --suffixes <psl-ascii.txt> [--popular <hosts-file>:<n>]
 //!            [--platforms <suffixes-file>]
 //!            --source <name>:<malicious|benign>:<urls|hosts>:<file>[:eval] ...
@@ -29,15 +29,25 @@
 //!
 //! `--platforms` lists hosting platforms (github.io, workers.dev...) the
 //! benign sources sampled ordinary pages from, at most `PER_PLATFORM` each.
-//! A malicious source contributes at most as many pages per platform: the
-//! feeds list tens of thousands of fakes on some platforms, and without the
-//! cap the platform's name alone decided the score of its ordinary sites.
+//! A malicious source trains on at most as many pages per platform as the
+//! benign sources do (none, on a platform with no ordinary pages): the feeds
+//! list tens of thousands of fakes on some platforms, and without the
+//! balance the platform's name alone decided the score of its ordinary sites.
 //!
 //! Examples are split by site, never by URL: 80% train, 10% validation
-//! (which sets the thresholds), 10% test.
+//! (which chooses the training settings and sets the thresholds), 10% test.
 //! A site is therefore only ever in one of them, and the test measures how
 //! the model does on sites it has not seen. The model evaluated is the
 //! quantized file that ships, read back through `UrlModel::parse`.
+//!
+//! Model selection: unless `--l2` fixes it, each L2 strength in `L2_GRID`
+//! is trained for up to `--epochs` epochs, and the strength and epoch with
+//! the best validation recall at a 0.1% false-positive rate are kept (ties
+//! to the lower validation loss). Too strong a penalty or too few epochs
+//! underfits; too weak or too many overfits sites it saw; the validation
+//! sites decide, and the test sites play no part. The report lists every
+//! setting tried and the fit on train, validation and test, so a gap
+//! between them shows.
 //!
 //! An offline maintainer tool over files the maintainer chose: numeric loops
 //! index weight tables by masked hashes, which are in range by construction.
@@ -55,8 +65,8 @@ use serde_json::{Value, json};
 /// At most this many examples per domain and source, so that a few
 /// platforms with thousands of pages each do not decide the model.
 const PER_GROUP: usize = 200;
-/// At most this many examples per hosting platform and malicious source
-/// (the benign platform sample has at most as many).
+/// At most this many training examples per hosting platform and malicious
+/// source, and never more than the benign sources have on that platform.
 const PER_PLATFORM: usize = 2_500;
 /// Benign hosts given as a list are many and alike: at most this many.
 const MAX_HOST_LIST: usize = 200_000;
@@ -70,6 +80,9 @@ const ELEVATED_FPR: f64 = 0.01;
 /// A benign source with fewer scored validation pages than this does not
 /// set the thresholds: its 0.1% would be its single highest score.
 const MIN_THRESHOLD_SCORES: usize = 2_000;
+
+/// The L2 strengths model selection tries, weakest first.
+const L2_GRID: [f32; 5] = [0.0, 1e-4, 1e-3, 3e-3, 1e-2];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Split {
@@ -109,7 +122,8 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let mut bits = 19u32;
-    let mut epochs = 4usize;
+    let mut epochs = 10usize;
+    let mut fixed_l2: Option<f32> = None;
     let mut seed = 0x5eed_u64;
     let (mut out, mut report) = (None, None);
     let mut sources = Vec::new();
@@ -123,6 +137,7 @@ fn run() -> Result<(), String> {
             "--bits" => bits = value()?.parse().map_err(|e| format!("--bits: {e}"))?,
             "--epochs" => epochs = value()?.parse().map_err(|e| format!("--epochs: {e}"))?,
             "--seed" => seed = value()?.parse().map_err(|e| format!("--seed: {e}"))?,
+            "--l2" => fixed_l2 = Some(value()?.parse().map_err(|e| format!("--l2: {e}"))?),
             "--out" => out = Some(value()?),
             "--report" => report = Some(value()?),
             "--source" => sources.push(parse_source(&value()?)?),
@@ -180,7 +195,54 @@ fn run() -> Result<(), String> {
         started.elapsed()
     );
 
-    let (weights, bias) = train(&examples, &sources, bits, epochs, seed);
+    // Pages the model will not score (the most visited sites) take no part
+    // in choosing it, as in setting its thresholds.
+    let scored: Vec<bool> = examples
+        .iter()
+        .map(|e| !popular.contains(&group(&e.url, &suffixes)))
+        .collect();
+    let validation = Measure::new(&examples, &sources, &scored, Split::Validation, bits);
+    let mut tried = Vec::new();
+    let mut best: Option<Chosen> = None;
+    for l2 in fixed_l2.map_or_else(|| L2_GRID.to_vec(), |l2| vec![l2]) {
+        train(
+            &examples,
+            &sources,
+            bits,
+            epochs,
+            seed,
+            l2,
+            |epoch, w, b| {
+                let (recall, loss) = validation.recall_and_loss(w, b);
+                eprintln!(
+                    "  l2 {l2:e} epoch {epoch}: validation recall at 0.1% {:.2}%, loss {loss:.4}",
+                    recall * 100.0
+                );
+                tried.push(json!({ "l2": l2, "epochs": epoch, "validation_recall_at_0.1%_fpr": recall, "validation_loss": loss }));
+                let better = best.as_ref().is_none_or(|c| {
+                    recall > c.recall + 1e-9 || (recall >= c.recall - 1e-9 && loss < c.loss)
+                });
+                if better {
+                    best = Some(Chosen {
+                        l2,
+                        epochs: epoch,
+                        recall,
+                        loss,
+                        weights: w.to_vec(),
+                        bias: b,
+                    });
+                }
+            },
+        );
+    }
+    let chosen = best.ok_or("no training examples")?;
+    eprintln!(
+        "chosen: l2 {:e}, {} epochs (validation recall at 0.1% {:.2}%)",
+        chosen.l2,
+        chosen.epochs,
+        chosen.recall * 100.0
+    );
+    let (weights, bias) = (chosen.weights, chosen.bias);
     // Thresholds from the validation split, then the shipped file is made
     // and read back: everything below measures exactly that file.
     let unquantized = ModelParts {
@@ -210,13 +272,20 @@ fn run() -> Result<(), String> {
     std::fs::write(&out, &bytes).map_err(|e| format!("{out}: {e}"))?;
 
     let mut summary = evaluate(&model, &examples, &sources);
+    summary["selection"] = json!({
+        "by": "validation recall at a 0.1% false-positive rate (benign validation pages pooled), ties to lower validation loss",
+        "max_epochs": epochs,
+        "tried": tried,
+    });
+    summary["fit"] = fit(&model, &examples, &sources, &scored, high);
     summary["model"] = json!({
         "file": file_name(&out),
         "bytes": bytes.len(),
         "sha256": model.digest_hex(),
         "feature_schema": urlmodel::FEATURE_SCHEMA,
         "bits": bits,
-        "epochs": epochs,
+        "epochs": chosen.epochs,
+        "l2": chosen.l2,
         "seed": seed,
         "thresholds": { "elevated": elevated, "high": high },
         "popular_sites_not_scored": popular_sites,
@@ -348,6 +417,8 @@ fn load(
     // also trained as "this host is malicious" (a phishing page on a large
     // platform does not make the platform malicious).
     let mut benign_hosts: HashSet<String> = HashSet::new();
+    // Benign training pages per platform, which bound the malicious ones.
+    let mut benign_on_platform: HashMap<&str, usize> = HashMap::new();
     for pass_benign in [true, false] {
         for (index, source) in sources.iter().enumerate() {
             if source.malicious == pass_benign {
@@ -402,12 +473,20 @@ fn load(
                     && split == Split::Train
                     && let Some(platform) = platform_of(url.host(), platforms)
                 {
+                    let cap =
+                        PER_PLATFORM.min(benign_on_platform.get(platform).copied().unwrap_or(0));
                     let n = per_platform.entry(platform).or_insert(0);
-                    if *n >= PER_PLATFORM {
+                    if *n >= cap {
                         over_platform += 1;
                         continue;
                     }
                     *n += 1;
+                }
+                if !source.malicious
+                    && split == Split::Train
+                    && let Some(platform) = platform_of(url.host(), platforms)
+                {
+                    *benign_on_platform.entry(platform).or_insert(0) += 1;
                 }
                 *per_group.entry(g.clone()).or_insert(0) += 1;
                 if !source.malicious {
@@ -456,16 +535,28 @@ impl Rng {
     }
 }
 
-/// Logistic regression by AdaGrad, classes weighted to count equally.
+/// The setting model selection kept, with its weights.
+struct Chosen {
+    l2: f32,
+    epochs: usize,
+    recall: f64,
+    loss: f64,
+    weights: Vec<f32>,
+    bias: f32,
+}
+
+/// Logistic regression by AdaGrad, classes weighted to count equally;
+/// `after_epoch` sees the weights after each epoch.
 fn train(
     examples: &[Example],
     sources: &[Source],
     bits: u32,
     epochs: usize,
     seed: u64,
-) -> (Vec<f32>, f32) {
+    l2: f32,
+    mut after_epoch: impl FnMut(usize, &[f32], f32),
+) {
     const RATE: f32 = 0.08;
-    const L2: f32 = 2e-7;
     let size = 1usize << bits;
     let (mut w, mut g2) = (vec![0f32; size], vec![1e-6f32; size]);
     let (mut bias, mut bias_g2) = (0f32, 1e-6f32);
@@ -510,7 +601,7 @@ fn train(
                 });
             let g = (p - y) * cw;
             for &(k, x) in &features {
-                let grad = g * x + L2 * w[k];
+                let grad = g * x + l2 * w[k];
                 g2[k] += grad * grad;
                 w[k] -= RATE * grad / g2[k].sqrt();
             }
@@ -518,12 +609,135 @@ fn train(
             bias -= RATE * g / bias_g2.sqrt();
         }
         eprintln!(
-            "epoch {}: training loss {:.4}",
+            "l2 {l2:e} epoch {}: training loss {:.4}",
             epoch + 1,
             loss / order.len().max(1) as f64
         );
+        after_epoch(epoch + 1, &w, bias);
     }
-    (w, bias)
+}
+
+/// One split's scored address-view examples, their features worked out
+/// once, for measuring weights during model selection.
+struct Measure {
+    bits: u32,
+    examples: Vec<(Vec<(usize, f32)>, bool)>,
+    weight_pos: f64,
+    weight_neg: f64,
+}
+
+impl Measure {
+    fn new(
+        examples: &[Example],
+        sources: &[Source],
+        scored: &[bool],
+        split: Split,
+        bits: u32,
+    ) -> Self {
+        let examples: Vec<(Vec<(usize, f32)>, bool)> = examples
+            .iter()
+            .zip(scored)
+            .filter(|(e, scored)| {
+                **scored
+                    && e.split == split
+                    && e.view == View::Address
+                    && !sources[e.source].eval_only
+            })
+            .map(|(e, _)| {
+                let mut features = Vec::new();
+                urlmodel::for_each_feature(&e.url, e.view, |f| {
+                    let (index, sign) = f.bucket(bits);
+                    features.push((index, sign * f.value));
+                });
+                (features, e.malicious)
+            })
+            .collect();
+        let positives = examples.iter().filter(|e| e.1).count().max(1) as f64;
+        let negatives = (examples.len() as f64 - positives).max(1.0);
+        let total = positives + negatives;
+        Self {
+            bits,
+            examples,
+            weight_pos: total / (2.0 * positives),
+            weight_neg: total / (2.0 * negatives),
+        }
+    }
+
+    /// The share of malicious pages above the score that 0.1% of benign
+    /// pages reach, and the class-weighted log loss.
+    fn recall_and_loss(&self, w: &[f32], bias: f32) -> (f64, f64) {
+        debug_assert_eq!(w.len(), 1usize << self.bits);
+        let mut benign = Vec::new();
+        let mut malicious = Vec::new();
+        let mut loss = 0f64;
+        for (features, is_malicious) in &self.examples {
+            let p = urlmodel::sigmoid(bias + features.iter().map(|&(k, x)| w[k] * x).sum::<f32>());
+            if *is_malicious {
+                loss -= self.weight_pos * f64::from(p.max(1e-7).ln());
+                malicious.push(p);
+            } else {
+                loss -= self.weight_neg * f64::from((1.0 - p).max(1e-7).ln());
+                benign.push(p);
+            }
+        }
+        benign.sort_by(f32::total_cmp);
+        let k = ((benign.len() as f64) * (1.0 - HIGH_FPR)).ceil() as usize;
+        let threshold = benign
+            .get(k.min(benign.len().saturating_sub(1)))
+            .copied()
+            .unwrap_or(1.0);
+        let caught = malicious.iter().filter(|&&p| p > threshold).count();
+        (
+            caught as f64 / malicious.len().max(1) as f64,
+            loss / self.examples.len().max(1) as f64,
+        )
+    }
+}
+
+/// How the shipped model fits each split of the trained sources (address
+/// view, scored pages): log loss, malicious pages at High, and benign pages
+/// at High. Close numbers on train and test mean it neither memorised the
+/// sites it saw nor missed what they share.
+fn fit(
+    model: &UrlModel,
+    examples: &[Example],
+    sources: &[Source],
+    scored: &[bool],
+    high: f32,
+) -> Value {
+    let mut out = serde_json::Map::new();
+    for (name, split) in [
+        ("train", Split::Train),
+        ("validation", Split::Validation),
+        ("test", Split::Test),
+    ] {
+        let (mut loss, mut n) = (0f64, 0usize);
+        let (mut caught, mut malicious, mut flagged, mut benign) = (0usize, 0usize, 0usize, 0usize);
+        for (e, _) in examples.iter().zip(scored).filter(|(e, scored)| {
+            **scored && e.split == split && e.view == View::Address && !sources[e.source].eval_only
+        }) {
+            let score = model.assess(&e.url, e.view).score;
+            n += 1;
+            if e.malicious {
+                loss -= f64::from(score.max(1e-7).ln());
+                malicious += 1;
+                caught += usize::from(score >= high);
+            } else {
+                loss -= f64::from((1.0 - score).max(1e-7).ln());
+                benign += 1;
+                flagged += usize::from(score >= high);
+            }
+        }
+        let row = json!({
+            "n": n,
+            "log_loss": loss / n.max(1) as f64,
+            "malicious_at_high": caught as f64 / malicious.max(1) as f64,
+            "benign_at_high": flagged as f64 / benign.max(1) as f64,
+        });
+        eprintln!("fit {name:<10} {row}");
+        out.insert(name.to_owned(), row);
+    }
+    Value::Object(out)
 }
 
 /// Thresholds at the validation false-positive rates (averaged over the

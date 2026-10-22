@@ -1,81 +1,306 @@
 {
-  "auc_trained_sources_address_view": 0.9781360422330266,
+  "auc_trained_sources_address_view": 0.9771548579844599,
+  "fit": {
+    "test": {
+      "benign_at_high": 0.0004113251525330774,
+      "log_loss": 0.19492558252970946,
+      "malicious_at_high": 0.5375727790240803,
+      "n": 150052
+    },
+    "train": {
+      "benign_at_high": 0.00007728161075485242,
+      "log_loss": 0.11116555450214963,
+      "malicious_at_high": 0.6703202488022191,
+      "n": 1117651
+    },
+    "validation": {
+      "benign_at_high": 0.00037909045369003937,
+      "log_loss": 0.19270438061839934,
+      "malicious_at_high": 0.5418652591221229,
+      "n": 150022
+    }
+  },
   "model": {
     "bits": 19,
     "bytes": 1278656,
-    "epochs": 4,
+    "epochs": 2,
     "feature_schema": 1,
     "file": "url-model.bin",
+    "l2": 0.0,
     "popular_from": "tranco-hosts.txt:10000",
     "popular_sites_not_scored": 10000,
     "seed": 24301,
-    "sha256": "a3b979eb4568390e7c24013f5e4aee0a59ba2344b0b1fc5a89246732d4fb35d7",
+    "sha256": "2b92d427004b212625ecf1b16c78371bd43bf966072d884f3906e4892b531594",
     "thresholds": {
-      "elevated": 0.8972635269165039,
-      "high": 0.9920322895050049
+      "elevated": 0.8442726135253906,
+      "high": 0.9860904216766357
     }
   },
   "scoring_microseconds_on_this_machine": {
-    "max": 26.75,
+    "max": 37.375,
     "p50": 1.875,
-    "p95": 4.0
+    "p95": 4.041
   },
   "seen_sites_address_view": [
     {
-      "elevated_or_high_rate": 0.8987284519732723,
-      "high_rate": 0.6993358183515551,
-      "n": 448823,
+      "elevated_or_high_rate": 0.9035832913471048,
+      "high_rate": 0.7081840489652728,
+      "n": 428712,
       "source": "phishdb"
     },
     {
-      "elevated_or_high_rate": 0.9281976551632775,
-      "high_rate": 0.9034907597535934,
-      "n": 15097,
+      "elevated_or_high_rate": 0.8851450336946968,
+      "high_rate": 0.6737607543350291,
+      "n": 37543,
+      "source": "phishdb-2026"
+    },
+    {
+      "elevated_or_high_rate": 0.9297408364817392,
+      "high_rate": 0.9046198714124744,
+      "n": 15087,
       "source": "urlhaus"
     },
     {
-      "elevated_or_high_rate": 0.5622246322781808,
-      "high_rate": 0.3413881922320884,
-      "n": 59012,
+      "elevated_or_high_rate": 0.5060252114839976,
+      "high_rate": 0.30201951020861484,
+      "n": 54023,
       "source": "phiusiil-phish"
     },
     {
-      "elevated_or_high_rate": 0.00028117677688102057,
-      "high_rate": 0.000031241864097891176,
+      "elevated_or_high_rate": 0.0006942636466198039,
+      "high_rate": 0.00005554109172958431,
       "n": 288075,
       "source": "commoncrawl"
     },
     {
-      "elevated_or_high_rate": 0.0006514005110988626,
+      "elevated_or_high_rate": 0.0015533396803126722,
       "high_rate": 0.000050107731622989425,
       "n": 19957,
       "source": "popular"
     },
     {
-      "elevated_or_high_rate": 0.01082137745662722,
+      "elevated_or_high_rate": 0.011170454148776486,
       "high_rate": 0.0006632457150836039,
       "n": 28647,
       "source": "platforms"
     },
     {
-      "elevated_or_high_rate": 0.0003814550320797429,
-      "high_rate": 6.253361181635129e-6,
+      "elevated_or_high_rate": 0.012579384465070835,
+      "high_rate": 0.0002442598925256473,
+      "n": 8188,
+      "source": "github-platforms"
+    },
+    {
+      "elevated_or_high_rate": 0.0013507260152331878,
+      "high_rate": 0.000025013444726540515,
       "n": 159914,
       "source": "tranco"
     },
     {
-      "elevated_or_high_rate": 0.00017635047336179692,
-      "high_rate": 9.281603861147206e-6,
+      "elevated_or_high_rate": 0.0004733617969185075,
+      "high_rate": 0.00002784481158344162,
       "n": 107740,
       "source": "phiusiil-legit"
     }
   ],
+  "selection": {
+    "by": "validation recall at a 0.1% false-positive rate (benign validation pages pooled), ties to lower validation loss",
+    "max_epochs": 6,
+    "tried": [
+      {
+        "epochs": 1,
+        "l2": 0.0,
+        "validation_loss": 0.19503416750268965,
+        "validation_recall_at_0.1%_fpr": 0.6039442759417549
+      },
+      {
+        "epochs": 2,
+        "l2": 0.0,
+        "validation_loss": 0.1925914293327141,
+        "validation_recall_at_0.1%_fpr": 0.6113496408923202
+      },
+      {
+        "epochs": 3,
+        "l2": 0.0,
+        "validation_loss": 0.19317794755153336,
+        "validation_recall_at_0.1%_fpr": 0.6040230564199525
+      },
+      {
+        "epochs": 4,
+        "l2": 0.0,
+        "validation_loss": 0.19340680198744958,
+        "validation_recall_at_0.1%_fpr": 0.6031302110003808
+      },
+      {
+        "epochs": 5,
+        "l2": 0.0,
+        "validation_loss": 0.1951666291978571,
+        "validation_recall_at_0.1%_fpr": 0.5954491143761242
+      },
+      {
+        "epochs": 6,
+        "l2": 0.0,
+        "validation_loss": 0.1959063182613169,
+        "validation_recall_at_0.1%_fpr": 0.5994275285250982
+      },
+      {
+        "epochs": 1,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.19544453857723598,
+        "validation_recall_at_0.1%_fpr": 0.6022504956605087
+      },
+      {
+        "epochs": 2,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.19317020820867806,
+        "validation_recall_at_0.1%_fpr": 0.6112971205735219
+      },
+      {
+        "epochs": 3,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.19390844005531035,
+        "validation_recall_at_0.1%_fpr": 0.6064389910846759
+      },
+      {
+        "epochs": 4,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.1942467827364451,
+        "validation_recall_at_0.1%_fpr": 0.6030908207612821
+      },
+      {
+        "epochs": 5,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.19613438640653802,
+        "validation_recall_at_0.1%_fpr": 0.5954491143761242
+      },
+      {
+        "epochs": 6,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.19697009257323267,
+        "validation_recall_at_0.1%_fpr": 0.5954359842964246
+      },
+      {
+        "epochs": 1,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.199190781941461,
+        "validation_recall_at_0.1%_fpr": 0.6020535444650149
+      },
+      {
+        "epochs": 2,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.19828667343993053,
+        "validation_recall_at_0.1%_fpr": 0.6021323249432124
+      },
+      {
+        "epochs": 3,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.20005531061504597,
+        "validation_recall_at_0.1%_fpr": 0.5977206181641522
+      },
+      {
+        "epochs": 4,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.20106366633635725,
+        "validation_recall_at_0.1%_fpr": 0.59274431795801
+      },
+      {
+        "epochs": 5,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.20363492201436223,
+        "validation_recall_at_0.1%_fpr": 0.5883326111789499
+      },
+      {
+        "epochs": 6,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.20496097934214336,
+        "validation_recall_at_0.1%_fpr": 0.5803232625622038
+      },
+      {
+        "epochs": 1,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.20652645306839698,
+        "validation_recall_at_0.1%_fpr": 0.5931776105880963
+      },
+      {
+        "epochs": 2,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.2073570686593778,
+        "validation_recall_at_0.1%_fpr": 0.5940179356888696
+      },
+      {
+        "epochs": 3,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.21010424381689666,
+        "validation_recall_at_0.1%_fpr": 0.5866125707383044
+      },
+      {
+        "epochs": 4,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.21163257514924266,
+        "validation_recall_at_0.1%_fpr": 0.5741389950236998
+      },
+      {
+        "epochs": 5,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.21464515125167166,
+        "validation_recall_at_0.1%_fpr": 0.5687425322671709
+      },
+      {
+        "epochs": 6,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.21625042003814215,
+        "validation_recall_at_0.1%_fpr": 0.5669437113483279
+      },
+      {
+        "epochs": 1,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.22427300058175376,
+        "validation_recall_at_0.1%_fpr": 0.5665104187182416
+      },
+      {
+        "epochs": 2,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.2273397942596475,
+        "validation_recall_at_0.1%_fpr": 0.5648954189151928
+      },
+      {
+        "epochs": 3,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.2308956568133286,
+        "validation_recall_at_0.1%_fpr": 0.5596959073541576
+      },
+      {
+        "epochs": 4,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.23263365996657095,
+        "validation_recall_at_0.1%_fpr": 0.545646722075603
+      },
+      {
+        "epochs": 5,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.23570564035564945,
+        "validation_recall_at_0.1%_fpr": 0.5409986738619503
+      },
+      {
+        "epochs": 6,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.23721500579841648,
+        "validation_recall_at_0.1%_fpr": 0.5420228200785179
+      }
+    ]
+  },
   "sources": [
     {
       "eval_only": false,
       "kind": "urls",
       "label": "malicious",
       "name": "phishdb"
+    },
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "malicious",
+      "name": "phishdb-2026"
     },
     {
       "eval_only": false,
@@ -109,6 +334,12 @@
     },
     {
       "eval_only": false,
+      "kind": "urls",
+      "label": "benign",
+      "name": "github-platforms"
+    },
+    {
+      "eval_only": false,
       "kind": "hosts",
       "label": "benign",
       "name": "tranco"
@@ -123,10 +354,10 @@
   "split": "by site (Public Suffix List): 80% train, 10% validation, 10% test; eval-only sources are all test",
   "test": [
     {
-      "elevated_or_high_rate": 0.8065839042456804,
+      "elevated_or_high_rate": 0.8171861836562764,
       "eval_only": false,
       "heuristics_warn_rate": 0.00003179094276040756,
-      "high_rate": 0.5728092066570234,
+      "high_rate": 0.5615711083912194,
       "label": "malicious",
       "n": 62911,
       "not_scored_rate": 0.0,
@@ -134,10 +365,10 @@
       "view": "address"
     },
     {
-      "elevated_or_high_rate": 0.4729652455683334,
+      "elevated_or_high_rate": 0.4634347798462418,
       "eval_only": false,
       "heuristics_warn_rate": null,
-      "high_rate": 0.23012897896943899,
+      "high_rate": 0.20350721138572972,
       "label": "malicious",
       "n": 15739,
       "not_scored_rate": 0.0,
@@ -145,10 +376,32 @@
       "view": "host only"
     },
     {
-      "elevated_or_high_rate": 0.9127872716558633,
+      "elevated_or_high_rate": 0.8154302670623146,
       "eval_only": false,
       "heuristics_warn_rate": 0.0,
-      "high_rate": 0.8992339422510313,
+      "high_rate": 0.5881305637982196,
+      "label": "malicious",
+      "n": 5055,
+      "not_scored_rate": 0.0,
+      "source": "phishdb-2026",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.6387596899224807,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.35426356589147284,
+      "label": "malicious",
+      "n": 1290,
+      "not_scored_rate": 0.0,
+      "source": "phishdb-2026",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.9157336476134355,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.8980553918680023,
       "label": "malicious",
       "n": 1697,
       "not_scored_rate": 0.0,
@@ -156,10 +409,10 @@
       "view": "address"
     },
     {
-      "elevated_or_high_rate": 0.9092516205067767,
+      "elevated_or_high_rate": 0.91101944608132,
       "eval_only": false,
       "heuristics_warn_rate": null,
-      "high_rate": 0.8992339422510313,
+      "high_rate": 0.8980553918680023,
       "label": "malicious",
       "n": 1697,
       "not_scored_rate": 0.0,
@@ -167,32 +420,32 @@
       "view": "host only"
     },
     {
-      "elevated_or_high_rate": 0.46952355602874635,
+      "elevated_or_high_rate": 0.4174939629729005,
       "eval_only": false,
-      "heuristics_warn_rate": 0.00026616981634282674,
-      "high_rate": 0.26523822198562685,
+      "heuristics_warn_rate": 0.00026831231553528306,
+      "high_rate": 0.2186745371612557,
       "label": "malicious",
-      "n": 7514,
+      "n": 7454,
       "not_scored_rate": 0.0,
       "source": "phiusiil-phish",
       "view": "address"
     },
     {
-      "elevated_or_high_rate": 0.3931855056787453,
+      "elevated_or_high_rate": 0.34349482852476865,
       "eval_only": false,
       "heuristics_warn_rate": null,
-      "high_rate": 0.1995673336938886,
+      "high_rate": 0.14262384322264562,
       "label": "malicious",
-      "n": 1849,
+      "n": 1837,
       "not_scored_rate": 0.0,
       "source": "phiusiil-phish",
       "view": "host only"
     },
     {
-      "elevated_or_high_rate": 0.005354418088500485,
+      "elevated_or_high_rate": 0.007546122901928146,
       "eval_only": false,
       "heuristics_warn_rate": 0.0,
-      "high_rate": 0.0005271188791788042,
+      "high_rate": 0.0006935774726036898,
       "label": "benign",
       "n": 36045,
       "not_scored_rate": 0.003551116659730892,
@@ -200,7 +453,7 @@
       "view": "address"
     },
     {
-      "elevated_or_high_rate": 0.004550499445061043,
+      "elevated_or_high_rate": 0.0058823529411764705,
       "eval_only": false,
       "heuristics_warn_rate": null,
       "high_rate": 0.0,
@@ -211,7 +464,7 @@
       "view": "host only"
     },
     {
-      "elevated_or_high_rate": 0.005701754385964913,
+      "elevated_or_high_rate": 0.0061403508771929825,
       "eval_only": false,
       "heuristics_warn_rate": 0.0,
       "high_rate": 0.0,
@@ -225,7 +478,7 @@
       "elevated_or_high_rate": 0.011532125205930808,
       "eval_only": false,
       "heuristics_warn_rate": null,
-      "high_rate": 0.0,
+      "high_rate": 0.008237232289950576,
       "label": "benign",
       "n": 607,
       "not_scored_rate": 0.9093904448105437,
@@ -233,10 +486,10 @@
       "view": "host only"
     },
     {
-      "elevated_or_high_rate": 0.03394181403308614,
+      "elevated_or_high_rate": 0.031660011409013124,
       "eval_only": false,
       "heuristics_warn_rate": 0.0,
-      "high_rate": 0.0005704506560182544,
+      "high_rate": 0.0002852253280091272,
       "label": "benign",
       "n": 3506,
       "not_scored_rate": 0.0,
@@ -244,10 +497,10 @@
       "view": "address"
     },
     {
-      "elevated_or_high_rate": 0.02413793103448276,
+      "elevated_or_high_rate": 0.020689655172413793,
       "eval_only": false,
       "heuristics_warn_rate": null,
-      "high_rate": 0.0011494252873563218,
+      "high_rate": 0.0,
       "label": "benign",
       "n": 870,
       "not_scored_rate": 0.0,
@@ -255,10 +508,32 @@
       "view": "host only"
     },
     {
-      "elevated_or_high_rate": 0.0018024332849346618,
+      "elevated_or_high_rate": 0.031598513011152414,
       "eval_only": false,
       "heuristics_warn_rate": 0.0,
-      "high_rate": 0.00005006759124818505,
+      "high_rate": 0.0009293680297397769,
+      "label": "benign",
+      "n": 1076,
+      "not_scored_rate": 0.0,
+      "source": "github-platforms",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.026415094339622643,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.0,
+      "label": "benign",
+      "n": 265,
+      "not_scored_rate": 0.0,
+      "source": "github-platforms",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.003955339708606619,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.00015020277374455516,
       "label": "benign",
       "n": 19973,
       "not_scored_rate": 0.047063535773293946,
@@ -266,10 +541,10 @@
       "view": "address"
     },
     {
-      "elevated_or_high_rate": 0.0024533119711610675,
+      "elevated_or_high_rate": 0.0052570970810594305,
       "eval_only": false,
       "heuristics_warn_rate": null,
-      "high_rate": 0.0001001351824963701,
+      "high_rate": 0.00015020277374455516,
       "label": "benign",
       "n": 19973,
       "not_scored_rate": 0.047063535773293946,
@@ -277,7 +552,7 @@
       "view": "host only"
     },
     {
-      "elevated_or_high_rate": 0.0021646637306859747,
+      "elevated_or_high_rate": 0.0024632380383667984,
       "eval_only": false,
       "heuristics_warn_rate": 0.0,
       "high_rate": 0.0,
@@ -288,7 +563,7 @@
       "view": "address"
     },
     {
-      "elevated_or_high_rate": 0.0026416201937188143,
+      "elevated_or_high_rate": 0.0035221602582917524,
       "eval_only": false,
       "heuristics_warn_rate": null,
       "high_rate": 0.0,
