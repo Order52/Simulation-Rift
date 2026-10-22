@@ -131,12 +131,12 @@ def main():
     apache = apache_text(text for _, text in texts.values())
 
     lines = [
-        "Third-party Rust code in Simulation-Rift's native libraries",
+        "Third-party Rust code in Rift's native libraries",
         "(librift_ffi.so, librift_worker_ffi.so).",
         "",
         "Each crate is listed with its licence expression and the licence and notice",
         "files it publishes. Where a crate is offered under a choice of licences,",
-        "Simulation-Rift uses it under a permissive one (MIT, Apache-2.0, BSD, ISC,",
+        "Rift uses it under a permissive one (MIT, Apache-2.0, BSD, ISC,",
         "Zlib, Unicode-3.0) where offered, or under MPL-2.0. Identical texts are",
         "printed once, under \"Texts\", and referred to by number.",
         "",

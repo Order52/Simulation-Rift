@@ -1,6 +1,6 @@
 # Security policy
 
-Simulation-Rift is pre-release software. It has not been audited. Do not rely on it to protect sensitive data yet.
+Rift is pre-release software. It has not been audited. Do not rely on it to protect sensitive data yet.
 
 ## Reporting a vulnerability
 

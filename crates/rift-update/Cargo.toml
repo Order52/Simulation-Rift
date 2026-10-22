@@ -1,7 +1,7 @@
 [package]
 name = "rift-update"
 version = "0.1.0"
-description = "Simulation-Rift signed intelligence updates: TUF verification and offline import"
+description = "Rift signed intelligence updates: TUF verification and offline import"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

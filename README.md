@@ -1,24 +1,23 @@
-# Simulation-Rift
+# Rift
 
-A fully local, modular workspace for Android and Linux. It lets you open unfamiliar links and view untrusted files safely, keeping nothing afterwards, while reducing your device's exposure to that content. Android comes first; the Linux app is future work.
+Open any link, and any image or PDF, without letting it near your phone. Rift is a local Android app (Linux later) with two jobs:
 
-> **Status: early development (Phase 3, scanner and signed updates; tested on Android emulators, not yet on a phone).** Nothing here is a usable or audited security product yet. [`STATUS.md`](STATUS.md) is the current status: what works, what is left and the limitations. Read [`docs/architecture.md`](docs/architecture.md) for the design; the evidence reports in [`docs/reports/`](docs/reports/) state what has actually been verified.
+- **Check a link before you open it.** Paste it, or share it to Rift from any app: a sheet comes up over that app with a verdict (*Known malicious*, *Looks dangerous*, *Warning signs*, *Rift won't open this* or *No known threats found*, never "safe"), **See what's wrong** for the reasons, and **Open safely**. The check runs on the phone in microseconds and sends nothing anywhere: the threat database, the address checks (lookalikes of well-known sites, shorteners, links that hide their real host) and **Rift AI**, a model of phishing and malware addresses trained on public feeds ([how well it does](docs/reports/rift-ai.md)).
+- **Open it safely and watch what it does.** Links open in a sealed, disposable browser: a separate app with its own Linux user, no permissions, and no network except Rift's checking proxy. Everything it held is wiped by Android when the session ends. While the page is open, the **live check** lists what it tries: a listed address, your local network, a connection around the proxy, a download, and every device feature it asks for.
 
-## What it is
+**Decoys.** A page that asks for the camera, microphone, screen, location, files, notifications, clipboard, motion sensors or battery is told yes and given something made up: a live video of a dim room, near-silence, a position near a city centre, a generated photo, an empty clipboard. A phishing or spying page carries on as if it had won, and you see what it was after. Nothing real is given: the browser app holds none of those permissions, and the engine still refuses a page that gets past the decoys.
 
-- **Rift Browser:** a disposable, restricted browser session. It uses the platform engine's own sandbox and has no native bridges, sensor access, or automatic external-app launches.
-- **Rift Files:** downloads and imports go into an encrypted, session-scoped quarantine. PDFs and images are previewed in OS-confined worker processes with no file or network access; text is shown as escaped plain text, never interpreted.
-- **Rift Scanner:** offline checks using URL and hash indicators, explainable URL heuristics, and YARA-X rules. Results state their coverage. There is never a "100% safe" label.
-- **Check a link, or open it:** Check judges a link without opening it: the threat database, the navigation policy, and **Rift AI**, a model of phishing and malware addresses trained on public feeds that runs on the device in microseconds and sends nothing anywhere. It gives a score and its reasons, and it is advisory: it asks before opening a link it rates high risk and never calls anything safe ([how well it does](docs/reports/rift-ai.md)).
-- **This week:** the home screen counts what Rift blocked and checked over seven days, stored as numbers only.
-- **Signed intelligence updates:** delivered through [TUF](https://theupdateframework.io/). They can be fetched or imported offline.
+**Files.** Downloads and files shared to Rift go into an encrypted quarantine for the session, are scanned in isolated workers, and images and PDFs are drawn by an isolated worker that has no files and no network. Text is shown as plain text, never run.
+
+**This week.** The home screen counts the threats blocked, dangerous files, warnings and links checked over seven days, kept as numbers only. Nothing else is kept after a session, and nothing asks for a password.
+
+> **Status: in development; not audited.** The Android debug build is tested on emulators (API 33–36) and installed on one phone (Android 12). [`STATUS.md`](STATUS.md) says what works, what is left and the limitations; [`docs/architecture.md`](docs/architecture.md) is the design; [`docs/reports/`](docs/reports/) is the evidence for each claim.
 
 ## What it is not
 
-- It is not an antivirus, a VM, or a malware detonation lab.
-- It never executes downloaded programs.
+- It is not an antivirus, a VM, or a malware detonation lab. It never runs downloaded programs.
 - It sends no content to a cloud service.
-- It does not claim perfect isolation. Each security claim names its boundary and the test that demonstrates it.
+- It does not claim perfect isolation or that any link is safe. Each security claim names its boundary and the test that shows it; what is not covered is in [architecture §24](docs/architecture.md).
 
 ## Repository layout
 

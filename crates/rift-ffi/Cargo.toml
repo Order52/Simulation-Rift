@@ -1,7 +1,7 @@
 [package]
 name = "rift-ffi"
 version = "0.1.0"
-description = "Simulation-Rift UniFFI bindings: the Android controller's interface to rift-core"
+description = "Rift UniFFI bindings: the Android controller's interface to rift-core"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

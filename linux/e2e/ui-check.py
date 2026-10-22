@@ -23,7 +23,7 @@ import time
 import pyatspi
 
 TIMEOUT = 60
-WINDOW_TITLE = "Simulation-Rift"
+WINDOW_TITLE = "Rift"
 KEYBOARD = "--keyboard" in sys.argv[1:]
 
 

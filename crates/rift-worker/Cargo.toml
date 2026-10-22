@@ -1,7 +1,7 @@
 [package]
 name = "rift-worker"
 version = "0.1.0"
-description = "Simulation-Rift confined worker: parses untrusted content and answers via rift-protocol"
+description = "Rift confined worker: parses untrusted content and answers via rift-protocol"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

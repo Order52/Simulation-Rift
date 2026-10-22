@@ -1052,7 +1052,7 @@ class MainActivity : ComponentActivity() {
                     TextButton(onClick = { showingNotices = false }, modifier = Modifier.testTag("notices-close")) { Text("Back") }
                     Text("Open-source licences", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "Simulation-Rift is licensed under MIT OR Apache-2.0. It includes the third-party software below, " +
+                        "Rift is licensed under MIT OR Apache-2.0. It includes the third-party software below, " +
                             "under the licences shown, Google's Material icons, under the Apache License 2.0, " +
                             "and a model learned from the public data listed below.",
                     )

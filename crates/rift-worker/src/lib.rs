@@ -1,4 +1,4 @@
-//! Simulation-Rift worker job logic (docs/architecture.md §7.3).
+//! Rift worker job logic (docs/architecture.md §7.3).
 //!
 //! The same code runs inside the Android isolated service and the confined
 //! Linux worker process. It assumes nothing about its input: every read is

@@ -13,7 +13,7 @@ ApplicationWindow {
     width: 640
     height: 820
     visible: true
-    title: "Simulation-Rift"
+    title: "Rift"
 
     RiftController { id: rift }
 

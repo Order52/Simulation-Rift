@@ -200,7 +200,7 @@ impl CheckedTransport {
     }
 }
 
-const USER_AGENT: &str = "Simulation-Rift-update";
+const USER_AGENT: &str = "Rift-update";
 
 #[async_trait]
 impl Transport for CheckedTransport {

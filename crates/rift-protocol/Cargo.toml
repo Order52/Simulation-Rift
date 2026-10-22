@@ -1,7 +1,7 @@
 [package]
 name = "rift-protocol"
 version = "0.1.0"
-description = "Simulation-Rift controller/worker message contract and validation"
+description = "Rift controller/worker message contract and validation"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

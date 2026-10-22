@@ -1,7 +1,8 @@
-# Simulation-Rift — Architecture and Specification
+# Rift — Architecture and Specification
 
-**Version:** 2.4 (21 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
-**Date:** 21 October 2026
+**Version:** 2.5 (22 Oct 2026; v2.0 of 17 Oct 2026 superseded the v1.1 "Project Specification")
+**Date:** 22 October 2026
+**Changes in 2.5:** Decoys on Android (§10.5): a page that asks for the camera, microphone, screen, location, files, notifications, clipboard, motion sensors or battery is given something made up that works (a generated video, near-silence, a position near a city, a generated photo, an empty clipboard) and the live watch lists each request. The decoys are a script injected before every page and a strings-only message channel from it, so INV-6 now allows exactly that channel; the engine's own refusals stay underneath as the backstop. The file chooser returns a made-up file instead of being denied. A link shared to Rift gets a verdict sheet over the sharing app, with the reasons and Open safely (§10.1). Rift AI's passes are chosen on validation sites, it trains on October 2026's phishing links as well as December 2025's, and a time-separated test is reported (§16). The app is called Rift (formerly Simulation-Rift); package names are unchanged.
 **Changes in 2.4:** Rift AI is built and on by default on Android (§16, [rift-ai.md](reports/rift-ai.md)): a URL model trained on public phishing and malware feeds, run on the device, advisory only. The home screen separates **Check** (judge a link without opening it, with Rift AI's score and reasons) from **Open safely** (§10.1). A navigation Rift AI rates High asks before loading, and the live watch notes connections to hosts it rates High (§10.5). The model is trained by a Rust tool that shares its feature code with the app, not by Python and scikit-learn as 2.3 planned.
 **Changes in 2.3:** Rift keeps nothing after a session. The Rift Vault (§14 of 2.2: keeping files in age-encrypted storage behind a Keystore key or a passphrase) is removed on both platforms, with its passphrases, lock policy and export; the age code that remains seals each session's quarantine (`rift-core::seal`). Android's home screen is redesigned around opening a link (§10.1), and gains a weekly summary of what Rift checked and stopped, kept as counts only (§10.8). Files can be opened with Rift or shared to it from other apps: each is copied into the session's quarantine and shown in a full-screen viewer (§8.2, §11.1). The Linux app is future work: its code and CI stay, and Android comes first (§9).
 **Changes in 2.2:** the Linux app is built on Qt (QML through cxx-qt, Qt WebEngine from Flathub's BaseApp) instead of GTK4 and WebKitGTK. The browser host runs in a no-network Flatpak sub-sandbox and reaches the web only through a forwarded egress proxy in the controller. PoCs Q1–Q4 measured it ([phase-5-qt-design.md](reports/phase-5-qt-design.md)); §9, §6, B1, ADR-10 and the stack table are revised.
@@ -10,7 +11,7 @@
 **Platforms:** Android (API 30+, arm64-v8a first, x86_64 for emulators) and Linux (Flatpak, x86_64 and aarch64)
 **Languages:** Rust (shared core, workers, Linux controller), Kotlin (Android UI and platform glue), QML and C++ (Linux UI and the Qt WebEngine host, kept thin), Python (standard library only: preparing the training data, never shipped)
 
-> Simulation-Rift is a fully local, modular workspace for opening unfamiliar links, downloading untrusted files and viewing them safely, keeping nothing afterwards. It does this by combining OS-enforced isolation, offline-first threat detection, and signed data updates. It never promises perfect isolation. It makes specific, tested claims about named boundaries.
+> Rift (formerly Simulation-Rift) is a fully local, modular workspace for opening unfamiliar links, downloading untrusted files and viewing them safely, keeping nothing afterwards. It does this by combining OS-enforced isolation, offline-first threat detection, and signed data updates. It never promises perfect isolation. It makes specific, tested claims about named boundaries.
 
 ---
 
