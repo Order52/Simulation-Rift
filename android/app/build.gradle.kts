@@ -77,6 +77,10 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     // UniFFI's Kotlin bindings call the Rust library through JNA.
     implementation("net.java.dev.jna:jna:5.19.1@aar")
+    // Extra isolation (§8.9), off unless the user turns it on: Shizuku or Sui
+    // runs Rift's helper (HardeningService) as shell or root.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

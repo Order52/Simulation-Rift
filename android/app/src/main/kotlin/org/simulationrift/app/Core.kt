@@ -258,6 +258,7 @@ object Core {
             app = context.applicationContext
             disposal = AndroidBrowserDisposal(app)
             WeeklyStats.open(app)
+            Hardening.init(app)
             updating.execute {
                 // An update's working copy left by a kill during an install (found by
                 // F4). First on the update executor, so before any new install.
@@ -462,6 +463,8 @@ object Core {
             Log.e(TAG, "egress proxy unavailable", e)
             return SessionGrant.Refused("Rift's network proxy could not start, so the browser may not load pages.")
         }
+        // Extra isolation, when on: in effect before the browser can load anything (§8.9).
+        Hardening.beforeBrowsing(endpoint.port.toInt())
         browser = RegisteredBrowser(generation, binder, mode)
         _network.value = null
         Log.i(TAG, "browser registered for generation $generation, network $mode")

@@ -9,6 +9,11 @@
          (WindowGuard, API 31+). A normal permission. -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
+    <!-- Shizuku's library also requests moe.shizuku.manager.permission.API_V23:
+         Shizuku sends its binder only to apps that request it (§8.9). It is
+         Shizuku's own permission, granted only through Shizuku's prompt, and
+         gives no access to the device; without Shizuku it does not exist. -->
+
     <!-- The browser app must be visible to bind and start it (API 30). -->
     <queries>
         <package android:name="org.simulationrift.browser" />
@@ -92,6 +97,17 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
+
+        <!-- Extra isolation (§8.9): how Shizuku or Sui hands Rift its binder.
+             Only the system, shell and root hold INTERACT_ACROSS_USERS_FULL,
+             so no app can call it. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!-- Untrusted-input worker (§8.6): random isolated UID, isolated_app
              domain, no permissions, no app files. Forked from the app zygote,

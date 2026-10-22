@@ -36,7 +36,9 @@ The Android debug build works end to end on emulators, and its browser is now is
 | Page content stays out of shared system state | No recents screenshot of the browser window (API 33+); every text field, in pages and in Rift, asks the keyboard not to learn | h2; H1 (the stored snapshot is a blank fill, decoded with root) |
 | Other apps cannot draw over Rift, autofill it or read its screen | Both apps hide other apps' overlays (API 31+; on API 30 touches through them are dropped), keep their fields and pages away from autofill services, mark their windows for accessibility tools only (API 34+) and keep no recents snapshot | h3, H4 (each against an outsider app acting as overlay, autofill service and accessibility service, with a control of its own window) |
 
-**What it does not do:** escaped browser code can still reach **loopback** (other apps' local servers on the phone), which no Android VPN covers; only one VPN can run on a device, so users of another VPN get reduced isolation or nothing; the proxy does not see inside HTTPS; and a WebView exploit still has the current session's own browsing data. These are listed in [architecture §24](docs/architecture.md).
+**Extra isolation (optional, 2.5):** with Shizuku or Sui, Rift's helper (shell or root, in its own process) has Android ignore the browser app's clipboard and clear the browser app at each reset itself; with root, a firewall lets the browser's UID reach only its proxy on loopback and the lock's VPN. Tested by z1 on API 34 (Shizuku as shell) and API 35 (Shizuku as root); the CI suites skip it, because they run no Shizuku ([architecture §8.9](docs/architecture.md)).
+
+**What it does not do:** without root, escaped browser code can still reach **loopback** (other apps' local servers on the phone), which no Android VPN covers; only one VPN can run on a device, so users of another VPN get reduced isolation or nothing; the proxy does not see inside HTTPS; and a WebView exploit still has the current session's own browsing data. These are listed in [architecture §24](docs/architecture.md).
 
 ## What works today (Android debug build)
 

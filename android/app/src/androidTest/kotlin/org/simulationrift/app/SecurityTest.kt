@@ -2,6 +2,9 @@ package org.simulationrift.app
 
 import android.app.ActivityManager
 import android.content.ComponentName
+import android.view.KeyEvent
+import android.content.ClipboardManager
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -42,6 +45,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.FixMethodOrder
 import org.junit.Test
@@ -56,6 +60,7 @@ import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
 import org.simulationrift.core.Verdict
+import rikka.shizuku.Shizuku
 
 /**
  * Security tests that run on the device (docs/architecture.md §23). They
@@ -127,11 +132,19 @@ class SecurityTest {
         // The OS denies what the manifest never requests (B4).
         val requested = context.packageManager
             .getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty()
+        // Shizuku's own permission (extra isolation, §8.9) is the one exception:
+        // Shizuku defines it when installed, grants it from its own prompt, and
+        // it gives no access to the device. Undefined permissions grant nothing.
         val dangerous = requested.filter { name ->
-            val info = context.packageManager.getPermissionInfo(name, 0)
-            info.protection == PermissionInfo.PROTECTION_DANGEROUS
+            val info = try {
+                context.packageManager.getPermissionInfo(name, 0)
+            } catch (e: PackageManager.NameNotFoundException) {
+                null
+            }
+            info?.protection == PermissionInfo.PROTECTION_DANGEROUS
         }
-        assertEquals(emptyList<String>(), dangerous)
+        assertEquals(emptyList<String>(), dangerous - SHIZUKU_PERMISSION)
+        assertTrue(requested.none { it.startsWith("moe.shizuku.") && it != SHIZUKU_PERMISSION })
         assertTrue("android.permission.INTERNET" in requested)
         assertFalse("android.permission.USE_BIOMETRIC" in requested) // nothing to unlock
         // Both apps hide other apps' overlays over their windows (§10.7): a normal permission.
@@ -1707,6 +1720,119 @@ class SecurityTest {
     }
 
     /**
+     * Extra isolation (§8.9), with Shizuku or Sui running and Rift allowed in
+     * it (set up by hand: run-tests.sh does not start Shizuku); skipped
+     * otherwise. A page swaps what the user copies for its own text, past the
+     * decoys: off, the swap reaches the phone's clipboard; on, Android ignores
+     * the browser app's clipboard, the reset's wipe is Android's, and with
+     * root the browser app's UID reaches this session's proxy on loopback and
+     * nothing else there.
+     */
+    @Test
+    fun z1_extraIsolationClosesTheClipboardAndLoopback() {
+        assumeTrue("Shizuku or Sui is not running", Shizuku.pingBinder())
+        assumeTrue("Rift is not allowed in Shizuku", Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED)
+        setExtraIsolation(false)
+        try {
+            val swapped = "rift-z1-off-${SystemClock.uptimeMillis()}"
+            assertEquals("without extra isolation the page's swap reaches the clipboard", swapped, copyFromPage(swapped))
+            val loopbackOff = browserReaches(FIXTURE_PORT)
+
+            setExtraIsolation(true)
+            val connected = Hardening.status.value.helper as Hardening.Helper.Connected
+            assertEquals(Hardening.Measure.InEffect, Hardening.status.value.clipboard)
+            // A new session: its wipe goes through the helper, and its browser registers under the rules.
+            resetAndAwait(activeGeneration())
+            assertEquals(Hardening.Measure.InEffect, Hardening.status.value.wipe)
+            val blocked = "rift-z1-on-${SystemClock.uptimeMillis()}"
+            val copied = copyFromPage(blocked)
+            assertNotEquals("the page's swap reached the clipboard", blocked, copied)
+            screenshot("z1-on")
+            val detail = if (connected.root) {
+                assertEquals(Hardening.Measure.InEffect, Hardening.status.value.network)
+                val proxy = Core.egressPort() ?: throw AssertionError("no proxy port")
+                assertFalse("the browser app reached another loopback service", browserReaches(FIXTURE_PORT))
+                assertTrue("the browser app could not reach its proxy", browserReaches(proxy))
+                "root: loopback $FIXTURE_PORT reachable before: $loopbackOff, after: false; proxy $proxy reachable"
+            } else {
+                assertTrue("${Hardening.status.value.network}", Hardening.status.value.network is Hardening.Measure.Pending)
+                "shell: no firewall; loopback $FIXTURE_PORT reachable: $loopbackOff"
+            }
+            report("z1", "off: clipboard got the page's text; on: clipboard kept \"$copied\"; wipe through the helper; $detail")
+        } finally {
+            setExtraIsolation(false)
+        }
+    }
+
+    private fun setExtraIsolation(on: Boolean) {
+        instrumentation.runOnMainSync { if (on) Hardening.enable() else Hardening.disable() }
+        awaitCondition("extra isolation ${if (on) "on" else "off"}: ${Hardening.status.value}", SESSION_TIMEOUT_MS) {
+            val status = Hardening.status.value
+            if (on) status.helper is Hardening.Helper.Connected && status.clipboard != Hardening.Measure.Pending("")
+            else status == Hardening.Status()
+        }
+        // Read from Android itself, not from Rift's own account of it.
+        awaitCondition("the browser app's clipboard ops ${if (on) "ignored" else "allowed"}", SESSION_TIMEOUT_MS) {
+            listOf("READ_CLIPBOARD", "WRITE_CLIPBOARD").all { op ->
+                device.executeShellCommand("cmd appops get ${Rift.BROWSER_PACKAGE} $op").contains("$op: ignore") == on
+            }
+        }
+    }
+
+    /**
+     * Puts known text on the clipboard, opens [copy.html][fixture] with
+     * `marker`, copies its field with the keyboard (the engine's own copy, which
+     * fires the page's copy handler), and returns what the clipboard then holds.
+     */
+    private fun copyFromPage(marker: String): String? {
+        val clipboard = context.getSystemService(ClipboardManager::class.java)
+        val home = openHome()
+        val before = "rift-z1-before"
+        try {
+            instrumentation.runOnMainSync { clipboard.setPrimaryClip(ClipData.newPlainText("z1", before)) }
+        } finally {
+            home.finish()
+        }
+        allowFixtureHost()
+        openBrowser(activeGeneration(), fixture("/copy.html?m=$marker"))
+        val field = awaitFresh(PAGE_TIMEOUT_MS) { pageFields().firstOrNull() } ?: run {
+            screenshot("z1-no-field")
+            throw AssertionError(
+                "the page's field; extra isolation: ${Hardening.status.value}; proxy: ${Core.egressStats()}; " +
+                    "network: ${Core.network.value}; port ${Core.egressPort()}",
+            )
+        }
+        field.click()
+        SystemClock.sleep(500)
+        device.pressKeyCode(KeyEvent.KEYCODE_A, KeyEvent.META_CTRL_ON)
+        device.pressKeyCode(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)
+        SystemClock.sleep(1000)
+        screenshot("z1-copied")
+        // Only the app in focus may read the clipboard.
+        val reader = openHome()
+        try {
+            awaitCondition("the home screen in focus") { reader.hasWindowFocus() }
+            var text: String? = null
+            instrumentation.runOnMainSync { text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString() }
+            return text
+        } finally {
+            reader.finish()
+        }
+    }
+
+    /**
+     * Whether a process with the browser app's UID can connect to loopback
+     * `port` (run-as, debug builds). UiAutomation splits a command at
+     * spaces without a shell, so the shell's command is passed as one word.
+     */
+    private fun browserReaches(port: Int): Boolean {
+        // Connect, send nothing, leave a second later (API 34's toybox has no -z).
+        val command = "run-as ${Rift.BROWSER_PACKAGE} toybox nc -w 2 -q 1 127.0.0.1 $port </dev/null; echo rc=\$?"
+        val out = device.executeShellCommand("sh -c " + command.replace(" ", "\${IFS}"))
+        return out.contains("rc=0").also { if (!it && !out.contains("rc=")) throw AssertionError("probe gave: $out") }
+    }
+
+    /**
      * Bytes `uid` moved on real networks, from netstats after a forced poll:
      * every network but VPNs (type 17). Loopback belongs to no network, so it
      * is not counted.
@@ -2152,6 +2278,7 @@ class SecurityTest {
     private companion object {
         const val OUTSIDER = "org.simulationrift.outsider"
         const val FIXTURE_PORT = 8766
+        const val SHIZUKU_PERMISSION = "moe.shizuku.manager.permission.API_V23"
         const val UI_TIMEOUT_MS = 10_000L
         const val PAGE_TIMEOUT_MS = 20_000L
         const val CORE_TIMEOUT_MS = 15_000L

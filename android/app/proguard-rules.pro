@@ -8,3 +8,6 @@
 # the native Library interfaces and callback interfaces are used through JNA.
 -keep class org.simulationrift.core.** { *; }
 -keep class org.simulationrift.worker.** { *; }
+
+# Extra isolation's helper: Shizuku constructs it by reflection, by name.
+-keep class org.simulationrift.app.HardeningService { <init>(...); }

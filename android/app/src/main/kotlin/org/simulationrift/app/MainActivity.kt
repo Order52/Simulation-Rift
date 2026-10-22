@@ -50,6 +50,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -241,6 +242,7 @@ class MainActivity : ComponentActivity() {
                 DashboardCard()
                 if (active != null) FilesCard()
                 ProtectionCard(lock, active?.generation, reduced)
+                ExtraIsolationCard()
                 IntelCard()
                 TextButton(
                     onClick = { showingNotices = true },
@@ -956,6 +958,81 @@ class MainActivity : ComponentActivity() {
                         "No browser is immune to every attack: a flaw in the engine and in Android together could still escape. " +
                             "Rift limits what such an escape reaches, and wipes the session.",
                     ).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
+        }
+    }
+
+    /** Extra isolation (§8.9): off unless the user turns it on; each measure as read back by the helper. */
+    @Composable
+    private fun ExtraIsolationCard() {
+        val status by Hardening.status.collectAsState()
+        Card(
+            Modifier.fillMaxWidth().animateContentSize().testTag("extra-isolation"),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Extra isolation", style = MaterialTheme.typography.titleMedium)
+                        Text("Optional · with Shizuku or root", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = status.on,
+                        onCheckedChange = { if (it) Hardening.enable() else Hardening.disable() },
+                        modifier = Modifier.testTag("extra-switch"),
+                    )
+                }
+                if (!status.on) {
+                    Text(
+                        if (status.undoPending) "Turned off while Shizuku was not running: copy and paste in Rift's browser stay blocked (and, with root, its firewall stays) until Shizuku runs again; Rift then undoes them."
+                        else "Uses Shizuku (started with adb or root) or Sui to lock the browser further with Android's own tools: " +
+                            "no clipboard, wipes done by Android itself, and with root a firewall that keeps the browser to Rift's proxy. " +
+                            "Copy and paste in Rift's browser stop working while it is on.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("extra-about"),
+                    )
+                    return@Column
+                }
+                val (helperText, problem) = when (val h = status.helper) {
+                    Hardening.Helper.Off, Hardening.Helper.Connecting -> "Starting Rift's helper…" to false
+                    Hardening.Helper.NotRunning -> "Shizuku is not running. Install Shizuku (shizuku.rikka.app) or Sui, start it, and Rift connects." to true
+                    Hardening.Helper.AskingPermission -> "Allow Rift in Shizuku's prompt." to false
+                    Hardening.Helper.Denied -> "Shizuku has not allowed Rift. Allow it in the Shizuku app, then turn this off and on." to true
+                    is Hardening.Helper.Failed -> h.reason to true
+                    is Hardening.Helper.Connected -> (if (h.root) "Rift's helper runs as root." else "Rift's helper runs as shell (Shizuku started with adb).") to false
+                }
+                Text(
+                    helperText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.testTag("extra-helper"),
+                )
+                if (status.helper is Hardening.Helper.Connected) {
+                    MeasureRow("Copy and paste blocked for the browser app", status.clipboard, "extra-clipboard")
+                    MeasureRow("Each wipe done by Android at Rift's request, not the browser's", status.wipe, "extra-wipe")
+                    MeasureRow("Firewall: the browser reaches only Rift's proxy, even on this phone", status.network, "extra-network")
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun MeasureRow(label: String, measure: Hardening.Measure, tag: String) {
+        val status = LocalStatusColors.current
+        val (icon, tint, detail) = when (measure) {
+            Hardening.Measure.InEffect -> Triple(R.drawable.ic_check_circle, status.safe, "In effect, checked.")
+            is Hardening.Measure.Pending -> Triple(R.drawable.ic_info, MaterialTheme.colorScheme.onSurfaceVariant, measure.text)
+            is Hardening.Measure.Problem -> Triple(R.drawable.ic_warning, MaterialTheme.colorScheme.error, measure.text)
+        }
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.testTag(tag)) {
+            Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(label, style = MaterialTheme.typography.bodyMedium)
+                if (detail.isNotEmpty()) {
+                    Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("$tag-detail"))
                 }
             }
         }

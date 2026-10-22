@@ -1,10 +1,12 @@
 // The Android libraries in this APK and the licences their POMs declare
 // (§25), written to build/generated-notices/android/notices/
 // android-libraries.txt for the module's assets. Rift uses every library
-// under the Apache License 2.0, whose text the APK carries, so the build
-// fails if a library's POM does not offer it. Texts a library's own
-// archive does not carry (JNA's, and libffi's, which its native code links)
-// are kept in licence-texts/android/<artifact>-<version>/ and appended.
+// under the Apache License 2.0, whose text the APK carries, or else under
+// the MIT License, whose text (with the copyright line) is then kept here;
+// the build fails for any other library. Texts a library's own archive
+// does not carry (JNA's, libffi's, which its native code links, and the
+// MIT ones) are kept in licence-texts/android/<artifact>-<version>/ and
+// appended.
 import javax.xml.parsers.DocumentBuilderFactory
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.maven.MavenModule
@@ -58,6 +60,13 @@ fun licencesOf(coordinates: String): List<String> {
 }
 
 fun isApache2(licence: String) = Regex("""apache.*2\.0""", RegexOption.IGNORE_CASE).containsMatchIn(licence)
+fun isMit(licence: String) = Regex("""^(the )?mit( license)?$""", RegexOption.IGNORE_CASE).matches(licence)
+
+/** The kept licence texts of a module, if any. */
+fun keptTextsOf(module: String): List<File> {
+    val (_, name, version) = module.split(":")
+    return File(keptTexts, "$name-$version").listFiles()?.sorted() ?: emptyList()
+}
 
 val androidLibraries = tasks.register("androidLibraries") {
     description = "Lists the release APK's Android libraries with the licences their POMs declare."
@@ -68,21 +77,25 @@ val androidLibraries = tasks.register("androidLibraries") {
     doLast {
         val lines = modules.get().map { module ->
             val licences = licencesOf(module)
-            if (licences.none(::isApache2)) {
-                throw GradleException("$module: its POM offers ${licences.ifEmpty { listOf("no licence") }}, not the Apache License 2.0")
+            val mit = licences.none(::isApache2) && licences.any(::isMit) &&
+                keptTextsOf(module).any { it.readText().contains("Permission is hereby granted, free of charge") }
+            if (licences.none(::isApache2) && !mit) {
+                throw GradleException(
+                    "$module: its POM offers ${licences.ifEmpty { listOf("no licence") }}, not the Apache License 2.0 " +
+                        "(or the MIT License, with its text kept in licence-texts/android)",
+                )
             }
-            "$module: ${licences.joinToString(" OR ")}"
+            "$module: ${licences.joinToString(" OR ")}" + if (mit) " (text below)" else ""
         }
         val texts = modules.get().flatMap { module ->
-            val (_, name, version) = module.split(":")
-            (File(keptTexts, "$name-$version").listFiles()?.sorted() ?: emptyList())
-                .map { "[$module, ${it.name}]\n\n${it.readText().trim()}\n" }
+            keptTextsOf(module).map { "[$module, ${it.name}]\n\n${it.readText().trim()}\n" }
         }
         val out = noticesDir.get().file("notices/android-libraries.txt").asFile
         out.parentFile.mkdirs()
         out.writeText(
             "Android libraries in this app, with the licences their published POMs declare.\n" +
-                "Each offers the Apache License 2.0 (apache-2.0.txt), under which Rift uses it.\n\n" +
+                "Rift uses each under the Apache License 2.0 (apache-2.0.txt) where it offers it,\n" +
+                "otherwise under the MIT License, whose text is below.\n\n" +
                 lines.joinToString("\n") + "\n" +
                 texts.joinToString("") { "\n" + "-".repeat(72) + "\n" + it }
         )

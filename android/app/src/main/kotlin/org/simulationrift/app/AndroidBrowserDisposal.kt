@@ -112,7 +112,9 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
             next = ::instanceToWipe,
             ask = {
                 cleared.set(CompletableFuture())
-                try {
+                // With extra isolation (§8.9) the system clears the browser
+                // app at Rift's request, whether or not the browser would ask.
+                Hardening.clearBrowser()?.takeIf { ok -> ok } ?: try {
                     it.bound.session.wipe()
                 } catch (e: RemoteException) {
                     Log.w(TAG, "the browser died before it asked for the wipe: $e")

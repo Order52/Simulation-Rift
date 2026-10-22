@@ -9,6 +9,8 @@ Open any link, and any image or PDF, without letting it near your phone. Rift is
 
 **Files.** Downloads and files shared to Rift go into an encrypted quarantine for the session, are scanned in isolated workers, and images and PDFs are drawn by an isolated worker that has no files and no network. Text is shown as plain text, never run.
 
+**Extra isolation (optional, Shizuku or root).** With [Shizuku](https://shizuku.rikka.app) or Sui running, one switch lets Rift use Android's own tools on its browser: Android ignores the browser's clipboard (so a page cannot swap what you copy), Android itself wipes the browser at each reset, and with root a firewall keeps the browser to Rift's proxy on the phone too, closing the one gap the VPN leaves (other apps' local servers). Each change is checked after it is made, and undone when you switch it off. Copy and paste in Rift's browser stop working while it is on.
+
 **This week.** The home screen counts the threats blocked, dangerous files, warnings and links checked over seven days, kept as numbers only. Nothing else is kept after a session, and nothing asks for a password.
 
 > **Status: in development; not audited.** The Android debug build is tested on emulators (API 33–36) and installed on one phone (Android 12). [`STATUS.md`](STATUS.md) says what works, what is left and the limitations; [`docs/architecture.md`](docs/architecture.md) is the design; [`docs/reports/`](docs/reports/) is the evidence for each claim.

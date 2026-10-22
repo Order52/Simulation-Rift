@@ -110,6 +110,18 @@ The owner also asked to view every file, not only downloads. Android now takes a
 | API 35 emulator | n6 (new): a PNG inserted into the media store and shared to Rift with a read grant is quarantined (source "another app"), scanned to a verdict, drawn 300×200 by the isolated worker in the viewer (42.7% of the image area its colour, the rest letterbox), listed on the home screen and reopened from "View safely"; Rift's own `androidx-startup` provider is refused with "Rift does not take files from itself", and a `file:` path with "\"file:\" links are blocked". n5, s08, s10b, p1 and s19 pass again. |
 | Not tested | Sharing from a real gallery or mail app on a phone; a provider that stalls (by design it holds only its own thread, but no test simulates one). |
 
+## Extra isolation with Shizuku or root (§8.9, 22 Oct 2026)
+
+Shizuku 13.6.0 (from its GitHub release, signer `CN=Rikka`, certificate SHA-256 `268b5590…db30`) was installed on both emulators and started with adb: as shell on API 34, and as root on API 35 (adbd restarted as root first). Rift was allowed in Shizuku's prompt on each.
+
+| ID | Test | Result |
+|---|---|---|
+| z1 | A page swaps what the user copies (its `copy` handler, after Ctrl+A and Ctrl+C in its field: the engine's own copy, past the decoys); extra isolation off, then on; with root, the browser app's UID connects to loopback | **Pass on API 34 (shell) and API 35 (root), in the full suite (52 of 52 on each) and alone.** Off: the page's text reached the clipboard. On: the clipboard kept the text put there before, the reset's wipe went through the helper (`pm clear`; then a new process and no files, as always), and the clipboard ops read `ignore` from `cmd appops`. Root: before, the browser's UID reached the fixture server's loopback port; after, the connection was refused, and the session's proxy port still answered. Shell: the firewall row says it needs root, and loopback stays reachable. Off again: the ops read `allow` and the rules were gone. |
+| (by hand) | API 35 root: the rules after a session started | `rift_browser` held the four IPv4 rules and three IPv6 rules as written, its jump was the first rule of `OUTPUT` for the browser's UID, and example.com loaded through the proxy. |
+| (by hand) | API 34 shell: the helper's life | Switch on: the helper process ran as shell. Rift force-stopped: the helper ended. Rift relaunched: it reconnected. Switch off: the ops read `allow` and the helper ended. A fresh install (new UID) asked through Shizuku's prompt once and connected. |
+
+Not tested: Sui (Magisk); a physical phone; a reboot with root Shizuku (the rules are expected to be gone and re-made at the next session). The CI suites run no Shizuku, so z1 is skipped there.
+
 ## Fault injection
 
 The host kills the controller with `SIGKILL` (as the OS or a crash would) at a random moment while it writes, then starts it again and checks what is left. The test controller writes in a loop and logs each completed step, so the host knows how far it got before the kill. `RIFT_FAULT_ONLY=1` runs only these rounds; `RIFT_FAULT_ROUNDS` sets their number (8 by default).
@@ -155,6 +167,8 @@ What this does not cover: real flash storage and its firmware (a phone's disk ma
 23. **A launch after a kill could fail its cleanup** (finding 74, found by F4 in CI). Android was still stopping the browser app for the killed launch's wipe when the next launch bound to it, so the binding died and the reset failed closed. The bind to the instance to be wiped and its first calls are now retried, as the bind to the fresh instance already was. Forced stops during start: 13 of 20 starts failed before, 1 of 20 after; F4 then passed 20 of 20 rounds on the API 34 emulator.
 24. **A stop could hit the wipe request itself** (finding 75, found while reproducing finding 74). The controller could not tell whether a browser that died during the wipe call had asked Android first. The browser now answers before asking, so a failed call means it never asked, and the controller asks again (twice at most). Forced stops during start: 50 of 50 started a session; kills: 40 of 40 (API 34 emulator).
 25. **The outsider's window sometimes did not show** (finding 76, found by h3). A second launch reached the previous, closing window. Each command now starts it in a fresh task.
+26. **Extra isolation could leave the browser's clipboard blocked** (findings 81 and 83, found by z1). Undoing with `default` stored a mode the clipboard service also refuses, and clearing Rift's data with the switch on lost the record that anything was changed. The helper now restores `allow`, and Rift undoes leftovers whenever a Shizuku that allowed it is running.
+27. **The helper outlived Rift** (finding 84). Shizuku's end-the-helper call carries no interface token and was refused; the helper now answers it.
 
 ## Release gates (§24)
 
