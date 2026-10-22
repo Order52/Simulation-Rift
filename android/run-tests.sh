@@ -188,6 +188,8 @@ if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
   "$adb" shell am start -n $pkg/.MainActivity >/dev/null
   wait_log "session [0-9]+ active" 30 || true
   close_dialogs
+  # The import button is on the Security tab (2.5).
+  tap_when id tab-security || true
   found=no
   for _ in $(seq 20); do
     if tap_upper id intel-import; then found=yes; break; fi
@@ -221,6 +223,7 @@ if [ "${RIFT_FAULT_ONLY:-0}" != 1 ]; then
   "$adb" shell am start -n $pkg/.MainActivity >/dev/null
   sleep 4
   close_dialogs
+  tap_when id tab-security || true
   seen=no
   for _ in $(seq 20); do
     "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml >/dev/null 2>&1 \
