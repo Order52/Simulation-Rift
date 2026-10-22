@@ -185,18 +185,39 @@ object ContentFilter {
             catalog.filter { now.lists[it.id]?.on == true }.mapNotNull { read(File(dir, "${it.id}.txt")) } +
                 listOfNotNull(now.custom.takeIf { it.isNotBlank() })
         }
-        engine.load(texts)
+        try {
+            engine.load(texts)
+        } catch (e: Exception) {
+            Log.e(TAG, "the filter engine could not load the lists", e)
+            _state.update { it.copy(busy = null, ready = false, message = "The lists could not be loaded: ${e.message}") }
+            return
+        }
         _state.update { it.copy(busy = if (it.busy == "Applying the lists…") null else it.busy, ready = texts.isNotEmpty()) }
         Log.i(TAG, "filters ${if (texts.isEmpty()) "off" else "loaded: ${texts.size} lists"}")
     }
 
     // ---- Asked by the browser app (CoreService); never on the main thread ----
 
-    fun active(): Boolean = engine.isLoaded()
+    /**
+     * The engine is native code reading text from the network and the browser
+     * app. A failure inside it (a Rust panic arrives as an exception) must not
+     * end the controller, which holds the session: the filters then do
+     * nothing for that call, and it is logged. Filtering only takes things
+     * away from pages, so doing nothing never lets more through than Rift's
+     * own checks allow.
+     */
+    private fun <T> guarded(what: String, otherwise: T, call: () -> T): T = try {
+        call()
+    } catch (e: Exception) {
+        Log.e(TAG, "the filter engine failed in $what; the filters do nothing for this call", e)
+        otherwise
+    }
+
+    fun active(): Boolean = guarded("active", false) { engine.isLoaded() }
 
     fun blocks(url: String, page: String, kind: String): Boolean {
         if (url.length > MAX_URL_CHARS || page.length > MAX_URL_CHARS) return false
-        val blocked = engine.blocks(url, page, kind.take(MAX_NAME_CHARS))
+        val blocked = guarded("blocks", false) { engine.blocks(url, page, kind.take(MAX_NAME_CHARS)) }
         if (blocked) {
             val total = blockedTotal.incrementAndGet()
             if (total % COUNT_PUBLISH_EVERY == 1L) _state.update { it.copy(blocked = total) }
@@ -206,13 +227,15 @@ object ContentFilter {
 
     fun hiding(url: String): PageHiding {
         if (url.length > MAX_URL_CHARS) return PageHiding.NONE
-        val found = engine.hiding(url)
-        return PageHiding(found.css, found.exceptions, found.genericHidden)
+        return guarded("hiding", PageHiding.NONE) {
+            val found = engine.hiding(url)
+            PageHiding(found.css, found.exceptions, found.genericHidden)
+        }
     }
 
     fun generic(classes: List<String>, ids: List<String>, exceptions: List<String>): String {
         val bound = { names: List<String> -> names.asSequence().filter { it.length <= MAX_NAME_CHARS }.take(MAX_PAGE_NAMES).toList() }
-        return engine.genericCss(bound(classes), bound(ids), bound(exceptions))
+        return guarded("generic", "") { engine.genericCss(bound(classes), bound(ids), bound(exceptions)) }
     }
 
     /** The count as the Filters tab shows it, without waiting for the next publish. */

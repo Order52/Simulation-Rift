@@ -10,8 +10,9 @@ use std::sync::{Arc, RwLock};
 use rift_core::download::{self, DownloadPolicy};
 use rift_core::filters::Filters;
 
-/// The most one list may be (the largest upstream list is about 2 MB).
-const MAX_LIST_BYTES: u64 = 16 * 1024 * 1024;
+/// The most one list may be: the largest upstream list is about 2 MB, and the engine's
+/// memory grows with what it is given.
+const MAX_LIST_BYTES: u64 = 6 * 1024 * 1024;
 
 /// What to hide on a page: see [`rift_core::filters::Cosmetic`].
 #[derive(Debug, uniffi::Record)]

@@ -322,6 +322,27 @@ mod tests {
         assert!(css.lines().count() > 100);
     }
 
+    proptest::proptest! {
+        /// Whatever a list, an address or a page's names contain, nothing panics and every rule is plain.
+        #[test]
+        fn nothing_in_a_list_or_page_can_write_css(
+            list in proptest::strategy::Strategy::prop_map(
+                proptest::collection::vec("(##|###|a.example##|\\|\\||#\\?#|#@#)[^\n]{0,60}", 0..60),
+                |lines| lines.join("\n"),
+            ),
+            url in ".{0,200}", page in ".{0,200}", names in proptest::collection::vec(".{0,40}", 0..40)) {
+            let f = Filters::new(vec![list]);
+            let _ = f.blocks(&url, &page, "script");
+            for css in [f.cosmetic(&url).css, f.generic_css(&names, &names, &[])] {
+                proptest::prop_assert!(css.len() <= MAX_CSS_BYTES);
+                for line in css.lines() {
+                    let selector = line.strip_suffix("{display:none!important}");
+                    proptest::prop_assert!(selector.is_some_and(safe_selector), "{line:?}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn an_empty_set_blocks_nothing() {
         let f = Filters::new(Vec::new());

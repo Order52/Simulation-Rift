@@ -89,3 +89,10 @@ name = "session_from_browser"
 path = "fuzz_targets/session_from_browser.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "filters"
+path = "fuzz_targets/filters.rs"
+test = false
+doc = false
+bench = false
