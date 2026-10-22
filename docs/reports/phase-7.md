@@ -131,7 +131,18 @@ Not tested: Sui (Magisk); a physical phone; a reboot with root Shizuku (the rule
 | (by hand) | First launch with no browser installed, API 34 | The setup card, Android's "install unknown apps" setting, Android's confirmation, the browser installed; no VPN before the install, and after it the VPN listed the browser's UIDs (`10199`, `20199`), the LAN probe timed out, and session 1 was locked. |
 | (size) | Release build, arm64 only | Rift's APK 47.8 MB → 23.2 MB, carrying the 2 MB release browser. |
 
-Not tested: an update of the browser through the setup card (Rift updated with a different browser); the one-file flow on a phone; a release build carrying a browser signed with the real key.
+### A release build, by hand (22 Oct 2026)
+
+A release build (arm64, R8-minified, 25.7 MB with the 2 MB release browser inside it), with the browser and Rift signed by a throwaway key made for the test and kept outside the repository, on the API 34 emulator:
+
+| Step | Result |
+|---|---|
+| Launch | No crash. The setup card showed; the manifest has no `debuggable`, no test workers, `allowBackup=false`, and only `INTERNET`, `HIDE_OVERLAY_WINDOWS`, `REQUEST_INSTALL_PACKAGES`, Rift's own signature permission and Shizuku's `API_V23`. |
+| First install | "Install sealed browser", Android's "allow from this source", Android's confirmation: the browser installed, the network lock started after it, and session 1 was protected. |
+| Filters | Ten lists downloaded and loaded in the minified build (UniFFI and JNA survive R8), and a news site loaded with 12 requests blocked. |
+| Update | A build with a higher version and a different browser, installed over the first: the home screen showed "Update the sealed browser", Android's update confirmation followed, the browser's version code changed to the new one, and a new session started. |
+
+Not tested: the one-file flow on a phone; a release signed with the real key (none exists yet; the key ceremony is open); the release's size and memory on a phone.
 
 ## Content filters and tabs (§10.9, 22 Oct 2026)
 
