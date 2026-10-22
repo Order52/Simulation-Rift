@@ -16,7 +16,9 @@ android {
         versionCode = providers.gradleProperty("rift.versionCode").get().toInt()
         versionName = providers.gradleProperty("rift.versionName").get()
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            // Phones are arm64; x86_64 is for emulators on Intel hosts and CI.
+            // -Prift.abis=arm64-v8a makes a debug build for a phone half the size.
+            abiFilters += providers.gradleProperty("rift.abis").orElse("arm64-v8a,x86_64").get().split(",")
         }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -62,6 +64,13 @@ android {
     packaging {
         // Keep .so files uncompressed and page-aligned in the APK (16 KB devices).
         jniLibs.useLegacyPackaging = false
+    }
+}
+
+// Release builds are for phones: arm64 only (x86_64 is over half the APK).
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.add("lib/x86_64/**")
     }
 }
 
