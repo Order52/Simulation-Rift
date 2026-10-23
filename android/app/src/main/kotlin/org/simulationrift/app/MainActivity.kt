@@ -15,11 +15,14 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,7 +35,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -65,6 +67,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -76,12 +79,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -109,6 +115,7 @@ import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.WindowGuard
 import org.simulationrift.core.EgressStats
 import org.simulationrift.core.LinkCheck
+import org.simulationrift.core.LinkTrace
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
 import org.simulationrift.core.Verdict
@@ -244,6 +251,9 @@ class MainActivity : ComponentActivity() {
             }
             // One screen for each part, instead of one long scroll.
             var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
+            // Each tab keeps its place; tapping the tab you are on goes back to its top.
+            val scrolls = Tab.entries.associateWith { rememberScrollState() }
+            val scope = rememberCoroutineScope()
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.surface,
                 bottomBar = {
@@ -251,7 +261,7 @@ class MainActivity : ComponentActivity() {
                         Tab.entries.forEach { entry ->
                             NavigationBarItem(
                                 selected = tab == entry,
-                                onClick = { tab = entry },
+                                onClick = { if (tab == entry) scope.launch { scrolls.getValue(entry).animateScrollTo(0) } else tab = entry },
                                 icon = { Icon(painterResource(entry.icon), contentDescription = null) },
                                 label = { Text(entry.label, maxLines = 1) },
                                 modifier = Modifier.testTag("tab-${entry.name.lowercase()}"),
@@ -261,7 +271,7 @@ class MainActivity : ComponentActivity() {
                 },
             ) { padding ->
                 Column(
-                    Modifier.fillMaxSize().padding(padding).verticalScroll(remember(tab) { ScrollState(0) }).padding(horizontal = 16.dp, vertical = 8.dp),
+                    Modifier.fillMaxSize().padding(padding).verticalScroll(scrolls.getValue(tab)).padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     when (tab) {
@@ -462,24 +472,39 @@ class MainActivity : ComponentActivity() {
     private fun AddressField(generation: Long, mayBrowse: Boolean) {
         var typed by remember { mutableStateOf("") }
         var result by remember { mutableStateOf<LinkCheck?>(null) }
+        var trace by remember { mutableStateOf<LinkTrace?>(null) }
+        // What the field held before each address the link tools put in it, for Undo.
+        val earlier = remember { mutableStateListOf<String>() }
         var checking by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
+        val focus = LocalFocusManager.current
+        val verdict = remember { BringIntoViewRequester() }
         val open = { if (mayBrowse) browse(generation, typed.takeIf { it.isNotBlank() }) }
         val check = {
             val input = typed
             if (input.isNotBlank() && !checking) {
+                // The keyboard would cover the verdict.
+                focus.clearFocus()
                 checking = true
+                trace = null
                 scope.launch {
                     result = withContext(Dispatchers.Default) { Core.check(input) }
                     checking = false
                 }
             }
         }
+        val checkInstead = { address: String ->
+            earlier.add(typed)
+            typed = address
+            check()
+        }
         OutlinedTextField(
             value = typed,
             onValueChange = {
                 typed = it
                 result = null
+                trace = null
+                earlier.clear()
             },
             placeholder = { Text("Paste or type a link") },
             leadingIcon = { Icon(painterResource(R.drawable.ic_link), contentDescription = null) },
@@ -513,13 +538,38 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        result?.let { CheckResult(it, onOpen = open.takeIf { mayBrowse }, onClose = { result = null }) }
+        // A new verdict's headline is scrolled into view (on a small screen it lands below the fold),
+        // only as far as it takes, so the address field stays near for the next link.
+        val headline = with(LocalDensity.current) { 160.dp.toPx() }
+        LaunchedEffect(result) { if (result != null) verdict.bringIntoView(Rect(0f, 0f, 1f, headline)) }
+        result?.let {
+            Box(Modifier.bringIntoViewRequester(verdict)) {
+                CheckResult(
+                    it, trace, onTrace = { found -> trace = found }, onAddress = checkInstead,
+                    onUndo = earlier.lastOrNull()?.let { before -> { earlier.removeAt(earlier.lastIndex); typed = before; check() } },
+                    onOpen = open.takeIf { mayBrowse }, onClose = { result = null; trace = null },
+                )
+            }
+        }
     }
 
-    /** What a check found (LinkCheckViews), with Open safely where Rift would load it. */
+    /**
+     * What a check found (LinkCheckViews), with Open safely where Rift would
+     * load it, and the link tools (LinkToolsViews). Once the link has been
+     * followed, the headline is the worst of it and where it goes.
+     */
     @Composable
-    private fun CheckResult(check: LinkCheck, onOpen: (() -> Unit)?, onClose: () -> Unit) {
-        val verdict = verdictOf(check)
+    private fun CheckResult(
+        check: LinkCheck,
+        trace: LinkTrace?,
+        onTrace: (LinkTrace) -> Unit,
+        onAddress: (String) -> Unit,
+        onUndo: (() -> Unit)?,
+        onOpen: (() -> Unit)?,
+        onClose: () -> Unit,
+    ) {
+        val worst = worstOf(check, trace)
+        val verdict = verdictOf(worst)
         Surface(
             color = verdict.container,
             contentColor = verdict.content,
@@ -528,7 +578,9 @@ class MainActivity : ComponentActivity() {
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 CheckHeadline(verdict)
-                CheckDetails(check, verdict)
+                if (worst !== check) Text("Where it goes: ${verdict.summary}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("check-where"))
+                CheckDetails(check, verdictOf(check))
+                LinkTools(check, trace, onTrace, onAddress, onUndo)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (onOpen != null && verdict.openable) {
                         FilledTonalButton(onClick = onOpen, modifier = Modifier.testTag("check-open")) { Text("Open safely") }
@@ -1085,11 +1137,31 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun ExtraIsolationCard() {
         val status by Hardening.status.collectAsState()
+        // Optional, and off for almost everyone: folded away until asked for (or on).
+        var expanded by rememberSaveable { mutableStateOf(false) }
+        val shown = expanded || status.on || status.undoPending
         Card(
             Modifier.fillMaxWidth().animateContentSize().testTag("extra-isolation"),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
+            if (!shown) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { expanded = true }.padding(20.dp).testTag("extra-expand"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Advanced: extra isolation", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Optional, off. Needs Shizuku or root. Rift is fully protected without it.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text("Show", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
+                return@Card
+            }
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -1111,6 +1183,7 @@ class MainActivity : ComponentActivity() {
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.testTag("extra-about"),
                     )
+                    TextButton(onClick = { expanded = false }, modifier = Modifier.testTag("extra-hide")) { Text("Hide") }
                     return@Column
                 }
                 val (helperText, problem) = when (val h = status.helper) {

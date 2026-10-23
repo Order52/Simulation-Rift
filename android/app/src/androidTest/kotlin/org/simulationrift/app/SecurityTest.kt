@@ -59,6 +59,7 @@ import org.simulationrift.bridge.Rift
 import org.simulationrift.core.DownloadInfo
 import org.simulationrift.core.IntelStatus
 import org.simulationrift.core.ScanStatus
+import org.simulationrift.core.TraceOutcome
 import org.simulationrift.core.Verdict
 import rikka.shizuku.Shizuku
 
@@ -409,6 +410,88 @@ class SecurityTest {
         val event = Core.pageWatch(generation)!!.events.first { it.code == "ai-suspicious" }
         assertEquals(PageWatch.Level.WARNING, event.level)
         report("v2", "warned before loading: ${event.text.take(160)}")
+    }
+
+    /**
+     * Check's link tools (§10.10): a redirect link is unwrapped and its
+     * trackers named by ClearURLs-format rules, the clean link is checked in
+     * its place and Undo goes back, the same in the share sheet; and a trace
+     * contacts neither an address the threat database lists nor the phone's
+     * own network. Rules are installed from text, as a download would be,
+     * so the test needs no network.
+     */
+    @Test
+    fun v3_linkToolsCleanUnwrapAndRefuseWhatTheyShould() {
+        if (Core.intel.value !is IntelStatus.Installed) {
+            Core.installDemoIntel()
+            assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
+        }
+        LinkCleaning.install(
+            """{"providers":{
+                "globalRules":{"urlPattern":".*","rules":["(?:%3F)?utm(?:_[a-z_]*)?","(?:%3F)?fbclid"]},
+                "google":{"urlPattern":"^https?:\\/\\/(?:[a-z0-9-]+\\.)*?google(?:\\.[a-z]{2,}){1,}",
+                    "redirections":["^https?:\\/\\/(?:[a-z0-9-]+\\.)*?google(?:\\.[a-z]{2,}){1,}\\/url\\?.*?(?:url|q)=(https?[^&]+)"]}
+            }}""",
+        )
+        assertEquals("Rules updated.", LinkCleaning.state.value.message)
+        val wrapped = "https://www.google.com/url?q=https%3A%2F%2Fnews.example%2Fstory%3Futm_source%3Dx%26id%3D4&usg=AOv"
+        val clean = "https://news.example/story?id=4"
+        val generation = activeGeneration()
+        val browsedBefore = Core.hasBrowsed(generation)
+        val home = openHome()
+        try {
+            // The tools are below the verdict: on a small screen, below the fold.
+            scrollHomeTo(By.res("home-address"), "address field").text = wrapped
+            (awaitFresh { device.findObject(By.res("check").enabled(true)) } ?: throw AssertionError("check button")).click()
+            assertNotNull(awaitFresh { device.findObject(By.res("check-title")) })
+            val unwrapped = scrollHomeTo(By.res("tools-clean-unwrapped"), "unwrapped address")
+            assertEquals("https://news.example/story?utm_source=x&id=4", unwrapped.text)
+            screenshot("v3-wrapped")
+            scrollHomeTo(By.res("tools-clean-use"), "use the clean link").click()
+            scrollHomeTo(By.res("check-address").text(clean), "the clean link checked")
+            scrollHomeTo(By.res("tools-clean-none"), "no trackers left")
+            screenshot("v3-clean")
+            scrollHomeTo(By.res("tools-undo"), "undo").click()
+            scrollHomeTo(By.res("tools-clean-unwrapped"), "back to the wrapped link")
+
+            // Quick fixes: plain HTTP and a query.
+            scrollHomeTo(By.res("home-address"), "address field").text = "http://example.org/a?x=1"
+            (awaitFresh { device.findObject(By.res("check").enabled(true)) } ?: throw AssertionError("check button")).click()
+            assertNotNull(awaitFresh { device.findObject(By.res("check-title")) })
+            scrollHomeTo(By.res("tools-https"), "use https")
+            scrollHomeTo(By.res("tools-no-query"), "remove the query").click()
+            scrollHomeTo(By.res("check-address").text("http://example.org/a"), "the link without its query")
+            // Leaving Rift is a second, warned tap.
+            scrollHomeTo(By.res("tools-elsewhere"), "open elsewhere").click()
+            scrollHomeTo(By.res("tools-leave-warning"), "the warning before leaving")
+            screenshot("v3-elsewhere")
+        } finally {
+            home.finish()
+        }
+        // Nothing was opened by any of it.
+        assertEquals(generation, activeGeneration())
+        assertEquals(browsedBefore, Core.hasBrowsed(generation))
+
+        // The share sheet has the same tools.
+        share("Look: $wrapped")
+        assertNotNull("the sheet's verdict", device.wait(Until.findObject(By.res("check-title")), PAGE_TIMEOUT_MS))
+        (swipeUntil(By.res("tools-clean-use")) ?: run { screenshot("v3-share"); throw AssertionError("the share sheet's clean link") }).click()
+        assertNotNull("the sheet checks the clean link", swipeUntil(By.text(clean)))
+        screenshot("v3-share-clean")
+        (swipeUntil(By.res("share-close")) ?: throw AssertionError("close")).click()
+        assertTrue(device.wait(Until.gone(By.res("share-sheet")), UI_TIMEOUT_MS))
+
+        // A trace: a listed address is not contacted; nor is the phone's own network.
+        val listed = Core.trace("http://rift-demo.invalid/known-bad")
+        assertTrue("${listed.outcome}", listed.outcome is TraceOutcome.Stopped)
+        assertEquals(1, listed.hops.size)
+        assertNull(listed.hops[0].status)
+        assertEquals(4, severity(listed.hops[0].check))
+        val local = Core.trace(fixture("/s1.html"))
+        val failed = local.outcome as? TraceOutcome.Failed ?: throw AssertionError("${local.outcome}")
+        assertNull(local.hops.single().status)
+        assertTrue(failed.reason, failed.reason.contains("loopback") || failed.reason.contains("local"))
+        report("v3", "unwrapped and cleaned to $clean, undo, https and query fixes, share sheet; listed hop not contacted; local trace refused: ${failed.reason}")
     }
 
     /** Hands `intent` to Rift's home screen as another app's link or share would. */

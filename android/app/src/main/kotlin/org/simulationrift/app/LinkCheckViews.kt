@@ -30,6 +30,7 @@ import org.simulationrift.core.AiLevel
 import org.simulationrift.core.AiView
 import org.simulationrift.core.Fact
 import org.simulationrift.core.LinkCheck
+import org.simulationrift.core.LinkTrace
 import org.simulationrift.core.Navigation
 
 /*
@@ -73,6 +74,22 @@ internal fun verdictOf(check: LinkCheck): CheckVerdict {
             "Nothing suspicious was found. No check can prove a link is safe.", openable = true)
     }
 }
+
+/** How serious a check's finding is, in [verdictOf]'s order: 4 listed, 3 refused, 2 looks dangerous, 1 warning signs, 0 none. */
+internal fun severity(check: LinkCheck): Int {
+    val navigation = check.navigation
+    return when {
+        navigation is Navigation.Block && navigation.reason.code == "known-malicious" -> 4
+        navigation is Navigation.Block -> 3
+        check.ai?.level == AiLevel.HIGH -> 2
+        navigation is Navigation.Confirm || check.ai?.level == AiLevel.ELEVATED -> 1
+        else -> 0
+    }
+}
+
+/** The most serious of [check] and the hops of its [trace] (§10.10); [check] itself when none is worse. */
+internal fun worstOf(check: LinkCheck, trace: LinkTrace?): LinkCheck =
+    trace?.hops.orEmpty().map { it.check }.fold(check) { worst, hop -> if (severity(hop) > severity(worst)) hop else worst }
 
 /** The verdict's icon and title. */
 @Composable

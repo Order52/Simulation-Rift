@@ -1,6 +1,9 @@
 package org.simulationrift.app
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,26 +14,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,6 +59,8 @@ internal fun FiltersTab() {
     val downloaded = state.lists.filterKeys { id -> ContentFilter.catalog.any { it.id == id } }.values.count { it.downloaded }
     val onCount = state.lists.values.count { it.on }
     val rules = state.lists.values.filter { it.on && it.downloaded }.sumOf { it.rules }
+    // Only a download holds the switches: applying them again takes the latest choices whenever it starts.
+    val downloading = state.busy != null && state.busy != ContentFilter.APPLYING
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Filters", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
@@ -88,7 +100,7 @@ internal fun FiltersTab() {
                 state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("filters-message")) }
                 Button(
                     onClick = ContentFilter::updateAll,
-                    enabled = state.enabled && state.busy == null && onCount > 0,
+                    enabled = state.enabled && !downloading && onCount > 0,
                     modifier = Modifier.fillMaxWidth().height(52.dp).testTag("filters-download"),
                 ) { Text(if (downloaded == 0) "Download the lists" else "Update the lists") }
                 Text(
@@ -99,44 +111,53 @@ internal fun FiltersTab() {
             }
         }
 
-        Card(
-            Modifier.fillMaxWidth().testTag("filter-lists"),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        Section(
+            title = "Lists",
+            summary = "$onCount of ${ContentFilter.catalog.size} on · $downloaded downloaded",
+            tag = "filter-lists",
         ) {
-            Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
-                Text("Lists", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 8.dp))
-                ContentFilter.catalog.forEachIndexed { i, source ->
-                    val list = state.lists[source.id] ?: return@forEachIndexed
-                    if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(source.title, style = MaterialTheme.typography.titleSmall)
-                            Text(source.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                if (list.downloaded) "${format(list.rules)} rules, updated ${list.updated?.let { DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it)) }}"
-                                else "Not downloaded",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.testTag("filter-info-${source.id}"),
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Switch(
-                            checked = list.on,
-                            onCheckedChange = { ContentFilter.setList(source.id, it) },
-                            enabled = state.enabled && state.busy == null,
-                            modifier = Modifier.testTag("filter-list-${source.id}"),
+            ContentFilter.catalog.forEachIndexed { i, source ->
+                val list = state.lists[source.id] ?: return@forEachIndexed
+                if (i > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                val switchable = state.enabled && !downloading
+                // The whole row is the switch: a bigger target than the switch alone.
+                Row(
+                    Modifier.toggleable(list.on, enabled = switchable, role = Role.Switch) { ContentFilter.setList(source.id, it) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(source.title, style = MaterialTheme.typography.titleSmall)
+                        Text(source.about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            if (list.downloaded) {
+                                "${format(list.rules)} rules, downloaded ${list.updated?.let { DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it)) }}" +
+                                    (list.upstream?.let { ", upstream $it" } ?: "")
+                            } else {
+                                "Not downloaded"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("filter-info-${source.id}"),
                         )
                     }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(
+                        checked = list.on,
+                        onCheckedChange = null,
+                        enabled = switchable,
+                        modifier = Modifier.testTag("filter-list-${source.id}"),
+                    )
                 }
             }
         }
 
         CustomRules(state.custom, state.enabled)
 
+        LinkCleaningCard()
+
         Text(
-            "The lists are EasyList and Fanboy's lists (GPL v3 or CC BY-SA 3.0) and uBlock Origin's (GPL v3), by their volunteers. " +
+            "The lists are EasyList and Fanboy's lists (GPL v3 or CC BY-SA 3.0), uBlock Origin's and AdGuard's (GPL v3), by their volunteers. " +
                 "They only remove things from pages: they can never allow what Rift's own checks refuse. " +
                 "A filter does not make a page safe, and a list can be wrong: if a site breaks, turn a list off.",
             style = MaterialTheme.typography.bodySmall,
@@ -148,13 +169,13 @@ internal fun FiltersTab() {
 @Composable
 private fun CustomRules(saved: String, enabled: Boolean) {
     var text by remember(saved) { mutableStateOf(saved) }
-    Card(
-        Modifier.fillMaxWidth().testTag("custom-card"),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    val lines = saved.lines().count { it.isNotBlank() && !it.startsWith("!") }
+    Section(
+        title = "Your own rules",
+        summary = if (lines == 0) "None yet" else "$lines saved ${if (lines == 1) "rule" else "rules"}",
+        tag = "custom-card",
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Your own rules", style = MaterialTheme.typography.titleMedium)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 "One per line. ||ads.example.com^ blocks a site. example.com##.popup hides an element on a site. " +
                     "! starts a comment. The same rules uBlock Origin and AdBlock understand.",
@@ -173,13 +194,80 @@ private fun CustomRules(saved: String, enabled: Boolean) {
                 Button(onClick = { ContentFilter.setCustom(text) }, enabled = enabled && text != saved, modifier = Modifier.testTag("custom-save")) { Text("Save rules") }
                 OutlinedButton(onClick = { text = saved }, enabled = text != saved) { Text("Undo") }
             }
-            val lines = saved.lines().count { it.isNotBlank() && !it.startsWith("!") }
+        }
+    }
+}
+
+/** A card that shows its title and a one-line summary, and its content when tapped open. */
+@Composable
+private fun Section(title: String, summary: String, tag: String, content: @Composable () -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val turn by animateFloatAsState(if (open) 180f else 0f, label = "chevron")
+    Card(
+        Modifier.fillMaxWidth().testTag(tag),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clickable(onClickLabel = if (open) "Hide" else "Show") { open = !open }
+                .padding(horizontal = 20.dp, vertical = 16.dp).testTag("$tag-toggle"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("$tag-summary"))
+            }
+            Icon(painterResource(R.drawable.ic_expand), contentDescription = null, modifier = Modifier.rotate(turn))
+        }
+        AnimatedVisibility(open) {
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp)) { content() }
+        }
+    }
+}
+
+/** The ClearURLs rules that Check uses to take trackers off links (§10.10). */
+@Composable
+private fun LinkCleaningCard() {
+    val rules by LinkCleaning.state.collectAsState()
+    Card(
+        Modifier.fillMaxWidth().animateContentSize().testTag("clean-card"),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Clean links", style = MaterialTheme.typography.titleMedium)
             Text(
-                if (lines == 0) "No rules of your own yet." else "$lines saved ${if (lines == 1) "rule" else "rules"}.",
-                style = MaterialTheme.typography.labelSmall,
+                "Check takes tracking parameters (utm_source, fbclid, gclid and hundreds more) off a link and unwraps redirect links, " +
+                    "with the ClearURLs project's rules (LGPL v3). You choose whether to use the clean link.",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("custom-count"),
             )
+            val updated = rules.updated
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (rules.busy) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(
+                    when {
+                        rules.busy -> "Downloading the rules…"
+                        updated == null -> "Not downloaded"
+                        else -> "${rules.providers} sites' rules, downloaded ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(updated))}"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.testTag("clean-status"),
+                )
+            }
+            rules.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("clean-message")) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(onClick = LinkCleaning::download, enabled = !rules.busy, modifier = Modifier.weight(1f).height(52.dp).testTag("clean-download")) {
+                    Text(if (rules.updated == null) "Download the rules" else "Update the rules", maxLines = 1)
+                }
+                if (rules.updated != null) {
+                    TextButton(onClick = LinkCleaning::remove, enabled = !rules.busy, modifier = Modifier.testTag("clean-remove")) { Text("Remove", maxLines = 1) }
+                }
+            }
         }
     }
 }

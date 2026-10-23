@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -64,6 +65,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.simulationrift.bridge.WindowGuard
 import org.simulationrift.core.LinkCheck
+import org.simulationrift.core.LinkTrace
 
 /**
  * Rift's share target (§10.1). A link shared to Rift is checked at once, on
@@ -121,8 +123,13 @@ class ShareActivity : ComponentActivity() {
      */
     @Composable
     private fun Sheet(text: String) {
-        val check by produceState<LinkCheck?>(null, text) {
-            value = withContext(Dispatchers.Default) { Core.checkWhenOpened(text) }
+        // The link tools can put another address in place of the shared one (§10.10).
+        var input by remember(text) { mutableStateOf(text) }
+        val earlier = remember(text) { mutableStateListOf<String>() }
+        var trace by remember(input) { mutableStateOf<LinkTrace?>(null) }
+        val check by produceState<LinkCheck?>(null, input) {
+            value = null
+            value = withContext(Dispatchers.Default) { Core.checkWhenOpened(input) }
         }
         var details by rememberSaveable { mutableStateOf(false) }
         val shown = remember { MutableTransitionState(false).apply { targetState = true } }
@@ -162,7 +169,8 @@ class ShareActivity : ComponentActivity() {
                             }
                             return@Column
                         }
-                        val verdict = verdictOf(current)
+                        val worst = worstOf(current, trace)
+                        val verdict = verdictOf(worst)
                         Surface(
                             color = verdict.container,
                             contentColor = verdict.content,
@@ -171,7 +179,11 @@ class ShareActivity : ComponentActivity() {
                         ) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 CheckHeadline(verdict)
-                                Text(verdict.summary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("share-summary"))
+                                Text(
+                                    if (worst !== current) "Where it goes: ${verdict.summary}" else verdict.summary,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.testTag("share-summary"),
+                                )
                                 if (!details) {
                                     Text(current.address, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
                                         maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -184,7 +196,7 @@ class ShareActivity : ComponentActivity() {
                                 shape = RoundedCornerShape(20.dp),
                                 modifier = Modifier.fillMaxWidth().animateContentSize().testTag("share-details"),
                             ) {
-                                Column(Modifier.padding(16.dp)) { CheckDetails(current, verdict) }
+                                Column(Modifier.padding(16.dp)) { CheckDetails(current, verdictOf(current)) }
                             }
                         }
                         val worrying = verdict.title != "No known threats found"
@@ -216,6 +228,20 @@ class ShareActivity : ComponentActivity() {
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        // The tools come after the verdict's own buttons, which stay in view.
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.fillMaxWidth().animateContentSize(),
+                        ) {
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                LinkTools(
+                                    current, trace, onTrace = { trace = it },
+                                    onAddress = { earlier.add(input); input = it },
+                                    onUndo = earlier.lastOrNull()?.let { before -> { earlier.removeAt(earlier.lastIndex); input = before } },
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -31,6 +31,7 @@ import org.simulationrift.core.Ai
 import org.simulationrift.core.AiFailure
 import org.simulationrift.core.DisposalException
 import org.simulationrift.core.LinkCheck
+import org.simulationrift.core.LinkTrace
 import org.simulationrift.core.DownloadFailure
 import org.simulationrift.core.EgressFailure
 import org.simulationrift.core.EgressStats
@@ -251,6 +252,14 @@ object Core {
     }
 
     /**
+     * Where [address] goes (§10.10): its redirects followed by the core, which
+     * reads no page, each hop checked first and one Rift would not open never
+     * contacted. The link's servers see the request, so only when the user
+     * asks. Blocks for up to 30 seconds: call it away from the main thread.
+     */
+    fun trace(address: String): LinkTrace = navigator.trace(typed(address), database, nowUnix(), TRACE_USER_AGENT)
+
+    /**
      * [check], once the threat database has been opened or has failed to,
      * for a check that may come first after a cold start (a shared link).
      */
@@ -267,6 +276,7 @@ object Core {
             WeeklyStats.open(app)
             Hardening.init(app)
             ContentFilter.init(app)
+            LinkCleaning.init(app)
             // The user's network lock choice, before the first session starts.
             NetworkLock.init(app)
             updating.execute {
@@ -844,6 +854,13 @@ object Core {
     private const val SCAN_WORKERS = 2
 
     private const val AI_MODEL = "url-model.bin"
+    /**
+     * What a trace says it is: a phone's Chrome, in Chrome's reduced form,
+     * because some shorteners answer other clients with a page instead of
+     * the redirect.
+     */
+    private const val TRACE_USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36"
 
     /** Bytes per copy into the core when another app hands over a file. */
     private const val INTAKE_CHUNK = 256 * 1024
