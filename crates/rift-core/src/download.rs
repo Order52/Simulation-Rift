@@ -246,23 +246,135 @@ fn follow(
         let response = headers(agent.get(url.as_str()), &url)
             .call()
             .map_err(network_error)?;
-        let status = response.status().as_u16();
-        if matches!(status, 301 | 302 | 303 | 307 | 308) {
-            let location = response
-                .headers()
-                .get("location")
-                .and_then(|v| v.to_str().ok())
-                .ok_or(DownloadError::BadRedirect)?;
-            let next = url.join(location).map_err(|_| DownloadError::BadRedirect)?;
-            url = hop_url(next.as_str())?;
+        if let Some(next) = redirect_target(&response, &url) {
+            url = hop_url(next?.as_str())?;
             continue;
         }
+        let status = response.status().as_u16();
         if !(200..300).contains(&status) {
             return Err(DownloadError::Status(status));
         }
         return Ok((response, url, redirects));
     }
     Err(DownloadError::TooManyRedirects(policy.max_redirects))
+}
+
+/// Where a redirect response sends the request next, resolved against
+/// `url`; None if the response is not a redirect.
+fn redirect_target(
+    response: &ureq::http::Response<ureq::Body>,
+    url: &Url,
+) -> Option<Result<Url, DownloadError>> {
+    if !matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
+        return None;
+    }
+    Some(
+        response
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|location| url.join(location).ok())
+            .ok_or(DownloadError::BadRedirect),
+    )
+}
+
+/// One address a link led to, as [`trace`] found it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hop {
+    pub url: String,
+    /// What the server answered; None if it was not contacted.
+    pub status: Option<u16>,
+}
+
+/// How a [`trace`] ended.
+#[derive(Debug)]
+pub enum TraceEnd {
+    /// The last hop answered with something other than a redirect: that is
+    /// where the link goes, as far as redirects tell (a page's own scripts
+    /// can send it on, and are never run here).
+    Arrived,
+    /// The screen refused the last hop, which was not contacted.
+    Stopped,
+    /// The last hop redirects to an address that is not a web address (an
+    /// app link, say). It is not followed.
+    LeavesTheWeb(String),
+    Failed(DownloadError),
+}
+
+/// The addresses a link leads to, and how the trace ended.
+#[derive(Debug)]
+pub struct Trace {
+    pub hops: Vec<Hop>,
+    pub end: TraceEnd,
+}
+
+/// Follows `url`'s redirects without reading any page: each hop is asked
+/// with GET and no cookie, its status and `Location` are read, and its body
+/// is dropped unread. Every hop passes [`download`]'s destination checks,
+/// and `screen` sees each address before it is contacted: false stops the
+/// trace there, without contacting it (an address the threat database lists).
+pub fn trace(
+    url: &str,
+    policy: &DownloadPolicy,
+    user_agent: &str,
+    cancel: &AtomicBool,
+    mut screen: impl FnMut(&str) -> bool,
+) -> Trace {
+    let mut hops = Vec::new();
+    let end = walk(url, policy, user_agent, cancel, &mut screen, &mut hops);
+    Trace { hops, end }
+}
+
+fn walk(
+    url: &str,
+    policy: &DownloadPolicy,
+    user_agent: &str,
+    cancel: &AtomicBool,
+    screen: &mut impl FnMut(&str) -> bool,
+    hops: &mut Vec<Hop>,
+) -> TraceEnd {
+    let agent = agent(policy);
+    let mut url = match hop_url(url) {
+        Ok(url) => url,
+        Err(error) => return TraceEnd::Failed(error),
+    };
+    for _ in 0..=policy.max_redirects {
+        if cancel.load(Ordering::SeqCst) {
+            return TraceEnd::Failed(DownloadError::Cancelled);
+        }
+        let mut hop = Hop {
+            url: url.to_string(),
+            status: None,
+        };
+        if !screen(&hop.url) {
+            hops.push(hop);
+            return TraceEnd::Stopped;
+        }
+        let response = match agent
+            .get(url.as_str())
+            .header("User-Agent", user_agent)
+            .call()
+        {
+            Ok(response) => response,
+            Err(error) => {
+                hops.push(hop);
+                return TraceEnd::Failed(network_error(error));
+            }
+        };
+        hop.status = Some(response.status().as_u16());
+        hops.push(hop);
+        let next = match redirect_target(&response, &url) {
+            None => return TraceEnd::Arrived,
+            Some(Ok(next)) => next,
+            Some(Err(error)) => return TraceEnd::Failed(error),
+        };
+        url = match hop_url(next.as_str()) {
+            Ok(next) => next,
+            Err(DownloadError::Scheme(_)) => return TraceEnd::LeavesTheWeb(next.into()),
+            Err(error) => return TraceEnd::Failed(error),
+        };
+    }
+    TraceEnd::Failed(DownloadError::TooManyRedirects(policy.max_redirects))
 }
 
 /// One hop's URL: http or https with a host; the fragment is never sent.
@@ -489,6 +601,8 @@ mod tests {
                 "Content-Disposition: attachment; filename=\"../../evil\u{202e}gpj.pdf\"\r\n",
             ),
             "/to-file" => redirect("/file"),
+            "/short" => redirect("/to-file"),
+            "/to-app" => redirect("intent://scan/#Intent;scheme=zxing;end"),
             "/to-loopback-literal" => redirect(&format!("http://127.0.0.1:{port}/file")),
             "/to-metadata" => redirect("http://169.254.169.254/latest/meta-data/"),
             "/to-scheme" => redirect("file:///etc/passwd"),
@@ -587,6 +701,99 @@ mod tests {
             d.object.sealed.sha256,
             <[u8; 32]>::from(sha2::Sha256::digest(b"hello quarantine"))
         );
+    }
+
+    fn traced(url: &str, policy: &DownloadPolicy, screen: impl FnMut(&str) -> bool) -> Trace {
+        trace(url, policy, "rift-test", &AtomicBool::new(false), screen)
+    }
+
+    fn statuses(t: &Trace) -> Vec<Option<u16>> {
+        t.hops.iter().map(|h| h.status).collect()
+    }
+
+    #[test]
+    fn a_trace_lists_every_hop_and_where_it_ends() {
+        let server = Server::start(routes);
+        let allowed = policy(&["localhost"]);
+        let t = traced(&server.url("localhost", "/short"), &allowed, |_| true);
+        assert!(matches!(t.end, TraceEnd::Arrived), "{t:?}");
+        assert_eq!(statuses(&t), [Some(302), Some(302), Some(200)]);
+        assert_eq!(t.hops.last().unwrap().url, server.url("localhost", "/file"));
+        // No cookie goes to any hop.
+        assert!(
+            server
+                .log
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(_, cookie)| cookie.is_none())
+        );
+        // An error page is where the link goes, with its status.
+        let t = traced(&server.url("localhost", "/nowhere"), &allowed, |_| true);
+        assert!(matches!(t.end, TraceEnd::Arrived));
+        assert_eq!(statuses(&t), [Some(404)]);
+    }
+
+    #[test]
+    fn a_trace_stops_before_an_address_the_screen_refuses() {
+        let server = Server::start(routes);
+        let t = traced(
+            &server.url("localhost", "/short"),
+            &policy(&["localhost"]),
+            |url| !url.ends_with("/to-file"),
+        );
+        assert!(matches!(t.end, TraceEnd::Stopped), "{t:?}");
+        assert_eq!(statuses(&t), [Some(302), None]);
+        let paths: Vec<String> = server
+            .log
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(p, _)| p.clone())
+            .collect();
+        assert_eq!(paths, ["/short"], "the refused hop was never asked");
+    }
+
+    #[test]
+    fn s9_a_trace_keeps_to_public_addresses() {
+        let server = Server::start(routes);
+        let t = traced(&server.url("localhost", "/short"), &policy(&[]), |_| true);
+        assert!(
+            matches!(t.end, TraceEnd::Failed(DownloadError::Destination { .. })),
+            "{t:?}"
+        );
+        assert_eq!(statuses(&t), [None]);
+        for path in ["/to-loopback-literal", "/to-metadata"] {
+            let t = traced(
+                &server.url("localhost", path),
+                &policy(&["localhost"]),
+                |_| true,
+            );
+            assert!(
+                matches!(t.end, TraceEnd::Failed(DownloadError::Destination { .. })),
+                "{path}: {t:?}"
+            );
+            assert_eq!(statuses(&t), [Some(302), None], "{path}");
+        }
+    }
+
+    #[test]
+    fn a_trace_names_a_way_out_of_the_web_and_stops_at_the_limit() {
+        let server = Server::start(routes);
+        let allowed = policy(&["localhost"]);
+        let t = traced(&server.url("localhost", "/to-app"), &allowed, |_| true);
+        assert!(
+            matches!(&t.end, TraceEnd::LeavesTheWeb(to) if to.starts_with("intent://scan/")),
+            "{t:?}"
+        );
+        let t = traced(&server.url("localhost", "/to-scheme"), &allowed, |_| true);
+        assert!(matches!(&t.end, TraceEnd::LeavesTheWeb(to) if to == "file:///etc/passwd"));
+        let t = traced(&server.url("localhost", "/loop"), &allowed, |_| true);
+        assert!(matches!(
+            t.end,
+            TraceEnd::Failed(DownloadError::TooManyRedirects(10))
+        ));
+        assert_eq!(t.hops.len(), 11);
     }
 
     #[test]

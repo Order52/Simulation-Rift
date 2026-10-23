@@ -2770,6 +2770,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "proptest",
+ "regex",
  "rustls",
  "serde",
  "serde_json",

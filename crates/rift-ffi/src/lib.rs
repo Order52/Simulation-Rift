@@ -23,7 +23,12 @@ mod egress;
 mod filters;
 pub use filters::{ContentFilters, FilterFetchFailure, Hiding, fetch_filter_list};
 mod intake;
+mod link;
 pub use ai::{Ai, AiFailure, AiLevel, AiView, LinkCheck};
+pub use link::{
+    CleanFailure, CleanedLink, LinkCleaner, LinkTrace, TraceHop, TraceOutcome, link_with_https,
+    link_without_query,
+};
 mod scan;
 pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressRemark, EgressStats};
 pub use intake::Intake;
@@ -1360,6 +1365,59 @@ mod tests {
         let mut line = String::new();
         std::io::BufReader::new(stream).read_line(&mut line)?;
         Ok(line.trim_end().to_owned())
+    }
+
+    #[test]
+    fn a_trace_stops_before_a_listed_hop() {
+        use std::io::{BufRead, BufReader, Write};
+        let dir = tempfile::tempdir().unwrap();
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
+        install(&intel, trusted_root, repo);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 2 {
+                    line.clear();
+                }
+                let _ = stream.write_all(
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        rift_pack::DEMO_URL
+                    )
+                    .as_bytes(),
+                );
+            }
+        });
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let policy = rift_core::download::DownloadPolicy {
+            local_hosts: vec!["localhost".into()],
+            ..rift_core::download::DownloadPolicy::default()
+        };
+        let navigator = Navigator::new(Vec::new(), Vec::new());
+        let t = navigator.trace_with(
+            &format!("http://localhost:{port}/short"),
+            Some(intel),
+            now,
+            "t",
+            &policy,
+        );
+        assert_eq!(t.outcome, TraceOutcome::Stopped, "{t:?}");
+        assert_eq!(t.hops.len(), 2);
+        assert_eq!(t.hops[0].status, Some(302));
+        // Not contacted (it would not resolve, and the trace would have failed).
+        assert_eq!(t.hops[1].status, None);
+        assert!(matches!(
+            &t.hops[1].check.navigation,
+            Navigation::Block { reason, .. } if reason.code == "known-malicious"
+        ));
     }
 
     #[test]

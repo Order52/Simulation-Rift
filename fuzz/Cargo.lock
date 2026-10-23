@@ -2321,6 +2321,7 @@ dependencies = [
  "hex",
  "idna",
  "percent-encoding",
+ "regex",
  "rustls",
  "serde",
  "serde_json",
@@ -2339,7 +2340,9 @@ dependencies = [
  "rift-core",
  "rift-protocol",
  "rift-worker",
+ "serde_json",
  "sha2 0.11.1",
+ "url",
 ]
 
 [[package]]

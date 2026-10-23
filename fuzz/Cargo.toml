@@ -16,7 +16,9 @@ libfuzzer-sys = "0.4"
 rift-core = { path = "../crates/rift-core" }
 rift-protocol = { path = "../crates/rift-protocol" }
 rift-worker = { path = "../crates/rift-worker" }
+serde_json = "1.0.154"
 sha2 = "0.11.1"
+url = "2.5.8"
 
 # Not part of the product workspace: it builds only on nightly.
 [workspace]
@@ -93,6 +95,13 @@ doc = false
 [[bin]]
 name = "filters"
 path = "fuzz_targets/filters.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "link_clean"
+path = "fuzz_targets/link_clean.rs"
 test = false
 doc = false
 bench = false
