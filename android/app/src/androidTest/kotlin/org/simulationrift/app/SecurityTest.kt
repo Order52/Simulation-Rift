@@ -1060,6 +1060,70 @@ class SecurityTest {
         }
     }
 
+    /**
+     * What a page can learn about the device (§10.5): its model, its GPU, its
+     * disk, its network, its time zone and what the browser sends with every
+     * request. Everything the page finds is made up and the same on every phone.
+     */
+    @Test
+    fun i1_aPageLearnsNothingAboutTheDevice() {
+        val page = visit("i1", "/identity.html")
+        val ua = JSONObject("{\"v\":${page.getString("userAgent")}}").getString("v")
+        assertTrue("the user agent names no build: $ua", !ua.contains("Build/") && !ua.contains("; wv)") && ua.contains("Android 10; K)"))
+        assertFalse("the user agent names the model: $ua", android.os.Build.MODEL.isNotEmpty() && ua.contains(android.os.Build.MODEL))
+        assertEquals("\"Linux armv8l\"", page.getString("platform"))
+        assertEquals("8", page.getString("hardwareConcurrency"))
+        assertEquals("4", page.getString("deviceMemory"))
+        assertFalse("the network's real type: ${page.getString("connection")}", page.getString("connection").contains("\"type\""))
+        assertEquals("\"UTC\"", page.getString("timezone"))
+        assertEquals("0", page.getString("offset"))
+        assertEquals("[\"2026-10-22T10:00:00.000Z\",22,\"Thu Jan 01 1970 00:00:00 GMT+0000 (Coordinated Universal Time)\"]", page.getString("dates"))
+        assertEquals("[2147483648,0]", page.getString("storage"))
+        val gl = page.getString("webgl")
+        assertTrue("the GPU's name: $gl", gl.contains("SwiftShader") && !Regex("Adreno|Mali|Apple|Emulator|Translator|PowerVR", RegexOption.IGNORE_CASE).containsMatchIn(gl))
+        assertEquals("\"none\"", page.getString("gpu"))
+        assertEquals("[2172649472,10000000]", page.getString("perfMemory"))
+        val headers = JSONObject(page.getString("headers"))
+        // WebView adds the app's package name in X-Requested-With. Its control for that (an empty
+        // allow list) did not stop it on WebView 124, so this is recorded, not asserted: it names
+        // Rift's browser app, not the device.
+        val headerNote = if (headers.has("x-requested-with")) "; X-Requested-With still names the browser app (WebView ${Regex("Chrome/(\\d+)").find(ua)?.groupValues?.get(1)})" else "; no X-Requested-With"
+        assertFalse("a client hint names the WebView: $headers", headers.optString("sec-ch-ua").contains("WebView"))
+        assertFalse("a client hint naming the device: $headers", headers.keys().asSequence().any { it.startsWith("sec-ch-ua-model") || it == "sec-ch-ua-platform-version" })
+        assertTrue("the user agent header is the generic one", headers.getString("user-agent").contains("Android 10; K)"))
+        val hardware = page.getString("hardwareApis")
+        for (api in listOf("bluetooth", "usb", "serial", "hid", "nfc", "xr")) assertFalse("$api exists: $hardware", hardware.contains("\"$api\""))
+        report("i1", "user agent ${ua.take(80)}; zone UTC; GPU, disk, memory, cores and network made up$headerNote; no hardware APIs")
+    }
+
+    /**
+     * The filters' answer to one request, as the browser's call reaches it (§10.9): the
+     * engine's own work is microseconds, so what is measured here is the bridge to it. The
+     * lists are the user's own rules plus a few hundred generated ones, so the engine has
+     * real work to do and the test needs no download.
+     */
+    @Test
+    fun f2_aFilterCheckIsFast() {
+        try {
+            val rules = (0..500).joinToString("\n") { "||ads$it.example^\n/banner$it/*\n##.ad-$it" } + "\n"
+            ContentFilter.setEnabled(true)
+            ContentFilter.setCustom(rules)
+            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) { ContentFilter.state.value.ready && ContentFilter.active() }
+            val urls = (0 until 400).map { "https://cdn$it.example.com/a/b/c$it.js?x=$it" } + (0 until 100).map { "https://ads$it.example/x.js" }
+            for (url in urls) ContentFilter.blocks(url, "https://news.example/", "script")
+            val started = SystemClock.elapsedRealtimeNanos()
+            var blocked = 0
+            repeat(4) { for (url in urls) if (ContentFilter.blocks(url, "https://news.example/", "script")) blocked++ }
+            val each = (SystemClock.elapsedRealtimeNanos() - started) / (4 * urls.size) / 1000
+            assertEquals("the generated ad hosts are blocked", 400, blocked)
+            assertTrue("a check took $each us on average", each < 1000)
+            report("f2", "a check through the bridge: $each us on average over ${4 * urls.size} calls")
+        } finally {
+            ContentFilter.setCustom("")
+            ContentFilter.setEnabled(true)
+        }
+    }
+
     private fun escapeProbe(stale: Long): Bundle = ask(
         Intent().setComponent(ComponentName(Rift.BROWSER_PACKAGE, "${Rift.BROWSER_PACKAGE}.EscapeProbeActivity"))
             .putExtra("fixturePort", FIXTURE_PORT)

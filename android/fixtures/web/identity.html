@@ -1,0 +1,39 @@
+<!doctype html><html data-test="i1"><meta charset="utf-8"><title>I1 device identity</title>
+<script src="/report.js"></script>
+<script>
+// I1: what a page can learn about the device it runs on. Reported as it is; the
+// instrumentation test says what may and may not be in it.
+const has = names => names.filter(n => navigator[n] !== undefined || window[n] !== undefined);
+(async () => {
+  const out = {};
+  out.userAgent = navigator.userAgent;
+  out.platform = navigator.platform;
+  out.hardwareConcurrency = navigator.hardwareConcurrency;
+  out.deviceMemory = navigator.deviceMemory;
+  out.maxTouchPoints = navigator.maxTouchPoints;
+  out.languages = navigator.languages;
+  out.connection = navigator.connection ? { type: navigator.connection.type, effectiveType: navigator.connection.effectiveType, rtt: navigator.connection.rtt, downlink: navigator.connection.downlink } : null;
+  out.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  out.screen = [screen.width, screen.height, devicePixelRatio];
+  out.offset = new Date().getTimezoneOffset();
+  out.dates = [new Date(2026, 9, 22, 10).toISOString(), new Date(2026, 9, 22).getDate(), new Date(0).toString()];
+  out.gpu = navigator.gpu === undefined ? "none" : "present";
+  try { out.headers = await (await fetch("/echo-headers")).json(); } catch (e) { out.headers = "error " + e; }
+  out.hardwareApis = has(["bluetooth", "usb", "serial", "hid", "nfc", "wakeLock", "xr", "locks", "credentials", "mediaSession", "presentation"])
+    .concat(has(["Accelerometer", "Gyroscope", "Magnetometer", "AbsoluteOrientationSensor", "RelativeOrientationSensor", "LinearAccelerationSensor", "GravitySensor", "AmbientLightSensor", "IdleDetector", "BarcodeDetector", "FaceDetector", "NDEFReader", "showOpenFilePicker", "showDirectoryPicker", "EyeDropper"]));
+  try {
+    const uad = navigator.userAgentData;
+    out.uaData = uad ? { mobile: uad.mobile, platform: uad.platform, brands: uad.brands.map(b => b.brand + " " + b.version), high: await uad.getHighEntropyValues(["model", "platformVersion", "architecture", "bitness", "fullVersionList", "uaFullVersion", "wow64"]) } : null;
+  } catch (e) { out.uaData = "error " + e; }
+  try { const e = await navigator.storage.estimate(); out.storage = [e.quota, e.usage]; } catch (e) { out.storage = "error"; }
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    const ext = gl && gl.getExtension("WEBGL_debug_renderer_info");
+    out.webgl = gl ? { vendor: gl.getParameter(gl.VENDOR), renderer: gl.getParameter(gl.RENDERER), unmaskedVendor: ext && gl.getParameter(ext.UNMASKED_VENDOR_WEBGL), unmaskedRenderer: ext && gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) } : null;
+  } catch (e) { out.webgl = "error " + e; }
+  out.perfMemory = performance.memory ? [performance.memory.jsHeapSizeLimit, performance.memory.totalJSHeapSize] : null;
+  try { out.battery = navigator.getBattery ? (await navigator.getBattery()).level : null; } catch (e) { out.battery = "error"; }
+  for (const [k, v] of Object.entries(out)) await report(k, JSON.stringify(v));
+  await report("done", "1");
+})();
+</script>

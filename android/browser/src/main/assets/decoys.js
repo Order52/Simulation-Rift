@@ -274,6 +274,179 @@
     } catch (e) {}
   }
 
+  // ---- The device itself: nothing a page can read is the real device's ----
+  // Cores, memory, network, disk, GPU and heap sizes are what a fingerprint
+  // is made of, and they describe the phone. A page gets the same
+  // common values in every session. (The user agent, the time zone and the
+  // "X-Requested-With" header are set natively: BrowserActivity.)
+  function getter(target, name, value) {
+    if (!target) return;
+    try {
+      Object.defineProperty(target, name, { get: disguise(function () { return typeof value === "function" ? value() : value; }, "get " + name), configurable: true, enumerable: true });
+    } catch (e) {}
+  }
+  const nav = Navigator.prototype;
+  getter(nav, "hardwareConcurrency", 8);
+  getter(nav, "deviceMemory", 4);
+  getter(nav, "platform", "Linux armv8l");
+  getter(nav, "maxTouchPoints", 5);
+  if ("connection" in navigator) {
+    // Not the real network's type, speed or latency.
+    const connection = { effectiveType: "4g", rtt: 50, downlink: 10, saveData: false, onchange: null, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } };
+    getter(nav, "connection", connection);
+  }
+  if ("gpu" in navigator) getter(nav, "gpu", undefined); // WebGPU describes the real GPU
+  if ("storage" in navigator && window.StorageManager) {
+    // The real quota is a share of the real disk.
+    replace(StorageManager.prototype, "estimate", function estimate() { return Promise.resolve({ quota: 2147483648, usage: 0, usageDetails: {} }); });
+  }
+  if (window.performance && "memory" in performance) {
+    getter(Performance.prototype, "memory", { jsHeapSizeLimit: 2172649472, totalJSHeapSize: 10000000, usedJSHeapSize: 10000000 });
+  }
+  // WebGL names the GPU, and so the phone's make.
+  for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
+    const proto = window[name] && window[name].prototype;
+    if (!proto) continue;
+    const getParameter = proto.getParameter;
+    replace(proto, "getParameter", function getParameter_(parameter) {
+      if (parameter === 0x9245) return "Google Inc. (Google)"; // UNMASKED_VENDOR_WEBGL
+      if (parameter === 0x9246) return "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"; // UNMASKED_RENDERER_WEBGL
+      return getParameter.apply(this, arguments);
+    });
+  }
+
+  // ---- Time zone: UTC, whatever the phone says ----
+  // The zone names the region the phone is in, and Chromium ignores an app's
+  // own default, so the page's Date and Intl are made to agree on UTC. Local
+  // time is UTC everywhere: the getters and setters, the constructor's
+  // components and zone-less strings, the string forms and Intl's default.
+  (() => {
+    const RealDate = Date, proto = RealDate.prototype;
+    // The engine's own, before it is replaced: the phone's offset at a moment.
+    const engineOffset = proto.getTimezoneOffset;
+    const realOffset = t => -engineOffset.call(new RealDate(t)) * 60000;
+    for (const part of ["FullYear", "Month", "Date", "Day", "Hours", "Minutes", "Seconds", "Milliseconds"]) {
+      replace(proto, "get" + part, function () { return RealDate.prototype["getUTC" + part].call(this); });
+      if (part !== "Day") {
+        const utc = proto["setUTC" + part];
+        replace(proto, "set" + part, function () { return utc.apply(this, arguments); });
+      }
+    }
+    replace(proto, "getYear", function getYear() { return this.getUTCFullYear() - 1900; });
+    replace(proto, "getTimezoneOffset", function getTimezoneOffset() { return isNaN(this.getTime()) ? NaN : 0; });
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const two = n => String(n).padStart(2, "0");
+    const datePart = d => DAYS[d.getUTCDay()] + " " + MONTHS[d.getUTCMonth()] + " " + two(d.getUTCDate()) + " " + String(d.getUTCFullYear()).padStart(4, "0");
+    const timePart = d => two(d.getUTCHours()) + ":" + two(d.getUTCMinutes()) + ":" + two(d.getUTCSeconds()) + " GMT+0000 (Coordinated Universal Time)";
+    const guard = (d, f) => isNaN(d.getTime()) ? "Invalid Date" : f(d);
+    replace(proto, "toString", function toString() { return guard(this, d => datePart(d) + " " + timePart(d)); });
+    replace(proto, "toDateString", function toDateString() { return guard(this, datePart); });
+    replace(proto, "toTimeString", function toTimeString() { return guard(this, timePart); });
+    for (const name of ["toLocaleString", "toLocaleDateString", "toLocaleTimeString"]) {
+      const original = proto[name];
+      replace(proto, name, function (locales, options) {
+        return original.call(this, locales, Object.assign({}, options, options && options.timeZone ? {} : { timeZone: "UTC" }));
+      });
+    }
+    // Components and zone-less strings are local time, which is now UTC.
+    const hasZone = /(?:Z|[+-]\d\d:?\d\d|GMT|UTC|[A-Z]{3,4})\s*(?:\(.*\))?\s*$/i;
+    const isoNoZone = /^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?$/;
+    function SpoofDate(a, b, c, d, e, f, g) {
+      if (!new.target) return new RealDate().toString();
+      switch (arguments.length) {
+        case 0: return new RealDate();
+        case 1:
+          if (typeof a === "string") {
+            if (isoNoZone.test(a.trim())) return new RealDate(a.trim() + "Z");
+            const t = RealDate.parse(a);
+            // Parsed as the phone's local time unless the string names a zone.
+            if (!isNaN(t) && !hasZone.test(a.trim()) && !/^\d{4}-\d\d-\d\d$/.test(a.trim())) {
+              return new RealDate(t + realOffset(t));
+            }
+            return new RealDate(t);
+          }
+          return new RealDate(a);
+        default: {
+          const year = Number(a);
+          const y = year >= 0 && year <= 99 ? 1900 + year : year;
+          return new RealDate(RealDate.UTC(y, b, c === undefined ? 1 : c, d || 0, e || 0, f || 0, g || 0));
+        }
+      }
+    }
+    SpoofDate.prototype = proto;
+    Object.defineProperty(proto, "constructor", { value: SpoofDate, writable: true, configurable: true });
+    SpoofDate.now = disguise(function now() { return RealDate.now(); }, "now");
+    SpoofDate.UTC = disguise(function UTC() { return RealDate.UTC.apply(RealDate, arguments); }, "UTC");
+    SpoofDate.parse = disguise(function parse(text) { return new SpoofDate(String(text)).getTime(); }, "parse");
+    disguise(SpoofDate, "Date");
+    try { Object.defineProperty(window, "Date", { value: SpoofDate, writable: true, configurable: true }); } catch (e) {}
+    const RealDTF = Intl.DateTimeFormat;
+    function DateTimeFormat(locales, options) {
+      const o = Object.assign({}, options);
+      if (o.timeZone === undefined) o.timeZone = "UTC";
+      return new RealDTF(locales, o);
+    }
+    DateTimeFormat.prototype = RealDTF.prototype;
+    DateTimeFormat.supportedLocalesOf = RealDTF.supportedLocalesOf;
+    Object.defineProperty(RealDTF.prototype, "constructor", { value: DateTimeFormat, writable: true, configurable: true });
+    disguise(DateTimeFormat, "DateTimeFormat");
+    try { Object.defineProperty(Intl, "DateTimeFormat", { value: DateTimeFormat, writable: true, configurable: true }); } catch (e) {}
+  })();
+
+  // ---- Generic sensors: readings that are noise ----
+  function sensorClass(name, fields) {
+    function Sensor(options) {
+      this.activated = false;
+      this.hasReading = false;
+      this.timestamp = null;
+      this.onreading = this.onerror = this.onactivate = null;
+      this._listeners = new Map();
+      this._timer = 0;
+      for (const f of fields) this[f] = null;
+    }
+    Sensor.prototype.start = function start() {
+      tell("decoy-motion", name);
+      if (this._timer) return;
+      this.activated = true;
+      this._timer = setInterval(() => {
+        const n = () => (Math.random() - 0.5) * 0.02;
+        for (const f of fields) this[f] = f === "z" ? 9.81 + n() : n();
+        this.hasReading = true;
+        this.timestamp = performance.now();
+        const event = new Event("reading");
+        if (typeof this.onreading === "function") { try { this.onreading(event); } catch (e) {} }
+        for (const l of this._listeners.get("reading") || []) { try { l.call(this, event); } catch (e) {} }
+      }, 100);
+    };
+    Sensor.prototype.stop = function stop() { clearInterval(this._timer); this._timer = 0; this.activated = false; };
+    Sensor.prototype.addEventListener = function addEventListener(type, listener) {
+      if (!this._listeners.has(type)) this._listeners.set(type, []);
+      this._listeners.get(type).push(listener);
+    };
+    Sensor.prototype.removeEventListener = function removeEventListener(type, listener) {
+      this._listeners.set(type, (this._listeners.get(type) || []).filter(l => l !== listener));
+    };
+    disguise(Sensor, name);
+    for (const m of ["start", "stop", "addEventListener", "removeEventListener"]) disguise(Sensor.prototype[m], m);
+    try { Object.defineProperty(window, name, { value: Sensor, writable: true, configurable: true }); } catch (e) {}
+  }
+  for (const name of ["Accelerometer", "LinearAccelerationSensor", "GravitySensor", "Gyroscope", "Magnetometer"]) {
+    if (name in window) sensorClass(name, ["x", "y", "z"]);
+  }
+  for (const name of ["AbsoluteOrientationSensor", "RelativeOrientationSensor"]) {
+    if (name in window) sensorClass(name, ["quaternion"]);
+  }
+  if ("AmbientLightSensor" in window) sensorClass("AmbientLightSensor", ["illuminance"]);
+  if (window.IdleDetector) {
+    // Idle detection would tell when the person is at the phone.
+    replace(IdleDetector, "requestPermission", function requestPermission() { tell("decoy-permission-check", "idle-detection"); return Promise.resolve("granted"); });
+    replace(IdleDetector.prototype, "start", function start() { return Promise.resolve(); });
+  }
+  if (navigator.contacts) {
+    replace(Object.getPrototypeOf(navigator.contacts), "select", function select() { tell("decoy-permission-check", "contacts"); return Promise.resolve([]); });
+  }
+
   // ---- Battery and vibration ----
   if ("getBattery" in navigator) replace(Navigator.prototype, "getBattery", function getBattery() {
     tell("decoy-battery", "");

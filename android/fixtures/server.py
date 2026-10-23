@@ -117,6 +117,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 ARRIVALS.append(f"tcp {url.path[5:]} host={self.headers.get('Host')}")
             print(f"HIT {url.path} Host={self.headers.get('Host')}", flush=True)
             return self.send_bytes(b"hit", "text/plain", [("Access-Control-Allow-Origin", "*")])
+        if url.path == "/echo-headers":
+            # What the browser sent with this request: names and values, so a test can look for what it must not send.
+            body = json.dumps({k.lower(): v for k, v in self.headers.items()}).encode()
+            return self.send_bytes(body, "application/json")
         if url.path == "/arrivals":
             with LOCK:
                 body = json.dumps(ARRIVALS).encode()

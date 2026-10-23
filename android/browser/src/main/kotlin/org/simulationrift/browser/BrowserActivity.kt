@@ -79,6 +79,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import androidx.webkit.WebViewMediaIntegrityApiStatusConfig
@@ -143,6 +144,9 @@ class BrowserActivity : ComponentActivity() {
     @Volatile private var filtering = false
     @Volatile private var pageUrl = ""
     private val blockedCount = AtomicInteger()
+    /** Requests asked about and the time the answers took, for the log: how much the filters cost a page. */
+    private val askedCount = AtomicInteger()
+    private val askedNanos = java.util.concurrent.atomic.AtomicLong()
     private var blocked by mutableStateOf(0)
     private var filtersShown by mutableStateOf(false)
     private val polling = Handler(Looper.getMainLooper())
@@ -272,6 +276,9 @@ class BrowserActivity : ComponentActivity() {
             // this stops the engine sooner, before any request goes direct.
             lockWatch = NetworkLock.watch(this) { exitProcess("network lock lost") }
         }
+        // The device's time zone names where it is. Chromium reads the process's default
+        // (Java's) and tells its renderers, so every page sees UTC.
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"))
         webView = createWebView()
         refreshFiltering()
         screen = Screen.Page
@@ -434,6 +441,9 @@ class BrowserActivity : ComponentActivity() {
         // setting on the window does not reach the engine's virtual views.
         importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
         settings.apply {
+            // The default user agent names the phone's model, its build and its Android
+            // version. Pages get the one every Chrome on Android sends (its reduced form).
+            userAgentString = genericUserAgent()
             // Sites need it. No Java object is ever exposed to pages (INV-6);
             // the decoys' report channel takes strings only (Decoys).
             javaScriptEnabled = true
@@ -471,6 +481,29 @@ class BrowserActivity : ComponentActivity() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ENTERPRISE_AUTHENTICATION_APP_LINK_POLICY)) {
             WebSettingsCompat.setEnterpriseAuthenticationAppLinkPolicyEnabled(settings, false)
         }
+        // The same for the client hints (Sec-CH-UA): no model, no "Android WebView" brand.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+            val major = chromeMajor()
+            val brand = { name: String, version: String -> UserAgentMetadata.BrandVersion.Builder().setBrand(name).setMajorVersion(version).setFullVersion("$version.0.0.0").build() }
+            WebSettingsCompat.setUserAgentMetadata(
+                settings,
+                UserAgentMetadata.Builder()
+                    .setBrandVersionList(listOf(brand("Chromium", "$major"), brand("Google Chrome", "$major"), brand("Not-A.Brand", "99")))
+                    .setFullVersion("$major.0.0.0")
+                    .setPlatform("Android")
+                    .setPlatformVersion("10.0.0")
+                    .setMobile(true)
+                    .setModel("")
+                    .setArchitecture("")
+                    .build(),
+            )
+        }
+        // Every request carries this app's package name in X-Requested-With. WebView has a control
+        // for it (an empty allow list); on WebView 124 it was set and the header was still sent (I1),
+        // so it is asked for where it exists and the header is reported, not claimed gone.
+        val dropsHeader = WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)
+        Log.i(TAG, "X-Requested-With control: ${if (dropsHeader) "available" else "not available in this WebView"}")
+        if (dropsHeader) WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
         webViewClient = Client()
         webChromeClient = Chrome()
         // Before any page loads: decoys for what pages ask for (§10.5).
@@ -481,6 +514,14 @@ class BrowserActivity : ComponentActivity() {
         setDownloadListener { url, userAgent, contentDisposition, _, _ ->
             submitDownload(url, userAgent, contentDisposition)
         }
+    }
+
+    /** Chrome's reduced user agent for the engine's major version: no model, no build, no "wv". */
+    private fun chromeMajor(): Int = WebView.getCurrentWebViewPackage()?.versionName?.substringBefore('.')?.toIntOrNull() ?: FALLBACK_CHROME_MAJOR
+
+    private fun genericUserAgent(): String {
+        val major = chromeMajor()
+        return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$major.0.0.0 Mobile Safari/537.36"
     }
 
     private fun submitDownload(url: String, userAgent: String, contentDisposition: String?) {
@@ -565,10 +606,14 @@ class BrowserActivity : ComponentActivity() {
             // Pages are the core's to judge (decide); the filters take away what a page loads.
             if (!filtering || request.isForMainFrame) return null
             val connected = core ?: return null
+            val started = System.nanoTime()
             val isBlocked = try {
                 connected.blockRequest(generation, request.url.toString(), pageUrl, ContentKind.of(request))
             } catch (e: RemoteException) {
                 return null
+            } finally {
+                askedCount.incrementAndGet()
+                askedNanos.addAndGet(System.nanoTime() - started)
             }
             if (!isBlocked) return null
             blocked = blockedCount.incrementAndGet()
@@ -580,6 +625,10 @@ class BrowserActivity : ComponentActivity() {
         }
 
         override fun onPageFinished(view: WebView, url: String) {
+            val asked = askedCount.get()
+            if (filtering && asked > 0) {
+                Log.i(TAG, "content filters: $asked requests asked about, ${askedNanos.get() / 1_000_000} ms in all (${askedNanos.get() / 1_000 / asked} us each), ${blockedCount.get()} blocked")
+            }
             if (filtering) {
                 hideElements(view, url, generic = true)
                 // Content added after the load.
@@ -878,6 +927,7 @@ class BrowserActivity : ComponentActivity() {
         private const val ATTEMPT_REPORT_MS = 1_000L
         private const val MAX_REPORTED = 256
         private const val LATE_HIDING_MS = 2_500L
+        private const val FALLBACK_CHROME_MAJOR = 120
         private const val MAX_NAMES = 1_500
         private const val MAX_NAME_CHARS = 100
         private const val MAX_NAMES_REPLY_CHARS = 300_000
