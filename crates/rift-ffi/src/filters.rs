@@ -47,6 +47,34 @@ impl ContentFilters {
         }
     }
 
+    /// Keeps the compiled lists in the file at `path` (written whole, then moved into place), so
+    /// that the next start loads them instead of compiling them again. False if it could not be written.
+    pub fn save(&self, path: String) -> bool {
+        let Some(filters) = self.get() else {
+            return false;
+        };
+        let target = std::path::Path::new(&path);
+        let temporary = target.with_extension("tmp");
+        std::fs::write(&temporary, filters.save()).is_ok()
+            && std::fs::rename(&temporary, target).is_ok()
+    }
+
+    /// Loads the lists kept by [`ContentFilters::save`]; false if there is no such file or the engine
+    /// does not accept it (another version of Rift, a damaged file): compile the lists then.
+    pub fn load_saved(&self, path: String) -> bool {
+        let Ok(bytes) = std::fs::read(&path) else {
+            return false;
+        };
+        let Some(filters) = Filters::from_saved(&bytes) else {
+            return false;
+        };
+        if let Ok(mut current) = self.current.write() {
+            *current = Some(Arc::new(filters));
+            return true;
+        }
+        false
+    }
+
     /// Whether the lists are loaded.
     pub fn is_loaded(&self) -> bool {
         self.get().is_some()

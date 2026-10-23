@@ -5,6 +5,7 @@ import android.util.Log
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +50,26 @@ object ContentFilter {
             "https://easylist.to/easylist/fanboy-social.txt", true,
         ),
         Source(
+            "adguard-popups", "AdGuard pop-ups", "Pop-ups, overlays and \u201Clog in to continue\u201D walls on Facebook, Instagram, X and others.",
+            "https://filters.adtidy.org/extension/ublock/filters/19.txt", true,
+        ),
+        Source(
+            "adguard-social", "AdGuard social media", "Social buttons, widgets and sign-in prompts from Facebook, Instagram, X and more.",
+            "https://filters.adtidy.org/extension/ublock/filters/4.txt", true,
+        ),
+        Source(
+            "adguard-appbanners", "AdGuard app banners", "\u201COpen in the app\u201D and \u201CGet the app\u201D banners.",
+            "https://filters.adtidy.org/extension/ublock/filters/20.txt", true,
+        ),
+        Source(
+            "adguard-widgets", "AdGuard widgets", "Chat boxes, floating buttons and other page widgets.",
+            "https://filters.adtidy.org/extension/ublock/filters/22.txt", true,
+        ),
+        Source(
+            "fanboy-antifacebook", "Anti-Facebook", "Facebook's own trackers and widgets on other sites.",
+            "https://secure.fanboy.co.nz/fanboy-antifacebook.txt", true,
+        ),
+        Source(
             "fanboy-cookie", "Cookie notices", "The EasyList cookie banner list.",
             "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt", true,
         ),
@@ -75,7 +96,15 @@ object ContentFilter {
     )
 
     /** One list as the Filters tab shows it. */
-    data class ListState(val on: Boolean, val downloaded: Boolean, val rules: Int, val updated: Long?)
+    data class ListState(
+        val on: Boolean,
+        val downloaded: Boolean,
+        val rules: Int,
+        /** When Rift downloaded it. */
+        val updated: Long?,
+        /** The list's own date or version, from its header: how fresh upstream's copy was. */
+        val upstream: String? = null,
+    )
 
     data class State(
         val enabled: Boolean = true,
@@ -90,10 +119,16 @@ object ContentFilter {
         val blocked: Long = 0,
     )
 
+    /** [State.busy] while the lists already downloaded are applied: switches stay usable meanwhile. */
+    const val APPLYING = "Applying the lists…"
+
     private const val TAG = "RiftFilters"
     private const val DIR = "rift/filters"
     private const val SETTINGS = "settings.json"
     private const val CUSTOM = "custom.txt"
+    private const val COUNTS = "counts.json"
+    private const val ENGINE_FILE = "engine.bin"
+    private const val ENGINE_KEY_FILE = "engine.key"
     private const val MAX_CUSTOM_CHARS = 100_000
     private const val MAX_PAGE_NAMES = 1_500
     private const val MAX_NAME_CHARS = 100
@@ -104,41 +139,65 @@ object ContentFilter {
 
     private val work = Executors.newSingleThreadExecutor { Thread(it, "rift-filters") }
     private val blockedTotal = AtomicLong()
+    private val askNanos = AtomicLong()
+    private val askCount = AtomicLong()
+    @Volatile private var lastSpent = 0L
+    /** A rebuild is waiting on [work]: changes made before it starts are all in it. */
+    private val rebuildQueued = AtomicBoolean()
 
     /** Created on first use: it needs the native library, which Core has loaded by then. */
     private val engine by lazy { ContentFilters() }
 
     private lateinit var dir: File
 
-    /** From Core.ensureStarted (main thread): reads the choices, then builds the engine off it. */
+    /** Rift's install time: a new install compiles the lists again, whatever format the engine keeps. */
+    private var appVersion = 0L
+
+    /** From Core.ensureStarted (main thread): returns at once; the choices are read and the engine loaded on the worker. */
     fun init(context: Context) {
         dir = File(context.filesDir, DIR).apply { mkdirs() }
-        _state.value = read()
-        work.execute { rebuild() }
+        appVersion = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        // Reading the lists to count their rules takes a while: never on the main thread.
+        work.execute {
+            _state.value = read()
+            rebuild()
+        }
     }
 
     fun setEnabled(on: Boolean) {
         update { it.copy(enabled = on) }
-        work.execute { rebuild() }
+        requestRebuild()
     }
 
     /** Turns one list on or off; turning one on that is not downloaded downloads it. */
     fun setList(id: String, on: Boolean) {
         val before = _state.value.lists[id] ?: return
         update { it.copy(lists = it.lists + (id to before.copy(on = on))) }
-        if (on && !before.downloaded) download(listOf(id)) else work.execute { rebuild() }
+        if (on && !before.downloaded) download(listOf(id)) else requestRebuild()
     }
 
     fun setCustom(text: String) {
         val bounded = text.take(MAX_CUSTOM_CHARS)
-        try {
-            File(dir, CUSTOM).writeText(bounded)
-        } catch (e: IOException) {
-            _state.update { it.copy(message = "Your rules could not be saved: ${e.message}") }
-            return
+        work.execute {
+            try {
+                File(dir, CUSTOM).writeText(bounded)
+            } catch (e: IOException) {
+                _state.update { it.copy(message = "Your rules could not be saved: ${e.message}") }
+                return@execute
+            }
+            _state.update { it.copy(custom = bounded) }
+            rebuild()
         }
-        _state.update { it.copy(custom = bounded) }
-        work.execute { rebuild() }
+    }
+
+    /** Several switches flipped in a row cost one rebuild, not one each. */
+    private fun requestRebuild() {
+        if (rebuildQueued.compareAndSet(false, true)) {
+            work.execute {
+                rebuildQueued.set(false)
+                rebuild()
+            }
+        }
     }
 
     /** Downloads every list that is on (the ones that are not yet downloaded as well). */
@@ -175,25 +234,53 @@ object ContentFilter {
         }
     }
 
-    /** On [work]: compiles what is on, or nothing if filtering is off. */
+    /**
+     * On [work]: has the engine hold what is on, or nothing if filtering is off. Compiling the
+     * lists takes seconds on a phone, so the compiled engine is kept in a file (`engine.bin`)
+     * with a key made of Rift's version and each list's size and date, and loaded from it while
+     * the key still matches; a damaged or foreign file is refused by the engine and the lists are
+     * compiled again.
+     */
     private fun rebuild() {
         val now = _state.value
-        _state.update { it.copy(busy = it.busy ?: "Applying the lists…") }
-        val texts = if (!now.enabled) {
-            emptyList()
-        } else {
-            catalog.filter { now.lists[it.id]?.on == true }.mapNotNull { read(File(dir, "${it.id}.txt")) } +
-                listOfNotNull(now.custom.takeIf { it.isNotBlank() })
-        }
-        try {
-            engine.load(texts)
+        _state.update { it.copy(busy = it.busy ?: APPLYING) }
+        val on = if (now.enabled) catalog.filter { now.lists[it.id]?.on == true && File(dir, "${it.id}.txt").isFile } else emptyList()
+        val custom = now.custom.takeIf { now.enabled && it.isNotBlank() }
+        val started = android.os.SystemClock.elapsedRealtime()
+        val loaded = try {
+            if (on.isEmpty() && custom == null) {
+                engine.load(emptyList())
+                false
+            } else {
+                val key = cacheKey(on, custom)
+                val cache = File(dir, ENGINE_FILE)
+                val keyFile = File(dir, ENGINE_KEY_FILE)
+                if (read(keyFile) == key && engine.loadSaved(cache.path)) {
+                    Log.i(TAG, "filters loaded from the saved engine in ${android.os.SystemClock.elapsedRealtime() - started} ms")
+                } else {
+                    keyFile.delete()
+                    engine.load(on.mapNotNull { read(File(dir, "${it.id}.txt")) } + listOfNotNull(custom))
+                    Log.i(TAG, "filters compiled: ${on.size} lists in ${android.os.SystemClock.elapsedRealtime() - started} ms")
+                    if (engine.save(cache.path)) keyFile.writeText(key) else Log.w(TAG, "the compiled engine could not be saved")
+                }
+                true
+            }
         } catch (e: Exception) {
             Log.e(TAG, "the filter engine could not load the lists", e)
             _state.update { it.copy(busy = null, ready = false, message = "The lists could not be loaded: ${e.message}") }
             return
         }
-        _state.update { it.copy(busy = if (it.busy == "Applying the lists…") null else it.busy, ready = texts.isNotEmpty()) }
-        Log.i(TAG, "filters ${if (texts.isEmpty()) "off" else "loaded: ${texts.size} lists"}")
+        _state.update { it.copy(busy = if (it.busy == APPLYING) null else it.busy, ready = loaded) }
+        if (!loaded) Log.i(TAG, "filters off")
+    }
+
+    /** What the compiled engine was made from: Rift's own version, and each list's size and date, and the user's rules. */
+    private fun cacheKey(on: List<Source>, custom: String?): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        digest.update("$appVersion".toByteArray())
+        for (source in on) File(dir, "${source.id}.txt").let { digest.update("${source.id} ${it.length()} ${it.lastModified()}".toByteArray()) }
+        digest.update((custom ?: "").toByteArray())
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     // ---- Asked by the browser app (CoreService); never on the main thread ----
@@ -217,7 +304,10 @@ object ContentFilter {
 
     fun blocks(url: String, page: String, kind: String): Boolean {
         if (url.length > MAX_URL_CHARS || page.length > MAX_URL_CHARS) return false
+        val t0 = System.nanoTime()
         val blocked = guarded("blocks", false) { engine.blocks(url, page, kind.take(MAX_NAME_CHARS)) }
+        val spent = askNanos.addAndGet(System.nanoTime() - t0)
+        if (askCount.incrementAndGet() % 100 == 0L) { Log.i(TAG, "TIMING engine.blocks: calls ${askCount.get()}, last 100 took ${(spent - lastSpent) / 100 / 1000} us each"); lastSpent = spent }
         if (blocked) {
             val total = blockedTotal.incrementAndGet()
             if (total % COUNT_PUBLISH_EVERY == 1L) _state.update { it.copy(blocked = total) }
@@ -245,9 +335,10 @@ object ContentFilter {
 
     // ---- Settings on disk ----
 
+    /** Changes the choices at once; they are written to disk on [work]. */
     private fun update(change: (State) -> State) {
         _state.update(change)
-        save()
+        work.execute { save() }
     }
 
     private fun save() {
@@ -276,8 +367,9 @@ object ContentFilter {
                 s.id to ListState(
                     on = on?.optBoolean(s.id, s.defaultOn) ?: s.defaultOn,
                     downloaded = file.isFile,
-                    rules = if (file.isFile) ruleCount(file) else 0,
+                    rules = if (file.isFile) cachedRuleCount(s.id, file) else 0,
                     updated = file.lastModified().takeIf { file.isFile },
+                    upstream = if (file.isFile) upstreamVersion(file) else null,
                 )
             },
             custom = read(File(dir, CUSTOM)).orEmpty(),
@@ -291,6 +383,38 @@ object ContentFilter {
         null
     }
 
+    /**
+     * The rule count of a list, counted once per version of the file: the size is the key, kept in
+     * `counts.json`, so starting Rift does not read ten megabytes to print a number.
+     */
+    private fun cachedRuleCount(id: String, file: File): Int {
+        val known = try {
+            JSONObject(read(File(dir, COUNTS)) ?: "{}")
+        } catch (e: JSONException) {
+            JSONObject()
+        }
+        known.optJSONArray(id)?.let { if (it.optLong(0) == file.length()) return it.optInt(1) }
+        val count = ruleCount(file)
+        try {
+            known.put(id, org.json.JSONArray().put(file.length()).put(count))
+            File(dir, COUNTS).writeText(known.toString())
+        } catch (e: IOException) {
+            Log.w(TAG, "rule counts not saved", e)
+        }
+        return count
+    }
+
+    /** A list states its own freshness in a comment near the top (`! Last modified:` or `! Version:`). */
+    private fun upstreamVersion(file: File): String? = try {
+        file.useLines { lines ->
+            lines.take(40).mapNotNull { line ->
+                UPSTREAM_DATE.find(line)?.groupValues?.get(1)?.trim()
+            }.firstOrNull()?.take(40)
+        }
+    } catch (e: IOException) {
+        null
+    }
+
     /** Lines that are rules: not empty, not comments, not section headers. */
     private fun ruleCount(file: File): Int = try {
         file.useLines { lines -> lines.count { it.isNotBlank() && !it.startsWith("!") && !it.startsWith("[") } }
@@ -299,4 +423,5 @@ object ContentFilter {
     }
 
     private const val COUNT_PUBLISH_EVERY = 25L
+    private val UPSTREAM_DATE = Regex("^!\\\\s*(?:Last modified|Version|TimeUpdated)\\\\s*:\\\\s*(.+)$", RegexOption.IGNORE_CASE)
 }

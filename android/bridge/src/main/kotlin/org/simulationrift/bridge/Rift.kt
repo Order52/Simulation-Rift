@@ -39,6 +39,26 @@ object Rift {
      * permission, so that a component exported by mistake still refuses
      * every other app.
      */
+    /** Callers [requireCallerFast] has verified, by UID, with the time (elapsedRealtime) their check holds until. */
+    private val verifiedCallers = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+
+    /**
+     * [requireCaller] for calls that come hundreds of times for a page (the content filters'): two
+     * PackageManager round trips per call cost more than the answer. A caller that passed is
+     * accepted again for [FAST_CHECK_MS] without them; a failure is never kept, and the UID the
+     * call comes from is the kernel's, so only a reinstall of the browser app inside that window
+     * could differ (the control calls still check every time).
+     */
+    fun requireCallerFast(context: Context, expectedPackage: String) {
+        val caller = Binder.getCallingUid()
+        val now = android.os.SystemClock.elapsedRealtime()
+        if ((verifiedCallers[caller] ?: 0L) > now) return
+        requireCaller(context, expectedPackage)
+        verifiedCallers[caller] = now + FAST_CHECK_MS
+    }
+
+    private const val FAST_CHECK_MS = 5_000L
+
     fun requireCaller(context: Context, expectedPackage: String) {
         val caller = Binder.getCallingUid()
         val packages = context.packageManager

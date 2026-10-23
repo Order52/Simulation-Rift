@@ -84,6 +84,22 @@ impl Filters {
         }
     }
 
+    /// The compiled lists as bytes, to be kept and loaded again by [`Filters::from_saved`] (a
+    /// cache: the format is the engine's own and changes between versions of it).
+    #[must_use]
+    pub fn save(&self) -> Vec<u8> {
+        self.engine.serialize()
+    }
+
+    /// The lists as saved by [`Filters::save`]; `None` if the bytes are not a set the engine accepts
+    /// (another version, a damaged file): the engine verifies them, and the caller compiles the lists again.
+    #[must_use]
+    pub fn from_saved(bytes: &[u8]) -> Option<Self> {
+        let mut engine = Engine::default();
+        engine.deserialize(bytes).ok()?;
+        Some(Self { engine })
+    }
+
     /// Whether a request for `url`, made by the page at `page` for a `kind` of resource, is blocked.
     /// `kind` is one of the engine's request kinds; anything else counts as `other`.
     #[must_use]
@@ -172,6 +188,40 @@ fn safe_selector(selector: &str) -> bool {
             .any(|c| matches!(c, '{' | '}' | ';' | '@' | '\\' | '<') || c.is_control())
         && !selector.to_ascii_lowercase().contains("url(")
         && !selector.to_ascii_lowercase().contains("expression(")
+        && !is_procedural(selector)
+}
+
+/// Selectors only a blocker's own engine understands (uBlock's and AdGuard's
+/// procedural cosmetic filters: `:has-text()`, `:contains()`, `:xpath()`…). In
+/// a style sheet they match nothing and spoil only their own rule, so they
+/// are not sent; the browser has no engine for them, and none is added.
+fn is_procedural(selector: &str) -> bool {
+    const MARKERS: &[&str] = &[
+        ":has-text(",
+        ":contains(",
+        ":-abp-",
+        ":xpath(",
+        ":matches-css",
+        ":matches-attr(",
+        ":matches-media(",
+        ":matches-path(",
+        ":min-text-length(",
+        ":nth-ancestor(",
+        ":upward(",
+        ":remove(",
+        ":style(",
+        ":others(",
+        ":watch-attr(",
+        ":not-has(",
+        ":if(",
+        ":if-not(",
+        ":-js-",
+        "[-ext-",
+        ":properties(",
+        ":withtext(",
+    ];
+    let lower = selector.to_ascii_lowercase();
+    MARKERS.iter().any(|m| lower.contains(m))
 }
 
 #[cfg(test)]
@@ -340,6 +390,38 @@ mod tests {
                     proptest::prop_assert!(selector.is_some_and(safe_selector), "{line:?}");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_saved_set_answers_as_the_original_and_damage_is_refused() {
+        let f = filters();
+        let saved = f.save();
+        let again = Filters::from_saved(&saved).expect("loads");
+        assert!(again.blocks(
+            "https://ads.example/a.js",
+            "https://news.example/",
+            "script"
+        ));
+        assert!(!again.blocks(
+            "https://ads.example/ok.js",
+            "https://news.example/",
+            "script"
+        ));
+        assert_eq!(
+            again.cosmetic("https://news.example/").css,
+            f.cosmetic("https://news.example/").css
+        );
+        assert!(Filters::from_saved(&[]).is_none());
+        assert!(Filters::from_saved(b"not a saved set").is_none());
+        let mut damaged = saved;
+        let middle = damaged.len() / 2;
+        if let Some(byte) = damaged.get_mut(middle) {
+            *byte ^= 0xff;
+        }
+        // Either refused, or still a set that does not panic.
+        if let Some(loaded) = Filters::from_saved(&damaged) {
+            let _ = loaded.blocks("https://ads.example/a.js", "https://n.example/", "script");
         }
     }
 

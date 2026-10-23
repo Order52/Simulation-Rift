@@ -77,22 +77,22 @@ class CoreService : Service() {
         }
 
         override fun filtersOn(generation: Long): Boolean {
-            checkCaller()
+            checkCallerFast()
             return Core.isBrowser(generation) && ContentFilter.active()
         }
 
         override fun blockRequest(generation: Long, url: String, page: String, kind: String): Boolean {
-            checkCaller()
+            checkCallerFast()
             return Core.isBrowser(generation) && ContentFilter.blocks(url, page, kind)
         }
 
         override fun hidingFor(generation: Long, url: String): Bundle {
-            checkCaller()
+            checkCallerFast()
             return (if (Core.isBrowser(generation)) ContentFilter.hiding(url) else PageHiding.NONE).toBundle()
         }
 
         override fun genericHiding(generation: Long, classes: List<String>, ids: List<String>, exceptions: List<String>): String {
-            checkCaller()
+            checkCallerFast()
             return if (Core.isBrowser(generation)) ContentFilter.generic(classes, ids, exceptions) else ""
         }
 
@@ -103,6 +103,9 @@ class CoreService : Service() {
     }
 
     private fun checkCaller() = Rift.requireCaller(this, Rift.BROWSER_PACKAGE)
+
+    /** For the content filters' calls, which come for every request of a page. */
+    private fun checkCallerFast() = Rift.requireCallerFast(this, Rift.BROWSER_PACKAGE)
 
     override fun onBind(intent: Intent): IBinder {
         Core.ensureStarted(this)
