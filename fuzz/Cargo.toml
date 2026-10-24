@@ -105,3 +105,10 @@ path = "fuzz_targets/link_clean.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "url_model"
+path = "fuzz_targets/url_model.rs"
+test = false
+doc = false
+bench = false
