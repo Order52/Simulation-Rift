@@ -308,9 +308,9 @@ class SecurityTest {
                         inputSwipe(w / 2, h * 3 / 4, w / 2, h / 2)
                         device.waitForIdle()
                     }
-                    throw AssertionError("the file's View safely button is not on the home screen (its name is shown: $listed; trees in n6-tree-*.xml)")
+                    throw AssertionError("the file's View in Rift button is not on the home screen (its name is shown: $listed; trees in n6-tree-*.xml)")
                 }
-            // And "View safely" opens it again. Brought to mid-screen first (a
+            // And "View in Rift" opens it again. Brought to mid-screen first (a
             // button at the edge can be under the gesture bar), found afresh
             // for each tap, and tapped twice at most.
             val h = device.displayHeight
@@ -320,7 +320,7 @@ class SecurityTest {
                 device.findObject(By.res("preview-${file.id}"))?.click()
                 device.wait(Until.hasObject(By.res("preview-image-${file.id}")), UI_TIMEOUT_MS) == true
             }
-            assertTrue("View safely opened the viewer", opened)
+            assertTrue("View in Rift opened the viewer", opened)
             device.pressBack()
             assertNotNull(device.wait(Until.findObject(By.res("session")), UI_TIMEOUT_MS))
 
@@ -487,7 +487,7 @@ class SecurityTest {
         assertTrue("${listed.outcome}", listed.outcome is TraceOutcome.Stopped)
         assertEquals(1, listed.hops.size)
         assertNull(listed.hops[0].status)
-        assertEquals(4, severity(listed.hops[0].check))
+        assertEquals(5, severity(listed.hops[0].check))
         val local = Core.trace(fixture("/s1.html"))
         val failed = local.outcome as? TraceOutcome.Failed ?: throw AssertionError("${local.outcome}")
         assertNull(local.hops.single().status)
@@ -499,7 +499,7 @@ class SecurityTest {
     /**
      * Sharing to Rift (§10.1): a shared link is checked at once and the
      * verdict shown in a sheet over the sharing app, with what was found on
-     * request, and opened only by Open safely, which goes through the
+     * request, and opened only by Open in Rift, which goes through the
      * core's checks again. Text without a link gets no Open. A picture that
      * another app shares, readable only through its grant, still reaches
      * the viewer through the sheet's activity.
@@ -611,6 +611,90 @@ class SecurityTest {
      * never resolves, so the proxy's next check refuses it, which shows the
      * database's refusal was lifted for that host only.
      */
+    /**
+     * Check's threat lists (§10.12) and history (§10.13): a host on a danger
+     * list is called dangerous and on a warning list a warning sign, with the
+     * list named; a most visited site is never flagged by a list; the history
+     * is off until switched on, then keeps each check, encrypted, checks a
+     * link again on a tap, and turning it off deletes it. Lists are installed
+     * from text, as a download would be, so the test needs no network.
+     */
+    @Test
+    fun v5_threatListsAndHistory() {
+        ThreatLists.install("hagezi-tif", "listed-dangerous.example\ndocs.google.com\n")
+        ThreatLists.install("stevenblack", "0.0.0.0 ads.listed.example\n")
+        awaitCondition("the lists are loaded", UI_TIMEOUT_MS) {
+            ThreatLists.state.value.lists["hagezi-tif"]?.hosts == 2L && ThreatLists.state.value.lists["stevenblack"]?.hosts == 1L
+        }
+        assertEquals(listOf("hagezi-tif"), Core.check("https://login.listed-dangerous.example/verify").listed)
+        assertEquals(listOf("stevenblack"), Core.check("https://ads.listed.example/x").listed)
+        assertTrue("a most visited site", Core.check("https://docs.google.com/forms/d/x").listed.isEmpty())
+        assertTrue("an unlisted site", Core.check("https://news.example/").listed.isEmpty())
+        assertFalse("off by default", CheckHistory.state.value.on)
+        val home = openHome()
+        try {
+            scrollHomeTo(By.res("home-address"), "address field").text = "https://login.listed-dangerous.example/verify"
+            (awaitFresh { device.findObject(By.res("check").enabled(true)) } ?: throw AssertionError("check button")).click()
+            assertEquals("Listed as dangerous", awaitFresh { device.findObject(By.res("check-title")) }?.text)
+            val named = scrollHomeTo(By.res("check-lists"), "the lists line")
+            assertTrue(named.text, named.text.contains("HaGeZi Threat Intelligence Feeds"))
+            screenshot("v5-listed")
+            assertTrue("nothing kept while off", CheckHistory.state.value.entries.isEmpty())
+
+            CheckHistory.setOn(true)
+            awaitCondition("history on") { CheckHistory.state.value.on }
+            Core.check("https://ads.listed.example/x")
+            awaitCondition("the check is kept") { CheckHistory.state.value.entries.firstOrNull()?.verdict == "Warning signs" }
+            val saved = File(context.filesDir, "rift/history/history.bin")
+            awaitCondition("the history is saved") { saved.isFile }
+            assertFalse("the file is encrypted", saved.readBytes().toString(Charsets.ISO_8859_1).contains("listed.example"))
+            requireNotNull(device.wait(Until.findObject(By.res("tab-activity")), UI_TIMEOUT_MS)) { "Activity tab" }.click()
+            scrollHomeTo(By.res("history-0"), "the history's first link").click()
+            assertEquals("Warning signs", awaitFresh { device.findObject(By.res("check-title")) }?.text)
+            scrollHomeTo(By.res("check-address").text("https://ads.listed.example/x"), "the link checked again")
+            screenshot("v5-again")
+
+            CheckHistory.setOn(false)
+            awaitCondition("history off") { !CheckHistory.state.value.on }
+            assertFalse("the file is deleted", File(context.filesDir, "rift/history/history.bin").exists())
+            requireNotNull(device.wait(Until.findObject(By.res("tab-home")), UI_TIMEOUT_MS)) { "tabs" }.click()
+            report("v5", "danger list named, warning list named, popular site not flagged, history kept encrypted, checked again, deleted")
+        } finally {
+            CheckHistory.setOn(false)
+            ThreatLists.remove()
+            home.finish()
+        }
+    }
+
+    /**
+     * The real threat lists (§10.12), by hand only: downloaded from their
+     * projects through the core's fetcher, loaded, and timed, with the
+     * controller's memory before and after. Needs the network.
+     */
+    @Test
+    fun v6_realThreatListsLoad() {
+        assumeTrue("by hand: -e lists real", InstrumentationRegistry.getArguments().getString("lists") == "real")
+        val before = Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() } + android.os.Debug.getNativeHeapAllocatedSize()
+        val started = SystemClock.elapsedRealtime()
+        ThreatLists.download()
+        awaitCondition("the lists downloaded", 300_000) {
+            ThreatLists.state.value.let { !it.busy && it.message != null && it.downloaded }
+        }
+        val took = SystemClock.elapsedRealtime() - started
+        System.gc()
+        val after = Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() } + android.os.Debug.getNativeHeapAllocatedSize()
+        val lists = ThreatLists.state.value.lists
+        val times = (1..1000).map { i ->
+            val t = System.nanoTime()
+            Core.check("https://host$i.example/path")
+            System.nanoTime() - t
+        }.sorted()
+        report("v6", "${ThreatLists.state.value.message} in $took ms; " +
+            lists.entries.joinToString { "${it.key} ${it.value.hosts} hosts${it.value.error?.let { e -> " ($e)" } ?: ""}" } +
+            "; memory ${(after - before) / 1_048_576} MB more; check p50 ${times[500] / 1000} us, p95 ${times[950] / 1000} us")
+        assertTrue(lists.values.all { it.error == null && it.hosts > 0 })
+    }
+
     @Test
     fun v4_aListedLinkOpensOnlyInANewSessionAfterTheWarning() {
         Core.installDemoIntel()
