@@ -5,7 +5,7 @@
 //! token; Linux's has no listener and serves the connections the browser
 //! host forwards ([`Sessions::forwarded_egress`]).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use rift_core::egress::{
     Denial, Egress, EgressCounts, EgressPolicy, ForwardedEgress, Refusal, Remark, Screen,
@@ -48,6 +48,9 @@ pub struct EgressStats {
     /// The most recent destinations let through with a remark (Rift AI),
     /// oldest first.
     pub remarks: Vec<EgressRemark>,
+    /// The distinct destinations let through (`host:port`, escaped), first
+    /// seen first; at most 64.
+    pub contacted: Vec<String>,
 }
 
 /// A destination let through that Rift AI rates High, escaped for the UI.
@@ -93,12 +96,13 @@ impl Sessions {
             .current(generation)
             .ok_or(EgressFailure::NoActiveSession)?;
         if extras.egress.is_none() {
-            let started =
-                Egress::start(policy(&extras.local_hosts), screen(intel, ai)).map_err(|e| {
-                    EgressFailure::Start {
-                        detail: e.to_string(),
-                    }
-                })?;
+            let started = Egress::start(
+                policy(&extras.local_hosts),
+                screen(intel, ai, Arc::clone(&extras.inspected)),
+            )
+            .map_err(|e| EgressFailure::Start {
+                detail: e.to_string(),
+            })?;
             extras.egress = Some(Proxy::Loopback(started));
         }
         match extras.egress.as_ref() {
@@ -143,6 +147,11 @@ impl Sessions {
                     text: r.text,
                 })
                 .collect(),
+            contacted: egress
+                .contacted()
+                .into_iter()
+                .map(|(host, port)| destination(&host, port))
+                .collect(),
         })
     }
 }
@@ -163,7 +172,10 @@ impl Sessions {
             .current(generation)
             .ok_or(EgressFailure::NoActiveSession)?;
         if extras.egress.is_none() {
-            let started = ForwardedEgress::new(policy(&extras.local_hosts), screen(intel, None));
+            let started = ForwardedEgress::new(
+                policy(&extras.local_hosts),
+                screen(intel, None, Arc::clone(&extras.inspected)),
+            );
             extras.egress = Some(Proxy::Forwarded(Arc::new(started)));
         }
         match extras.egress.as_ref() {
@@ -218,6 +230,13 @@ impl Proxy {
             Self::Forwarded(egress) => egress.remarks(),
         }
     }
+
+    fn contacted(&self) -> Vec<(String, u16)> {
+        match self {
+            Self::Loopback(egress) => egress.contacted(),
+            Self::Forwarded(egress) => egress.contacted(),
+        }
+    }
 }
 
 fn policy(local_hosts: &[String]) -> EgressPolicy {
@@ -227,11 +246,19 @@ fn policy(local_hosts: &[String]) -> EgressPolicy {
     }
 }
 
-fn screen(intel: Option<Arc<Intel>>, ai: Option<Arc<Ai>>) -> Option<Arc<dyn Screen>> {
+fn screen(
+    intel: Option<Arc<Intel>>,
+    ai: Option<Arc<Ai>>,
+    inspected: Arc<Mutex<Vec<String>>>,
+) -> Option<Arc<dyn Screen>> {
     if intel.is_none() && ai.is_none() {
         return None;
     }
-    Some(Arc::new(RiftScreen { intel, ai }))
+    Some(Arc::new(RiftScreen {
+        intel,
+        ai,
+        inspected,
+    }))
 }
 
 /// `host:port` (an IPv6 literal in brackets), escaped for the UI.
@@ -253,11 +280,13 @@ fn describe(refusal: &Refusal) -> String {
 }
 
 /// The proxy's screen: the installed snapshot's URL indicators refuse,
-/// and Rift AI remarks.
+/// except on the hosts the user chose to open (`inspected`), and Rift AI
+/// remarks.
 #[derive(Debug)]
 struct RiftScreen {
     intel: Option<Arc<Intel>>,
     ai: Option<Arc<Ai>>,
+    inspected: Arc<Mutex<Vec<String>>>,
 }
 
 impl Screen for RiftScreen {
@@ -267,6 +296,14 @@ impl Screen for RiftScreen {
 
     fn listed(&self, url: &CanonicalUrl) -> Option<String> {
         let pack = self.intel.as_ref()?.pack()?;
+        // A lock that cannot be read lets nothing through.
+        let opened = self
+            .inspected
+            .lock()
+            .is_ok_and(|hosts| hosts.iter().any(|h| h == url.host()));
+        if opened {
+            return None;
+        }
         pack.urls
             .matches(url)
             .into_iter()

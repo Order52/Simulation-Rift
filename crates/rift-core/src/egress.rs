@@ -53,6 +53,8 @@ use crate::urlmodel::View;
 pub const MAX_HEAD_BYTES: usize = 16 * 1024;
 /// Denials kept for display, newest last.
 const MAX_DENIALS: usize = 64;
+/// Distinct destinations kept in [`Egress::contacted`]; later ones are counted only.
+const MAX_CONTACTED: usize = 64;
 const MAX_HOST_CHARS: usize = 253;
 const MAX_HEADERS: usize = 100;
 const THREAD_STACK: usize = 256 * 1024;
@@ -204,6 +206,8 @@ struct Shared {
     remarks: Mutex<VecDeque<Remark>>,
     /// Remarks recorded so far (the last [`Remark::seq`]); written under `remarks`.
     remarked: AtomicU64,
+    /// Distinct destinations let through, in the order first seen.
+    contacted: Mutex<Vec<(String, u16)>>,
     allowed: AtomicU64,
     denied: AtomicU64,
     unauthenticated: AtomicU64,
@@ -266,6 +270,11 @@ impl Egress {
     /// The most recent remarks on destinations let through, oldest first.
     pub fn remarks(&self) -> Vec<Remark> {
         self.shared.remarks()
+    }
+
+    /// The distinct destinations (host, port) let through, first seen first; at most 64.
+    pub fn contacted(&self) -> Vec<(String, u16)> {
+        self.shared.contacted()
     }
 
     pub fn counts(&self) -> EgressCounts {
@@ -333,6 +342,11 @@ impl ForwardedEgress {
         self.shared.remarks()
     }
 
+    /// The distinct destinations (host, port) let through, first seen first; at most 64.
+    pub fn contacted(&self) -> Vec<(String, u16)> {
+        self.shared.contacted()
+    }
+
     pub fn counts(&self) -> EgressCounts {
         self.shared.counts()
     }
@@ -365,6 +379,7 @@ impl Shared {
             recorded: AtomicU64::new(0),
             remarks: Mutex::new(VecDeque::new()),
             remarked: AtomicU64::new(0),
+            contacted: Mutex::new(Vec::new()),
             allowed: AtomicU64::new(0),
             denied: AtomicU64::new(0),
             unauthenticated: AtomicU64::new(0),
@@ -382,6 +397,10 @@ impl Shared {
 
     fn remarks(&self) -> Vec<Remark> {
         lock(&self.remarks).iter().cloned().collect()
+    }
+
+    fn contacted(&self) -> Vec<(String, u16)> {
+        lock(&self.contacted).clone()
     }
 
     fn counts(&self) -> EgressCounts {
@@ -533,6 +552,13 @@ fn serve(shared: &Shared, mut client: TcpStream) {
         return;
     }
     shared.allowed.fetch_add(1, Ordering::Relaxed);
+    {
+        let mut contacted = lock(&shared.contacted);
+        let key = (request.target.host.clone(), request.target.port);
+        if contacted.len() < MAX_CONTACTED && !contacted.contains(&key) {
+            contacted.push(key);
+        }
+    }
     let opening = match &request.form {
         Form::Connect => {
             if client
@@ -1097,6 +1123,7 @@ mod tests {
             "hello through the tunnel"
         );
         assert_eq!(p.counts().allowed, 1);
+        assert_eq!(p.contacted(), vec![("localhost".to_owned(), port)]);
     }
 
     #[test]

@@ -71,21 +71,24 @@ pub struct Navigator {
 impl Navigator {
     #[uniffi::constructor]
     pub fn new(protected_domains: Vec<String>, shorteners: Vec<String>) -> Arc<Self> {
-        Self::with_ai(protected_domains, shorteners, None)
+        Self::with_ai(protected_domains, shorteners, Vec::new(), None)
     }
 
-    /// As [`Navigator::new`], with Rift AI (§16) consulted after the
-    /// indicators: it can add a warning or a note, never a block.
+    /// As [`Navigator::new`], with the free-hosting platforms to note
+    /// (`hosting`) and Rift AI (§16) consulted after the indicators: it can
+    /// add a warning or a note, never a block.
     #[uniffi::constructor]
     pub fn with_ai(
         protected_domains: Vec<String>,
         shorteners: Vec<String>,
+        hosting: Vec<String>,
         ai: Option<Arc<Ai>>,
     ) -> Arc<Self> {
         Arc::new(Self {
             heuristics: HeuristicConfig {
                 protected_domains,
                 shorteners,
+                hosting,
                 ..HeuristicConfig::default()
             },
             ai,
@@ -134,6 +137,46 @@ impl Navigator {
                 inspect_anyway,
             },
         }
+    }
+}
+
+/// One fact about a loaded page (§10.5); `warn` marks those worth an alert.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PageFact {
+    pub code: String,
+    pub text: String,
+    pub warn: bool,
+}
+
+#[uniffi::export]
+impl Navigator {
+    /// What a page at `url` asks for, and whether it names itself after a
+    /// protected brand on another site. The facts come from the page and
+    /// are bounded here; nothing is returned for an address that does not
+    /// canonicalize.
+    pub fn assess_page(
+        &self,
+        url: String,
+        names: String,
+        password: bool,
+        card: bool,
+    ) -> Vec<PageFact> {
+        let Ok(canonical) = rift_core::urlcanon::canonicalize(url.as_bytes()) else {
+            return Vec::new();
+        };
+        let facts = rift_core::page::PageFacts {
+            names,
+            password,
+            card,
+        };
+        rift_core::page::assess(&canonical, &facts, &self.heuristics.protected_domains)
+            .iter()
+            .map(|flag| PageFact {
+                code: flag.code().to_owned(),
+                text: flag.explain(canonical.host()),
+                warn: flag.severity() == rift_core::heuristics::Severity::Warn,
+            })
+            .collect()
     }
 }
 
@@ -306,6 +349,9 @@ struct SessionExtras {
     /// Set by reset; downloads stop at their next chunk (§15 step 1).
     cancel: Arc<AtomicBool>,
     local_hosts: Vec<String>,
+    /// Hosts of known-malicious links the user chose to open in this
+    /// session (§10.4); the proxy lets them through, and only them.
+    inspected: Arc<Mutex<Vec<String>>>,
     files: Vec<QuarantinedFile>,
     /// Where each of `files` is stored, for reading it back.
     objects: Vec<StoredObject>,
@@ -324,6 +370,7 @@ impl SessionExtras {
             generation,
             cancel: Arc::new(AtomicBool::new(false)),
             local_hosts: Vec::new(),
+            inspected: Arc::new(Mutex::new(Vec::new())),
             files: Vec::new(),
             objects: Vec::new(),
             reserved: 0,
@@ -677,6 +724,55 @@ impl Sessions {
             egress.set_local_hosts(extras.local_hosts.clone());
         }
         true
+    }
+
+    /// Lets this session open the known-malicious link `url` after the
+    /// user's warning (§10.4): its host, and no other listed one, passes
+    /// the proxy's threat-database check. Call it on a session that has
+    /// loaded nothing yet; it ends with the session.
+    pub fn allow_inspection(&self, generation: u64, url: String) -> bool {
+        let Ok(canonical) = rift_core::urlcanon::canonicalize(url.as_bytes()) else {
+            return false;
+        };
+        // Canonical forms assume http when there is no scheme: check the link itself.
+        let lower = url.trim_start().to_ascii_lowercase();
+        let web = lower.starts_with("http://") || lower.starts_with("https://");
+        if !web || canonical.host().is_empty() {
+            return false;
+        }
+        let Ok(mut state) = self.lock() else {
+            return false;
+        };
+        let Some(extras) = state.current(generation) else {
+            return false;
+        };
+        let Ok(mut inspected) = extras.inspected.lock() else {
+            return false;
+        };
+        let host = canonical.host().to_owned();
+        if !inspected.contains(&host) {
+            inspected.push(host);
+        }
+        true
+    }
+
+    /// Whether `url`'s host was allowed by [`Sessions::allow_inspection`] in `generation`.
+    pub fn is_inspected(&self, generation: u64, url: String) -> bool {
+        let Ok(canonical) = rift_core::urlcanon::canonicalize(url.as_bytes()) else {
+            return false;
+        };
+        let Ok(mut state) = self.lock() else {
+            return false;
+        };
+        state
+            .current(generation)
+            .and_then(|e| {
+                e.inspected
+                    .lock()
+                    .ok()
+                    .map(|i| i.iter().any(|h| h == canonical.host()))
+            })
+            .unwrap_or(false)
     }
 
     pub fn local_hosts(&self, generation: u64) -> Vec<String> {
@@ -1522,6 +1618,83 @@ mod tests {
             stats.recent[0].reason
         );
         assert_eq!(stats.recent[1].destination, tunnel);
+    }
+
+    #[test]
+    fn pages_named_after_a_protected_brand_are_flagged() {
+        let navigator = Navigator::new(vec!["paypal.com".into()], Vec::new());
+        let found = navigator.assess_page(
+            "https://login-help.example/".into(),
+            "PayPal".into(),
+            true,
+            false,
+        );
+        let codes: Vec<(&str, bool)> = found.iter().map(|f| (f.code.as_str(), f.warn)).collect();
+        assert_eq!(
+            codes,
+            vec![("page-claims-brand", true), ("page-asks-password", false)]
+        );
+        assert!(
+            navigator
+                .assess_page("not a url\u{0}".repeat(5000), "PayPal".into(), true, false)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_inspected_link_passes_the_proxy_in_its_session_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let generation = sessions.start().unwrap();
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        let (trusted_root, repo) = demo_repository(&dir.path().join("publisher"));
+        install(&intel, trusted_root, repo);
+        let endpoint = sessions
+            .egress(generation, Some(intel.clone()), None)
+            .unwrap();
+        assert!(!sessions.is_inspected(generation, rift_pack::DEMO_URL.into()));
+        assert!(sessions.allow_inspection(generation, rift_pack::DEMO_URL.into()));
+        assert!(sessions.is_inspected(generation, rift_pack::DEMO_URL.into()));
+        assert!(!sessions.allow_inspection(generation, "javascript:alert(1)".into()));
+
+        // Past the database check, to the next one: .invalid never resolves.
+        assert_eq!(
+            get_through(&endpoint, rift_pack::DEMO_URL).unwrap(),
+            "HTTP/1.1 403 Forbidden"
+        );
+        // Another listed host is still refused, before it is resolved.
+        let tunnel = format!("cdn.{}:443", rift_pack::DEMO_HOST);
+        assert_eq!(
+            connect_through(&endpoint, &tunnel).unwrap(),
+            "HTTP/1.1 403 Forbidden"
+        );
+        let codes: Vec<String> = sessions
+            .egress_stats(generation)
+            .unwrap()
+            .recent
+            .into_iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, vec!["does-not-resolve", "known-malicious"]);
+
+        // The allowance goes with the session.
+        sessions.reset().unwrap();
+        let next = sessions.start().unwrap();
+        assert!(!sessions.is_inspected(next, rift_pack::DEMO_URL.into()));
+        assert!(!sessions.allow_inspection(generation, rift_pack::DEMO_URL.into()));
+        let endpoint = sessions.egress(next, Some(intel), None).unwrap();
+        assert_eq!(
+            get_through(&endpoint, rift_pack::DEMO_URL).unwrap(),
+            "HTTP/1.1 403 Forbidden"
+        );
+        let codes: Vec<String> = sessions
+            .egress_stats(next)
+            .unwrap()
+            .recent
+            .into_iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, vec!["known-malicious"]);
     }
 
     #[test]

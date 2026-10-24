@@ -27,6 +27,12 @@ ignore = [
   # i18n-embed-impl), so it runs at build time and is not in any Rift binary.
   # EXIT CONDITION: remove when age (or i18n-config) drops basic-toml.
   { id = "RUSTSEC-2026-0374", reason = "basic-toml is unmaintained, not vulnerable; used only at build time by proc-macros reading their own i18n.toml, never on untrusted input" },
+  # Not Wasmtime either: crypto-bigint 0.5 comes with age 0.12 through p256,
+  # which age uses only for its tag/tagpq recipients. Rift seals with
+  # age::x25519 only (seal.rs, download.rs), so no P-256 operation runs.
+  # The fix is in crypto-bigint 0.7.6, which p256 0.13 cannot take.
+  # EXIT CONDITION: remove when age moves to a p256 on crypto-bigint >= 0.7.6.
+  { id = "RUSTSEC-2026-0387", reason = "timing variability in crypto-bigint 0.5; reached only through age's P-256 tag recipients, which Rift never uses (it seals with X25519)" },
 ]
 
 [licenses]

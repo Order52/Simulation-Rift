@@ -10,6 +10,7 @@ pub mod filters;
 pub mod heuristics;
 pub mod intel;
 pub mod pack;
+pub mod page;
 pub mod policy;
 pub mod scan;
 pub mod seal;

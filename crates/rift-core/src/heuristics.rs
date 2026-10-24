@@ -18,6 +18,9 @@ pub struct HeuristicConfig {
     pub protected_domains: Vec<String>,
     /// URL-shortener hosts whose destination is unknown until followed.
     pub shorteners: Vec<String>,
+    /// Platforms where anyone can publish a site under the platform's own
+    /// name (`someone.web.app`), e.g. "web.app".
+    pub hosting: Vec<String>,
     pub max_subdomain_depth: usize,
     pub max_url_bytes: usize,
 }
@@ -27,6 +30,7 @@ impl Default for HeuristicConfig {
         Self {
             protected_domains: Vec::new(),
             shorteners: Vec::new(),
+            hosting: Vec::new(),
             max_subdomain_depth: 4,
             max_url_bytes: 2048,
         }
@@ -73,22 +77,57 @@ pub enum Flag {
     /// Shortener: the destination is unknown until the link is followed.
     UrlShortener,
     NoTls,
+    /// The host names a protected domain's brand (`paypal-login.example`)
+    /// but is not that domain. `lure` is a word fake pages use ("login",
+    /// "verify") found with it, or the name of the free hosting it is on.
+    BrandInHost {
+        protected: String,
+        lure: Option<String>,
+    },
+    /// The path contains a protected domain (`/paypal.com/signin`), as kits
+    /// for fake pages copied onto other sites do.
+    ProtectedNameInPath {
+        protected: String,
+    },
+    /// The site is on a platform where anyone can publish a site.
+    FreeHosting {
+        platform: String,
+    },
+    /// The site name ends in `.zip` or `.mov`, which read as a file name.
+    FileNameTld {
+        tld: String,
+    },
 }
 
 impl Flag {
+    /// The protected domain a name-based flag is about.
+    fn protected(&self) -> Option<&String> {
+        match self {
+            Self::LookalikeOf { protected } | Self::ProtectedNameInSubdomain { protected } => {
+                Some(protected)
+            }
+            _ => None,
+        }
+    }
+
     pub fn severity(&self) -> Severity {
         match self {
             Self::LookalikeOf { .. }
             | Self::ProtectedNameInSubdomain { .. }
             | Self::MixedScriptLabel { .. }
-            | Self::CredentialsInUrl => Severity::Warn,
+            | Self::CredentialsInUrl
+            | Self::ProtectedNameInPath { .. }
+            | Self::BrandInHost { lure: Some(_), .. } => Severity::Warn,
             Self::InternationalizedHost { .. }
             | Self::IpLiteralHost
             | Self::NonDefaultPort(_)
             | Self::DeepSubdomain { .. }
             | Self::LongUrl { .. }
             | Self::UrlShortener
-            | Self::NoTls => Severity::Info,
+            | Self::NoTls
+            | Self::BrandInHost { lure: None, .. }
+            | Self::FreeHosting { .. }
+            | Self::FileNameTld { .. } => Severity::Info,
         }
     }
 
@@ -106,6 +145,10 @@ impl Flag {
             Self::LongUrl { .. } => "long-url",
             Self::UrlShortener => "url-shortener",
             Self::NoTls => "no-tls",
+            Self::BrandInHost { .. } => "brand-in-host",
+            Self::ProtectedNameInPath { .. } => "protected-name-in-path",
+            Self::FreeHosting { .. } => "free-hosting",
+            Self::FileNameTld { .. } => "file-name-tld",
         }
     }
 
@@ -146,6 +189,33 @@ impl Flag {
                     .to_owned()
             }
             Self::NoTls => "The connection to this site is not encrypted.".to_owned(),
+            Self::BrandInHost { protected, lure } => {
+                let protected = escape_for_display(protected);
+                let brand = escape_for_display(brand_of(&protected));
+                match lure {
+                    Some(lure) => format!(
+                        "This address uses the name {brand} with \u{201c}{}\u{201d}, as fake sign-in pages do, but the site is not {protected}.",
+                        escape_for_display(lure)
+                    ),
+                    None => format!(
+                        "This address uses the name {brand}, but the site is not {protected}."
+                    ),
+                }
+            }
+            Self::ProtectedNameInPath { protected } => {
+                let protected = escape_for_display(protected);
+                format!(
+                    "The address has {protected} after the site name, a trick of fake pages: the site is not {protected}."
+                )
+            }
+            Self::FreeHosting { platform } => format!(
+                "This site is on {}, where anyone can publish a site in minutes.",
+                escape_for_display(platform)
+            ),
+            Self::FileNameTld { tld } => format!(
+                "The site name ends in .{}, which can be mistaken for a file name.",
+                escape_for_display(tld)
+            ),
         }
     }
 }
@@ -183,6 +253,22 @@ pub fn assess(raw: &[u8], url: &CanonicalUrl, config: &HeuristicConfig) -> Vec<F
     if config.shorteners.iter().any(|s| s == host) {
         flags.push(Flag::UrlShortener);
     }
+    let platform = config
+        .hosting
+        .iter()
+        .find(|p| host.len() > p.len() && host.ends_with(&format!(".{p}")));
+    if let Some(platform) = platform {
+        flags.push(Flag::FreeHosting {
+            platform: platform.clone(),
+        });
+    }
+    if let Some(tld) = host.rsplit('.').next()
+        && matches!(tld, "zip" | "mov")
+    {
+        flags.push(Flag::FileNameTld {
+            tld: tld.to_owned(),
+        });
+    }
 
     let (unicode, idna_result) = idna::domain_to_unicode(host);
     if idna_result.is_ok() && unicode != host {
@@ -197,12 +283,129 @@ pub fn assess(raw: &[u8], url: &CanonicalUrl, config: &HeuristicConfig) -> Vec<F
             });
         }
     }
-    flags.extend(protected_name_flags(
-        host,
-        &unicode,
-        &config.protected_domains,
-    ));
+    let named = protected_name_flags(host, &unicode, &config.protected_domains);
+    let lure = lure_in(host, url.path()).or_else(|| platform.cloned());
+    for domain in &config.protected_domains {
+        if host == domain
+            || host.ends_with(&format!(".{domain}"))
+            || named.iter().any(|f| f.protected() == Some(domain))
+        {
+            continue;
+        }
+        if let Some(joined) = brand_in(host, brand_of(domain)) {
+            flags.push(Flag::BrandInHost {
+                protected: domain.clone(),
+                lure: joined.map(str::to_owned).or_else(|| lure.clone()),
+            });
+        } else if names_in_path(url.path(), domain) {
+            flags.push(Flag::ProtectedNameInPath {
+                protected: domain.clone(),
+            });
+        }
+    }
+    flags.extend(named);
     flags
+}
+
+/// Words fake sign-in, payment and delivery pages put in their addresses.
+const LURES: &[&str] = &[
+    "login",
+    "logon",
+    "signin",
+    "verify",
+    "verification",
+    "account",
+    "accounts",
+    "secure",
+    "security",
+    "update",
+    "wallet",
+    "support",
+    "billing",
+    "payment",
+    "password",
+    "recover",
+    "recovery",
+    "unlock",
+    "confirm",
+    "auth",
+    "webscr",
+    "banking",
+    "invoice",
+    "refund",
+    "delivery",
+    "parcel",
+    "tracking",
+    "suspended",
+    "locked",
+    "alert",
+    "claim",
+    "reward",
+    "airdrop",
+    "kyc",
+    "validate",
+    "restore",
+    "helpdesk",
+    "service",
+    "customer",
+    "id",
+];
+
+/// The registrable name's first label: "paypal" for paypal.com.
+fn brand_of(domain: &str) -> &str {
+    domain.split('.').next().unwrap_or(domain)
+}
+
+/// Whether a label of `host` other than its last names `brand` as a word
+/// (`paypal-login`, `login.paypal.example`): `Some(None)`; or joined to a
+/// lure (`paypalsecure`): `Some(Some(lure))`.
+fn brand_in(host: &str, brand: &str) -> Option<Option<&'static str>> {
+    if brand.len() < 3 {
+        return None;
+    }
+    let labels: Vec<&str> = host.split('.').collect();
+    let named = labels
+        .get(..labels.len().saturating_sub(1))
+        .unwrap_or_default();
+    for label in named {
+        if format!("-{label}-").contains(&format!("-{brand}-")) {
+            return Some(None);
+        }
+        if brand.len() < 4 || brand.contains('-') {
+            continue;
+        }
+        let joined = label.split('-').find_map(|part| {
+            let rest = part
+                .strip_prefix(brand)
+                .or_else(|| part.strip_suffix(brand))?;
+            LURES.iter().find(|lure| **lure == rest).copied()
+        });
+        if joined.is_some() {
+            return Some(joined);
+        }
+    }
+    None
+}
+
+/// Whether `path` has `domain` as a whole name in it (`/paypal.com/`, `/www.paypal.com`).
+fn names_in_path(path: &str, domain: &str) -> bool {
+    let path = path.to_ascii_lowercase();
+    path.match_indices(domain).any(|(at, _)| {
+        let before = path.get(..at).and_then(|p| p.chars().last());
+        let after = path
+            .get(at.saturating_add(domain.len())..)
+            .and_then(|p| p.chars().next());
+        matches!(before, Some('/' | '.')) && matches!(after, None | Some('/'))
+    })
+}
+
+/// The first lure word in the host's labels or the path's words.
+fn lure_in(host: &str, path: &str) -> Option<String> {
+    let path = path.to_ascii_lowercase();
+    host.split(['.', '-'])
+        .chain(path.split(|c: char| !c.is_ascii_alphanumeric()))
+        .find(|word| LURES.contains(word))
+        .map(str::to_owned)
 }
 
 fn protected_name_flags(host: &str, unicode: &str, protected: &[String]) -> Vec<Flag> {
@@ -283,6 +486,7 @@ mod tests {
         HeuristicConfig {
             protected_domains: vec!["paypal.com".into(), "example-bank.co.uk".into()],
             shorteners: vec!["bit.ly".into()],
+            hosting: vec!["web.app".into(), "github.io".into()],
             ..HeuristicConfig::default()
         }
     }
@@ -377,6 +581,83 @@ mod tests {
                 .iter()
                 .any(|f| matches!(f, Flag::LongUrl { .. }))
         );
+    }
+
+    #[test]
+    fn a_brand_with_a_lure_warns_and_alone_only_notes() {
+        let warn = |raw: &str| {
+            flags(raw)
+                .iter()
+                .any(|f| f.code() == "brand-in-host" && f.severity() == Severity::Warn)
+        };
+        assert!(
+            warn("https://paypal-login-verify.example/"),
+            "{:?}",
+            flags("https://paypal-login-verify.example/")
+        );
+        assert!(warn("https://secure.paypal.account-help.example/"));
+        assert!(warn("https://paypalsecure.example/"));
+        assert!(warn("https://paypal.example/signin"));
+        assert!(warn("https://example-bank-support.example/"));
+        // On free hosting, the platform is the lure.
+        assert!(warn("https://paypal.web.app/"));
+        let note = flags("https://paypal-fan-club.example/");
+        assert!(
+            note.iter()
+                .any(|f| f.code() == "brand-in-host" && f.severity() == Severity::Info),
+            "{note:?}"
+        );
+        // Not a word of the host: no flag.
+        assert!(
+            flags("https://paypalooza.example/login")
+                .iter()
+                .all(|f| f.code() != "brand-in-host")
+        );
+        assert!(flags("https://www.paypal.com/signin").is_empty());
+        // Already flagged as a lookalike or a subdomain trick: once only.
+        let once = flags("https://paypal.com.login.example/");
+        assert_eq!(
+            once.iter()
+                .filter(|f| f.severity() == Severity::Warn)
+                .count(),
+            1,
+            "{once:?}"
+        );
+    }
+
+    #[test]
+    fn a_protected_name_in_the_path_warns() {
+        let wanted = Flag::ProtectedNameInPath {
+            protected: "paypal.com".into(),
+        };
+        assert!(has(
+            "https://blog.example/wp-content/paypal.com/signin.php",
+            &wanted
+        ));
+        assert!(has("https://blog.example/x/www.paypal.com", &wanted));
+        // A word that only contains it, or a query, is not a path name.
+        assert!(!has("https://blog.example/notpaypal.com/", &wanted));
+        assert!(!has(
+            "https://shop.example/?return=https://paypal.com/",
+            &wanted
+        ));
+    }
+
+    #[test]
+    fn free_hosting_and_file_name_endings_are_noted() {
+        let found = flags("https://my-portfolio.github.io/");
+        assert!(
+            found.contains(&Flag::FreeHosting {
+                platform: "github.io".into()
+            }),
+            "{found:?}"
+        );
+        assert!(found.iter().all(|f| f.severity() == Severity::Info));
+        assert!(flags("https://github.io/").is_empty());
+        assert!(has(
+            "https://invoice.zip/",
+            &Flag::FileNameTld { tld: "zip".into() }
+        ));
     }
 
     #[test]
