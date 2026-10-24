@@ -43,9 +43,6 @@ PhiUSIIL Phishing URL Dataset
   https://creativecommons.org/licenses/by/4.0/. Used to train the model; the
   model does not contain the dataset.
 
-URLhaus (malware hosts), through the malware-filter project's urlhaus-filter
-  https://urlhaus.abuse.ch/ and https://gitlab.com/malware-filter/urlhaus-filter
-
 Tranco list of the most visited sites
   V. Le Pochat, T. Van Goethem, S. Tajalizadehkhoob, M. Korczyński and
   W. Joosen, "Tranco: A Research-Oriented Top Sites Ranking Hardened Against
@@ -60,3 +57,7 @@ GitHub code search (fetched 22 Oct 2026): links in public README.md files to
   sites on pages.dev, web.app and firebaseapp.com, used as examples of benign
   addresses. Only the addresses were used, not the files' other contents.
   https://docs.github.com/en/site-policy/github-terms/github-terms-of-service
+
+Not used: URLhaus. Models to 22 Oct 2026 learned from it; this one (24 Oct
+2026) does not, as abuse.ch's terms do not allow training on its data without
+consent.

@@ -53,13 +53,15 @@
 //! index weight tables by masked hashes, which are in range by construction.
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
+mod fm;
+
 use std::collections::{HashMap, HashSet};
 use std::process::ExitCode;
 use std::time::Instant;
 
 use rift_core::heuristics::{self, HeuristicConfig, Severity};
 use rift_core::urlcanon::{self, CanonicalUrl};
-use rift_core::urlmodel::{self, Level, ModelParts, Suffixes, UrlModel, View};
+use rift_core::urlmodel::{self, Factors, Level, ModelParts, Suffixes, UrlModel, View};
 use serde_json::{Value, json};
 
 /// At most this many examples per domain and source, so that a few
@@ -130,6 +132,8 @@ fn run() -> Result<(), String> {
     let mut popular_spec = None;
     let mut suffixes_path = None;
     let mut platforms = HashSet::new();
+    // Factors per feature (0: a linear model), factor table bits, factor L2.
+    let mut factors = (0usize, 16u32, 0f32);
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or_else(|| format!("{arg} needs a value"));
@@ -142,6 +146,26 @@ fn run() -> Result<(), String> {
             "--report" => report = Some(value()?),
             "--source" => sources.push(parse_source(&value()?)?),
             "--popular" => popular_spec = Some(value()?),
+            "--factors" => {
+                let v = value()?;
+                let parts: Vec<&str> = v.split(',').collect();
+                let [k, b, l2] = parts[..] else {
+                    return Err("--factors k,factor_bits,factor_l2".into());
+                };
+                factors = (
+                    k.parse().map_err(|e| format!("--factors: {e}"))?,
+                    b.parse().map_err(|e| format!("--factors: {e}"))?,
+                    l2.parse().map_err(|e| format!("--factors: {e}"))?,
+                );
+                if factors.0 > urlmodel::MAX_FACTORS || !urlmodel::FACTOR_BITS.contains(&factors.1)
+                {
+                    return Err(format!(
+                        "--factors: k at most {}, factor_bits in {:?}",
+                        urlmodel::MAX_FACTORS,
+                        urlmodel::FACTOR_BITS
+                    ));
+                }
+            }
             "--suffixes" => suffixes_path = Some(value()?),
             "--platforms" => {
                 let path = value()?;
@@ -209,11 +233,12 @@ fn run() -> Result<(), String> {
             &examples,
             &sources,
             bits,
+            factors,
             epochs,
             seed,
             l2,
-            |epoch, w, b| {
-                let (recall, loss) = validation.recall_and_loss(w, b);
+            |epoch, model| {
+                let (recall, loss) = validation.recall_and_loss(|f| model.score(f));
                 eprintln!(
                     "  l2 {l2:e} epoch {epoch}: validation recall at 0.1% {:.2}%, loss {loss:.4}",
                     recall * 100.0
@@ -228,8 +253,7 @@ fn run() -> Result<(), String> {
                         epochs: epoch,
                         recall,
                         loss,
-                        weights: w.to_vec(),
-                        bias: b,
+                        model: model.clone(),
                     });
                 }
             },
@@ -242,7 +266,12 @@ fn run() -> Result<(), String> {
         chosen.epochs,
         chosen.recall * 100.0
     );
-    let (weights, bias) = (chosen.weights, chosen.bias);
+    let fm::Fm {
+        bias,
+        weights,
+        factors: factor_values,
+        ..
+    } = chosen.model;
     // Thresholds from the validation split, then the shipped file is made
     // and read back: everything below measures exactly that file.
     let unquantized = ModelParts {
@@ -252,6 +281,11 @@ fn run() -> Result<(), String> {
         high: 0.9,
         weights,
         suffixes,
+        factors: (factors.0 > 0).then_some(Factors {
+            k: factors.0,
+            bits: factors.1,
+            values: factor_values,
+        }),
         popular: {
             let mut sites: Vec<String> = popular.into_iter().collect();
             sites.sort();
@@ -286,6 +320,7 @@ fn run() -> Result<(), String> {
         "bits": bits,
         "epochs": chosen.epochs,
         "l2": chosen.l2,
+        "factors": (factors.0 > 0).then(|| json!({ "k": factors.0, "bits": factors.1, "l2": factors.2 })),
         "seed": seed,
         "thresholds": { "elevated": elevated, "high": high },
         "popular_sites_not_scored": popular_sites,
@@ -541,25 +576,25 @@ struct Chosen {
     epochs: usize,
     recall: f64,
     loss: f64,
-    weights: Vec<f32>,
-    bias: f32,
+    model: fm::Fm,
 }
 
-/// Logistic regression by AdaGrad, classes weighted to count equally;
-/// `after_epoch` sees the weights after each epoch.
+/// Logistic regression, with factors if `factors.0` > 0, by AdaGrad,
+/// classes weighted to count equally; `after_epoch` sees the model after
+/// each epoch.
+#[allow(clippy::too_many_arguments)]
 fn train(
     examples: &[Example],
     sources: &[Source],
     bits: u32,
+    (k, factor_bits, factor_l2): (usize, u32, f32),
     epochs: usize,
     seed: u64,
     l2: f32,
-    mut after_epoch: impl FnMut(usize, &[f32], f32),
+    mut after_epoch: impl FnMut(usize, &fm::Fm),
 ) {
-    const RATE: f32 = 0.08;
-    let size = 1usize << bits;
-    let (mut w, mut g2) = (vec![0f32; size], vec![1e-6f32; size]);
-    let (mut bias, mut bias_g2) = (0f32, 1e-6f32);
+    let mut model = fm::Fm::new(bits, factor_bits, k, seed);
+    let mut state = model.trainer();
     let mut order: Vec<usize> = (0..examples.len())
         .filter(|&i| examples[i].split == Split::Train && !sources[examples[i].source].eval_only)
         .collect();
@@ -586,41 +621,21 @@ fn train(
                 let (index, sign) = f.bucket(bits);
                 features.push((index, sign * f.value));
             });
-            let z = bias + features.iter().map(|&(k, x)| w[k] * x).sum::<f32>();
-            let p = urlmodel::sigmoid(z);
-            let (y, cw) = if e.malicious {
-                (1.0, weight_pos)
-            } else {
-                (0.0, weight_neg)
-            };
-            loss -= f64::from(cw)
-                * f64::from(if e.malicious {
-                    p.max(1e-7).ln()
-                } else {
-                    (1.0 - p).max(1e-7).ln()
-                });
-            let g = (p - y) * cw;
-            for &(k, x) in &features {
-                let grad = g * x + l2 * w[k];
-                g2[k] += grad * grad;
-                w[k] -= RATE * grad / g2[k].sqrt();
-            }
-            bias_g2 += g * g;
-            bias -= RATE * g / bias_g2.sqrt();
+            let cw = if e.malicious { weight_pos } else { weight_neg };
+            loss += f64::from(model.step(&mut state, &features, e.malicious, cw, l2, factor_l2));
         }
         eprintln!(
             "l2 {l2:e} epoch {}: training loss {:.4}",
             epoch + 1,
             loss / order.len().max(1) as f64
         );
-        after_epoch(epoch + 1, &w, bias);
+        after_epoch(epoch + 1, &model);
     }
 }
 
 /// One split's scored address-view examples, their features worked out
 /// once, for measuring weights during model selection.
 struct Measure {
-    bits: u32,
     examples: Vec<(Vec<(usize, f32)>, bool)>,
     weight_pos: f64,
     weight_neg: f64,
@@ -656,7 +671,6 @@ impl Measure {
         let negatives = (examples.len() as f64 - positives).max(1.0);
         let total = positives + negatives;
         Self {
-            bits,
             examples,
             weight_pos: total / (2.0 * positives),
             weight_neg: total / (2.0 * negatives),
@@ -665,13 +679,12 @@ impl Measure {
 
     /// The share of malicious pages above the score that 0.1% of benign
     /// pages reach, and the class-weighted log loss.
-    fn recall_and_loss(&self, w: &[f32], bias: f32) -> (f64, f64) {
-        debug_assert_eq!(w.len(), 1usize << self.bits);
+    fn recall_and_loss(&self, score: impl Fn(&[(usize, f32)]) -> f32) -> (f64, f64) {
         let mut benign = Vec::new();
         let mut malicious = Vec::new();
         let mut loss = 0f64;
         for (features, is_malicious) in &self.examples {
-            let p = urlmodel::sigmoid(bias + features.iter().map(|&(k, x)| w[k] * x).sum::<f32>());
+            let p = score(features);
             if *is_malicious {
                 loss -= self.weight_pos * f64::from(p.max(1e-7).ln());
                 malicious.push(p);

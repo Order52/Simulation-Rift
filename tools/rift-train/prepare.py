@@ -51,13 +51,17 @@ phish_now = links(read_optional("phishing-db-now.txt"))
 write("phishing-db-now.txt", phish_now)
 phish = phish_2025 + phish_now
 
-# URLhaus hosts, through malware-filter's CC0 mirror: domains and addresses.
-malware_hosts = set()
-for line in open(os.path.join(src, "mf-urlhaus-filter.txt"), encoding="utf-8", errors="replace"):
-    line = line.strip().lower()
-    if line and not line.startswith(("!", "#")):
-        malware_hosts.add(line)
-write("urlhaus-hosts.txt", sorted(malware_hosts))
+# URLhaus hosts, through malware-filter's mirror: domains and addresses.
+# Not used for the shipped model since 24 Oct 2026: abuse.ch's terms
+# (s. 7.3) forbid training an AI model on its data without consent
+# (docs/reports/rift-ai.md). Kept for a local experiment that has it.
+if os.path.exists(os.path.join(src, "mf-urlhaus-filter.txt")):
+    malware_hosts = set()
+    for line in open(os.path.join(src, "mf-urlhaus-filter.txt"), encoding="utf-8", errors="replace"):
+        line = line.strip().lower()
+        if line and not line.startswith(("!", "#")):
+            malware_hosts.add(line)
+    write("urlhaus-hosts.txt", sorted(malware_hosts))
 
 # Tranco top sites (hosts, best first).
 tranco = []

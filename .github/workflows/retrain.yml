@@ -1,0 +1,65 @@
+name: retrain rift ai
+
+# Monthly: retrains Rift AI on that day's feeds (tools/rift-train/retrain.sh)
+# and, if the new model passes the gate (tools/rift-train/gate.py) and the
+# shipped-model tests, opens a pull request with it. Nothing ships without
+# a maintainer merging it; the feeds themselves are never committed.
+#
+# Needs "Allow GitHub Actions to create and approve pull requests" in the
+# repository's Actions settings. A pull request opened with GITHUB_TOKEN
+# does not start other workflows: CI runs once a maintainer pushes to it
+# (or closes and reopens it). The GitHub sample of hosting-platform sites
+# needs RIFT_SEARCH_TOKEN (a token with no permissions, for code search);
+# without it the model trains without that sample, and the PR says so.
+on:
+  schedule:
+    - cron: "17 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Keep the shipped model's report
+        run: cp models/url-model.json "$RUNNER_TEMP/shipped.json"
+      - name: Retrain on today's feeds
+        env:
+          GH_TOKEN: ${{ secrets.RIFT_SEARCH_TOKEN }}
+        run: sh tools/rift-train/retrain.sh "$RUNNER_TEMP/feeds" "$RUNNER_TEMP/prepared"
+      - name: Gate
+        run: python3 -I tools/rift-train/gate.py "$RUNNER_TEMP/shipped.json" models/url-model.json | tee "$RUNNER_TEMP/gate.txt"
+      - name: The shipped-model tests still hold
+        run: cargo test --locked -p rift-ffi ai::
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="retrain/$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add models/url-model.bin models/url-model.json
+          git commit -m "models: retrain rift ai on the $(date -u +%Y-%m-%d) feeds"
+          git push origin "$branch"
+          {
+            echo "Rift AI retrained on today's feeds by the monthly workflow; it passed the gate and \`cargo test -p rift-ffi ai::\`."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/gate.txt"
+            echo '```'
+            [ -s "$RUNNER_TEMP/prepared/github-platforms.txt" ] || echo "Trained without the GitHub sample of hosting-platform sites (no RIFT_SEARCH_TOKEN)."
+            echo
+            echo "Before merging: check addresses with \`cargo run --release -p rift-ffi --example ai_probe -- <addresses>\`, and update docs/reports/rift-ai.md and url-model-notice.txt (dates, counts)."
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --title "models: retrain rift ai ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/body.md"
