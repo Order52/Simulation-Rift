@@ -320,15 +320,16 @@ async fn verify(
         save_root(datastore, repo.root())?;
     }
 
-    let mut files = Vec::with_capacity(pack::FILES.len());
-    for name in pack::FILES {
+    let mut files = Vec::with_capacity(pack::FILES.len().saturating_add(pack::OPTIONAL.len()));
+    let required = pack::FILES.iter().map(|name| (*name, true));
+    for (name, needed) in required.chain(pack::OPTIONAL.iter().map(|name| (*name, false))) {
         let target = TargetName::new(name).map_err(|e| refused(&e, Stage::Metadata))?;
-        let listed = repo
-            .targets()
-            .signed
-            .targets
-            .get(&target)
-            .ok_or(UpdateError::NotListed(name))?;
+        let Some(listed) = repo.targets().signed.targets.get(&target) else {
+            if needed {
+                return Err(UpdateError::NotListed(name));
+            }
+            continue;
+        };
         let limit = pack::size_limit(name).ok_or(UpdateError::NotListed(name))?;
         if listed.length > u64::try_from(limit).unwrap_or(u64::MAX) {
             return Err(UpdateError::TooLarge {

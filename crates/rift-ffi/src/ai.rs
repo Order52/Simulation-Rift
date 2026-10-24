@@ -1,6 +1,7 @@
 //! Rift AI for the platforms (docs/architecture.md §16): the URL model,
-//! loaded from bytes the app ships (or, later, a verified pack), and the
-//! link check the home screen's "Check" button shows.
+//! loaded from bytes the app ships or from the installed pack (which takes
+//! precedence while it is current), and the link check the home screen's
+//! "Check" button shows.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -141,11 +142,13 @@ impl Navigator {
     pub fn check(&self, url: String, intel: Option<Arc<Intel>>, now_unix: u64) -> LinkCheck {
         let started = Instant::now();
         // Nothing is loaded, so the engine's sandbox is not in question.
+        let pack = intel.as_ref().and_then(|intel| intel.pack());
         let navigation = self.decide(url.clone(), true, intel, now_unix);
-        let ai = self
-            .ai
+        let model = pack
             .as_ref()
-            .and_then(|ai| assess(&ai.model, &url, View::Address));
+            .and_then(|pack| pack.model.as_deref())
+            .or(self.ai.as_ref().map(|ai| &ai.model));
+        let ai = model.and_then(|model| assess(model, &url, View::Address));
         let address = policy::engine_address(url.as_bytes()).unwrap_or(url);
         LinkCheck {
             address: escape_for_display(&address),
@@ -158,6 +161,15 @@ impl Navigator {
     /// Whether Rift AI is loaded in this navigator.
     pub fn has_ai(&self) -> bool {
         self.ai.is_some()
+    }
+}
+
+#[uniffi::export]
+impl Intel {
+    /// SHA-256 of the installed pack's model, if it has one: that model is
+    /// used in place of the app's own.
+    pub fn ai_digest(&self) -> Option<String> {
+        Some(self.pack()?.model.as_ref()?.digest_hex())
     }
 }
 

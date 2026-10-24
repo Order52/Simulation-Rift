@@ -2,9 +2,12 @@
 //!
 //! Logistic regression over hashed features of the canonical URL: character
 //! n-grams and words of the host, words of the path, query keys, and a few
-//! counts. The model is numeric data only (a fixed header and one weight per
-//! hash bucket); scoring is a sum and a sigmoid, so a URL is scored in
-//! microseconds and nothing in the file is ever executed.
+//! counts. A model may also hold factors (a factorization machine): a short
+//! vector per feature, whose dot products weigh pairs of features that
+//! appear together, such as a brand's name in the host with "login" in the
+//! path. The model is numeric data only (a fixed header, one weight per hash
+//! bucket, and the optional factor table); scoring is sums and a sigmoid, so
+//! a URL is scored in microseconds and nothing in the file is ever executed.
 //!
 //! The trainer (tools/rift-train) calls [`for_each_feature`], the same code
 //! that scores a URL here, so what was learned is what is applied.
@@ -32,6 +35,10 @@ pub const MAX_MODEL_BYTES: usize = 2 * 1024 * 1024;
 /// The suffix rules' text (the Public Suffix List is about 140 KiB).
 pub const MAX_SUFFIX_BYTES: usize = 512 * 1024;
 pub const MAX_POPULAR_SITES: usize = 100_000;
+/// Factors per feature, at most.
+pub const MAX_FACTORS: usize = 8;
+/// Rows of the factor table, as a power of two.
+pub const FACTOR_BITS: std::ops::RangeInclusive<u32> = 10..=18;
 
 const MAGIC: &[u8; 8] = b"RIFTURL1";
 const HEADER_BYTES: usize = 8 + 4 * 6;
@@ -556,7 +563,35 @@ pub struct UrlModel {
     suffixes: Suffixes,
     /// Keys of the most visited sites, sorted.
     popular: Vec<u64>,
+    factors: Option<QuantizedFactors>,
     digest: [u8; 32],
+}
+
+/// A factor table as stored: `k` values per row, against one scale.
+#[derive(Clone)]
+struct QuantizedFactors {
+    k: usize,
+    bits: u32,
+    scale: f32,
+    values: Vec<i16>,
+}
+
+/// A model's factor table (see the module's notes).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Factors {
+    /// Values per feature, 1..=[`MAX_FACTORS`].
+    pub k: usize,
+    /// 2^bits rows; a feature's row is the low bits of its weight bucket.
+    pub bits: u32,
+    /// Row-major, 2^bits × k.
+    pub values: Vec<f32>,
+}
+
+impl Factors {
+    /// The first value of `bucket`'s row.
+    pub fn row(k: usize, bits: u32, bucket: usize) -> usize {
+        (bucket & ((1usize << bits).wrapping_sub(1))).wrapping_mul(k)
+    }
 }
 
 impl std::fmt::Debug for UrlModel {
@@ -566,6 +601,7 @@ impl std::fmt::Debug for UrlModel {
             .field("elevated", &self.elevated)
             .field("high", &self.high)
             .field("popular", &self.popular.len())
+            .field("factors", &self.factors.as_ref().map(|f| (f.k, f.bits)))
             .field("digest", &hex::encode(self.digest))
             .finish_non_exhaustive()
     }
@@ -586,6 +622,8 @@ pub struct ModelParts {
     /// The most visited sites (as [`Suffixes::site`] names them), on
     /// which the model abstains.
     pub popular: Vec<String>,
+    /// The factor table, if the model has one.
+    pub factors: Option<Factors>,
 }
 
 impl UrlModel {
@@ -638,6 +676,12 @@ impl UrlModel {
             std::str::from_utf8(suffix_text).map_err(|_| ModelError::Value("suffix rules"))?;
         let suffixes = Suffixes::parse(suffix_text)?;
         let (popular_bytes, rest) = section(rest, MAX_POPULAR_SITES, 8)?;
+        let (factors, rest) = if rest.is_empty() {
+            (None, rest)
+        } else {
+            let (factors, rest) = parse_factors(rest)?;
+            (Some(factors), rest)
+        };
         if !rest.is_empty() {
             return Err(ModelError::Size(format!(
                 "{} bytes after the last section",
@@ -668,6 +712,7 @@ impl UrlModel {
             weights,
             suffixes,
             popular,
+            factors,
             digest: Sha256::digest(bytes).into(),
         })
     }
@@ -723,6 +768,9 @@ impl UrlModel {
         );
         for key in popular {
             out.extend_from_slice(&key.to_le_bytes());
+        }
+        if let Some(factors) = &parts.factors {
+            encode_factors(factors, &mut out)?;
         }
         Self::parse(&out)?;
         Ok(out)
@@ -787,8 +835,24 @@ impl UrlModel {
         let mut reasons: Vec<(f32, String)> = Vec::new();
         let mut spelling = 0f32;
         let mut path_spelling = 0f32;
+        // Σ v·x per factor and Σ (v·x)², for the pairs' sum.
+        let mut factor_sums = [0f32; MAX_FACTORS];
+        let mut factor_squares = 0f32;
         for_each_feature(url, view, |feature| {
             let (index, sign) = feature.bucket(self.bits);
+            if let Some(f) = &self.factors {
+                let row = Factors::row(f.k, f.bits, index);
+                let x = sign * feature.value;
+                for (i, total) in factor_sums.iter_mut().take(f.k).enumerate() {
+                    let v = f
+                        .values
+                        .get(row.wrapping_add(i))
+                        .copied()
+                        .map_or(0.0, |q| f32::from(q) * f.scale);
+                    *total += v * x;
+                    factor_squares += v * x * v * x;
+                }
+            }
             let weight = self
                 .weights
                 .get(index)
@@ -806,6 +870,9 @@ impl UrlModel {
                 reasons.push((contribution, text));
             }
         });
+        // Each pair counted once: ((Σ v·x)² − Σ (v·x)²) / 2.
+        let pairs = 0.5 * (factor_sums.iter().map(|t| t * t).sum::<f32>() - factor_squares);
+        sum += pairs;
         let score = sigmoid(sum);
         let level = if score >= self.high {
             Level::High
@@ -822,6 +889,9 @@ impl UrlModel {
             }
             if path_spelling > 0.0 {
                 reasons.push((path_spelling, "the spelling of the path".to_owned()));
+            }
+            if pairs > 0.0 {
+                reasons.push((pairs, "how the parts of the address go together".to_owned()));
             }
             reasons.sort_by(|a, b| b.0.total_cmp(&a.0));
             reasons.dedup_by(|a, b| a.1 == b.1);
@@ -865,6 +935,7 @@ pub(crate) fn model_for_tests(weights: &[(Kind, &str, f32)], bias: f32) -> UrlMo
         weights: table,
         suffixes: Suffixes::default(),
         popular: Vec::new(),
+        factors: None,
     };
     UrlModel::encode(&parts)
         .and_then(|bytes| UrlModel::parse(&bytes))
@@ -886,6 +957,78 @@ fn section(bytes: &[u8], max: usize, unit: usize) -> Result<(&[u8], &[u8]), Mode
     }
     rest.split_at_checked(count.saturating_mul(unit))
         .ok_or_else(|| ModelError::Size("a section is cut short".into()))
+}
+
+/// The factor section: u32 k, u32 bits, f32 scale, then 2^bits × k i16.
+fn parse_factors(bytes: &[u8]) -> Result<(QuantizedFactors, &[u8]), ModelError> {
+    let (head, rest) = bytes
+        .split_first_chunk::<12>()
+        .ok_or_else(|| ModelError::Size("the factor section is cut short".into()))?;
+    let [a, b, c] = [0usize, 4, 8].map(|i| {
+        let mut w = [0u8; 4];
+        if let Some(src) = head.get(i..i.saturating_add(4)) {
+            w.copy_from_slice(src);
+        }
+        w
+    });
+    let k = usize::try_from(u32::from_le_bytes(a)).map_err(|_| ModelError::Value("factors"))?;
+    let bits = u32::from_le_bytes(b);
+    let scale = f32::from_le_bytes(c);
+    if !(1..=MAX_FACTORS).contains(&k) || !FACTOR_BITS.contains(&bits) {
+        return Err(ModelError::Value("factor table size"));
+    }
+    if !(scale.is_finite() && scale > 0.0) {
+        return Err(ModelError::Value("factor scale"));
+    }
+    let (table, rest) = rest
+        .split_at_checked((1usize << bits).saturating_mul(k).saturating_mul(2))
+        .ok_or_else(|| ModelError::Size("the factor table is cut short".into()))?;
+    let values = table
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| i16::from_le_bytes(*pair))
+        .collect();
+    Ok((
+        QuantizedFactors {
+            k,
+            bits,
+            scale,
+            values,
+        },
+        rest,
+    ))
+}
+
+fn encode_factors(factors: &Factors, out: &mut Vec<u8>) -> Result<(), ModelError> {
+    if !(1..=MAX_FACTORS).contains(&factors.k)
+        || !FACTOR_BITS.contains(&factors.bits)
+        || factors.values.len() != (1usize << factors.bits).saturating_mul(factors.k)
+    {
+        return Err(ModelError::Size(
+            "factors do not match their table size".into(),
+        ));
+    }
+    let largest = factors.values.iter().fold(0f32, |m, v| m.max(v.abs()));
+    if !largest.is_finite() {
+        return Err(ModelError::Value("factors"));
+    }
+    let scale = if largest > 0.0 {
+        largest / f32::from(i16::MAX)
+    } else {
+        1.0
+    };
+    // In range by construction: k <= MAX_FACTORS and bits <= 18.
+    out.extend_from_slice(&(factors.k as u32).to_le_bytes());
+    out.extend_from_slice(&factors.bits.to_le_bytes());
+    out.extend_from_slice(&scale.to_le_bytes());
+    for v in &factors.values {
+        let q = (v / scale)
+            .round()
+            .clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16;
+        out.extend_from_slice(&q.to_le_bytes());
+    }
+    Ok(())
 }
 
 pub fn sigmoid(x: f32) -> f32 {
@@ -1035,6 +1178,7 @@ mod tests {
             weights: vec![0.5; 1 << MIN_BITS],
             suffixes: Suffixes::parse("com\n*.platform.example\n").unwrap(),
             popular: vec!["popular.com".into()],
+            factors: None,
         })
         .unwrap();
         assert!(UrlModel::parse(&good).is_ok());
@@ -1082,9 +1226,118 @@ mod tests {
                 weights: vec![0.0; 3],
                 suffixes: Suffixes::default(),
                 popular: Vec::new(),
+                factors: None,
             })
             .is_err()
         );
+    }
+
+    /// A model whose only factors are for two words, one in the host and
+    /// one in the path: each alone adds nothing, together they add `v·v`.
+    fn paired_model(v: f32) -> UrlModel {
+        let bits = MIN_BITS;
+        const K: usize = 2;
+        const FACTOR_BITS: u32 = 12;
+        let (k, factor_bits) = (K, FACTOR_BITS);
+        let mut values = vec![0f32; K << FACTOR_BITS];
+        for (kind, token) in [(Kind::HostWord, "paypal"), (Kind::PathWord, "login")] {
+            let (bucket, sign) = Feature {
+                kind,
+                token,
+                value: 1.0,
+            }
+            .bucket(bits);
+            values[Factors::row(k, factor_bits, bucket)] = v * sign;
+        }
+        let parts = ModelParts {
+            bits,
+            bias: 0.0,
+            elevated: 0.5,
+            high: 0.9,
+            weights: vec![0.0; 1 << bits],
+            suffixes: Suffixes::default(),
+            popular: Vec::new(),
+            factors: Some(Factors {
+                k,
+                bits: factor_bits,
+                values,
+            }),
+        };
+        UrlModel::parse(&UrlModel::encode(&parts).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn factors_weigh_features_that_appear_together() {
+        let model = paired_model(2.0);
+        let score = |s: &str| model.assess(&url(s), View::Address);
+        // Unless the two collide with another feature's row, each alone is 0.5.
+        assert!((score("http://paypal.example.net/").score - 0.5).abs() < 0.05);
+        assert!((score("http://shop.example.net/login").score - 0.5).abs() < 0.05);
+        let both = score("http://paypal.example.net/login");
+        assert!((both.score - sigmoid(4.0)).abs() < 0.05, "{}", both.score);
+        assert!(
+            both.signals
+                .contains(&"how the parts of the address go together".to_owned())
+        );
+    }
+
+    #[test]
+    fn damaged_factor_sections_are_refused() {
+        let with_factors = |values: Vec<f32>| {
+            UrlModel::encode(&ModelParts {
+                bits: MIN_BITS,
+                bias: 0.0,
+                elevated: 0.5,
+                high: 0.9,
+                weights: vec![0.0; 1 << MIN_BITS],
+                suffixes: Suffixes::default(),
+                popular: Vec::new(),
+                factors: Some(Factors {
+                    k: 2,
+                    bits: 12,
+                    values,
+                }),
+            })
+        };
+        let good = with_factors(vec![0.5; 2 << 12]).unwrap();
+        assert!(UrlModel::parse(&good).is_ok());
+        let at = good.len() - (2 << 12) * 2 - 12;
+        let with = |offset: usize, word: [u8; 4]| {
+            let mut bad = good.clone();
+            bad[at + offset..at + offset + 4].copy_from_slice(&word);
+            UrlModel::parse(&bad)
+        };
+        assert_eq!(
+            with(0, 0u32.to_le_bytes()).unwrap_err(),
+            ModelError::Value("factor table size")
+        );
+        assert_eq!(
+            with(0, 9u32.to_le_bytes()).unwrap_err(),
+            ModelError::Value("factor table size")
+        );
+        assert_eq!(
+            with(4, 30u32.to_le_bytes()).unwrap_err(),
+            ModelError::Value("factor table size")
+        );
+        assert_eq!(
+            with(8, f32::NAN.to_le_bytes()).unwrap_err(),
+            ModelError::Value("factor scale")
+        );
+        assert_eq!(
+            with(8, (-1f32).to_le_bytes()).unwrap_err(),
+            ModelError::Value("factor scale")
+        );
+        // One row more than the table holds, or one byte short.
+        assert!(matches!(
+            with(4, 11u32.to_le_bytes()),
+            Err(ModelError::Size(_))
+        ));
+        assert!(matches!(
+            UrlModel::parse(&good[..good.len() - 1]),
+            Err(ModelError::Size(_))
+        ));
+        // Values that do not fill the table are refused when written.
+        assert!(with_factors(vec![0.5; 3]).is_err());
     }
 
     #[test]
@@ -1097,6 +1350,7 @@ mod tests {
             weights: vec![0.0; 1 << MIN_BITS],
             suffixes: Suffixes::parse("com\nco.uk\n").unwrap(),
             popular,
+            factors: None,
         };
         let good = UrlModel::encode(&parts(vec!["a.com".into(), "b.com".into()])).unwrap();
         let mut extra = good.clone();
@@ -1173,6 +1427,7 @@ mod tests {
                 weights,
                 suffixes: Suffixes::parse("com\ndev\nworkers.dev\n").unwrap(),
                 popular: vec!["google.com".into(), "workers.dev".into()],
+                factors: None,
             })
             .unwrap(),
         )
@@ -1241,6 +1496,7 @@ mod tests {
             weights: weights.clone(),
             suffixes: Suffixes::default(),
             popular: Vec::new(),
+            factors: None,
         };
         let model = UrlModel::parse(&UrlModel::encode(&parts).unwrap()).unwrap();
         for s in [

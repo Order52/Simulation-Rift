@@ -291,7 +291,13 @@ struct RiftScreen {
 
 impl Screen for RiftScreen {
     fn remark(&self, url: &CanonicalUrl, view: View) -> Option<String> {
-        crate::ai::remark(&self.ai.as_ref()?.model, url, view)
+        // A current pack's model replaces the one the app ships.
+        let pack = self.intel.as_ref().and_then(|intel| intel.pack());
+        let model = pack
+            .as_ref()
+            .and_then(|pack| pack.model.as_deref())
+            .or(self.ai.as_ref().map(|ai| &ai.model))?;
+        crate::ai::remark(model, url, view)
     }
 
     fn listed(&self, url: &CanonicalUrl) -> Option<String> {

@@ -99,6 +99,11 @@ impl SnapshotStore {
         for name in pack::FILES {
             files.push((name, read_limited(&dir.join(name), name)?));
         }
+        for name in pack::OPTIONAL {
+            if dir.join(name).exists() {
+                files.push((name, read_limited(&dir.join(name), name)?));
+            }
+        }
         let pack = Pack::validate(files.iter().map(|(n, b)| (*n, b.as_slice())))
             .map_err(|e| SnapshotError::Damaged(e.to_string()))?;
         if pack.digest.hex() != digest {
@@ -242,6 +247,36 @@ mod tests {
 
     fn snapshot_name(store: &SnapshotStore) -> Option<String> {
         store.current().unwrap().map(|p| p.metadata.snapshot)
+    }
+
+    #[test]
+    fn a_model_is_installed_and_read_back() {
+        use crate::urlmodel::{MIN_BITS, ModelParts, Suffixes, UrlModel};
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _) = SnapshotStore::open(dir.path()).unwrap();
+        let model = UrlModel::encode(&ModelParts {
+            bits: MIN_BITS,
+            bias: 0.0,
+            elevated: 0.5,
+            high: 0.9,
+            weights: vec![0.0; 1 << MIN_BITS],
+            suffixes: Suffixes::default(),
+            popular: Vec::new(),
+            factors: None,
+        })
+        .unwrap();
+        let mut with_model = files("with-model");
+        with_model.push((pack::MODEL, model.clone()));
+        let installed = store.install(view(&with_model), &Accept).unwrap();
+        let current = store.current().unwrap().unwrap();
+        assert_eq!(current.digest, installed.digest);
+        assert_eq!(
+            current.model.unwrap().digest_hex(),
+            UrlModel::parse(&model).unwrap().digest_hex()
+        );
+        // The next pack has none, and none is read.
+        store.install(view(&files("without")), &Accept).unwrap();
+        assert!(store.current().unwrap().unwrap().model.is_none());
     }
 
     #[test]

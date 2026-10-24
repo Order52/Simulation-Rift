@@ -9,24 +9,33 @@
 //! | `url-hashes.bin` | [`UrlTable`] | 64 MiB |
 //! | `file-hashes.bin` | [`FileTable`] | 64 MiB |
 //! | `rules.yar` | YARA source, UTF-8, compiled only inside a worker | 8 MiB |
+//! | `url-model.bin` | optional: Rift AI's model ([`UrlModel`], §16) | 2 MiB |
 //!
+//! A pack with a model replaces the one the app ships for as long as the
+//! pack is current; a model that does not validate refuses the whole pack.
 //! Every table record points into `metadata.indicators`, and every rule the
 //! worker reports is looked up in `metadata.rules`. Nothing in a pack is
 //! executed by the core, and no path is derived from anything inside it.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 use crate::intel::{FileTable, TableError, UrlTable};
+use crate::urlmodel::{self, UrlModel};
 
 pub const METADATA: &str = "metadata.json";
 pub const URL_TABLE: &str = "url-hashes.bin";
 pub const FILE_TABLE: &str = "file-hashes.bin";
 pub const RULES: &str = "rules.yar";
 /// The complete, fixed set of pack files (also the TUF staging allowlist).
+pub const MODEL: &str = urlmodel::MODEL_FILE;
+
 pub const FILES: [&str; 4] = [METADATA, URL_TABLE, FILE_TABLE, RULES];
+/// Files a pack may have.
+pub const OPTIONAL: [&str; 1] = [MODEL];
 
 pub const MAX_METADATA_BYTES: usize = 1024 * 1024;
 pub const MAX_TABLE_BYTES: usize = 64 * 1024 * 1024;
@@ -42,6 +51,7 @@ pub fn size_limit(name: &str) -> Option<usize> {
         METADATA => Some(MAX_METADATA_BYTES),
         URL_TABLE | FILE_TABLE => Some(MAX_TABLE_BYTES),
         RULES => Some(MAX_RULES_BYTES),
+        MODEL => Some(urlmodel::MAX_MODEL_BYTES),
         _ => None,
     }
 }
@@ -69,6 +79,8 @@ pub enum PackError {
     },
     #[error("rules are not UTF-8")]
     RulesEncoding,
+    #[error("{MODEL}: {0}")]
+    Model(urlmodel::ModelError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
@@ -140,12 +152,15 @@ pub struct Pack {
     /// SHA-256 of `rules_source`, which scan requests reference.
     pub rules_digest: [u8; 32],
     pub digest: PackDigest,
+    /// Rift AI's model, if the pack has one.
+    pub model: Option<Arc<UrlModel>>,
     rule_index: BTreeMap<String, usize>,
 }
 
 impl Pack {
     /// Validates a pack from its files, given as (name, bytes). Every file
-    /// must be present exactly once, within its limit; unknown names fail.
+    /// in [`FILES`] must be present exactly once, and those in [`OPTIONAL`]
+    /// at most once, each within its limit; unknown names fail.
     pub fn validate<'a>(
         files: impl IntoIterator<Item = (&'a str, &'a [u8])>,
     ) -> Result<Self, PackError> {
@@ -153,6 +168,7 @@ impl Pack {
         for (name, bytes) in files {
             let known = FILES
                 .iter()
+                .chain(&OPTIONAL)
                 .find(|known| **known == name)
                 .ok_or_else(|| PackError::UnknownFile(name.to_owned()))?;
             let limit = size_limit(known).ok_or_else(|| PackError::UnknownFile(name.to_owned()))?;
@@ -186,9 +202,19 @@ impl Pack {
             })?;
         let rules_source = get(RULES)?;
         std::str::from_utf8(rules_source).map_err(|_| PackError::RulesEncoding)?;
+        let model = found
+            .get(MODEL)
+            .map(|bytes| UrlModel::parse(bytes).map(Arc::new))
+            .transpose()
+            .map_err(PackError::Model)?;
 
         let mut digest = Sha256::new();
-        for name in FILES {
+        // Optional files count when present, after the others: a pack
+        // without a model has the digest it had before models existed.
+        let present = FILES
+            .iter()
+            .chain(OPTIONAL.iter().filter(|name| found.contains_key(*name)));
+        for name in present {
             let bytes = get(name)?;
             digest.update(name.as_bytes());
             digest.update([0]);
@@ -202,6 +228,7 @@ impl Pack {
             rules_source: rules_source.to_vec(),
             rules_digest: Sha256::digest(rules_source).into(),
             digest: PackDigest(digest.finalize().into()),
+            model,
             rule_index,
         })
     }
@@ -378,6 +405,54 @@ pub(crate) mod tests {
             pack.rules_digest,
             <[u8; 32]>::from(Sha256::digest(RULES_SRC))
         );
+    }
+
+    /// A small valid model file.
+    fn model_file(bias: f32) -> Vec<u8> {
+        use crate::urlmodel::{MIN_BITS, ModelParts, Suffixes};
+        UrlModel::encode(&ModelParts {
+            bits: MIN_BITS,
+            bias,
+            elevated: 0.5,
+            high: 0.9,
+            weights: vec![0.0; 1 << MIN_BITS],
+            suffixes: Suffixes::default(),
+            popular: Vec::new(),
+            factors: None,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn a_model_is_optional_validated_and_covered_by_the_digest() {
+        let base = pack_files(&metadata(demo_rule()), &[]);
+        let without = validate(&base).unwrap();
+        assert!(without.model.is_none());
+        let with = |bytes: Vec<u8>| {
+            let mut files = base.clone();
+            files.push((MODEL, bytes));
+            validate(&files)
+        };
+        let one = with(model_file(0.0)).unwrap();
+        assert_eq!(
+            one.model.as_ref().unwrap().digest_hex(),
+            UrlModel::parse(&model_file(0.0)).unwrap().digest_hex()
+        );
+        let two = with(model_file(1.0)).unwrap();
+        assert_ne!(one.digest, without.digest);
+        assert_ne!(one.digest, two.digest);
+        // A model that does not validate refuses the whole pack.
+        let mut damaged = model_file(0.0);
+        damaged.truncate(100);
+        assert!(matches!(with(damaged), Err(PackError::Model(_))));
+        assert!(matches!(
+            with(vec![0; urlmodel::MAX_MODEL_BYTES + 1]),
+            Err(PackError::TooLarge { name: MODEL, .. })
+        ));
+        let mut twice = base.clone();
+        twice.push((MODEL, model_file(0.0)));
+        twice.push((MODEL, model_file(0.0)));
+        assert!(matches!(validate(&twice), Err(PackError::Metadata(_))));
     }
 
     #[test]
