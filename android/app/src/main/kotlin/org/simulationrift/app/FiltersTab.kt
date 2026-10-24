@@ -103,8 +103,40 @@ internal fun FiltersTab() {
                     enabled = state.enabled && !downloading && onCount > 0,
                     modifier = Modifier.fillMaxWidth().height(52.dp).testTag("filters-download"),
                 ) { Text(if (downloaded == 0) "Download the lists" else "Update the lists") }
+                SwitchRow(
+                    title = "Keep the lists up to date",
+                    about = "After your first download, Rift downloads each list again from its own website when it is four days old, while Rift is running. Check's ClearURLs rules are kept up to date the same way.",
+                    checked = state.autoUpdate,
+                    enabled = state.enabled,
+                    tag = "filters-auto-update",
+                    onChange = ContentFilter::setAutoUpdate,
+                )
                 Text(
-                    "Downloaded from the lists' own websites when you tap, never by itself. New settings apply from the next page you open.",
+                    "The first download is yours to tap. New settings apply from the next page you open.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Card(
+            Modifier.fillMaxWidth().testTag("walls-card"),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val walls = ContentFilter.catalog.filter { it.walls }
+                SwitchRow(
+                    title = "Skip sign-ins and pop-ups",
+                    about = "Takes down \u201CLog in to continue\u201D walls and sign-up boxes on social sites and others, unlocks scrolling and blurred pages, " +
+                        "and dismisses pages' alert and \u201CLeave this page?\u201D boxes. ${walls.size} lists, kept by their own maintainers.",
+                    checked = state.skipWalls,
+                    enabled = state.enabled && !downloading,
+                    tag = "walls-switch",
+                    onChange = ContentFilter::setSkipWalls,
+                )
+                Text(
+                    "Some sites still show what only an account can see. Rift never runs a list's own scripts, so the few walls that only a script can take down stay up.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -157,8 +189,8 @@ internal fun FiltersTab() {
         LinkCleaningCard()
 
         Text(
-            "The lists are EasyList and Fanboy's lists (GPL v3 or CC BY-SA 3.0), uBlock Origin's and AdGuard's (GPL v3), by their volunteers. " +
-                "They only remove things from pages: they can never allow what Rift's own checks refuse. " +
+            "The lists are EasyList and Fanboy's lists (GPL v3 or CC BY-SA 3.0), uBlock Origin's and AdGuard's (GPL v3), and Dandelion Sprout's (Dandelicence), by their volunteers. " +
+                "They only hide, remove or restyle things on pages, and Rift checks every rule first: they can never allow what Rift's own checks refuse. " +
                 "A filter does not make a page safe, and a list can be wrong: if a site breaks, turn a list off.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -269,5 +301,21 @@ private fun LinkCleaningCard() {
                 }
             }
         }
+    }
+}
+
+/** A row that is all one switch: a bigger target than the switch alone. */
+@Composable
+private fun SwitchRow(title: String, about: String, checked: Boolean, enabled: Boolean, tag: String, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(about, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled, modifier = Modifier.testTag(tag))
     }
 }

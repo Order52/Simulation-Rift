@@ -27,6 +27,8 @@ import android.view.inputmethod.InputConnection
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.HttpAuthHandler
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
@@ -168,6 +170,8 @@ class BrowserActivity : ComponentActivity() {
      * rules; and how many requests were blocked in this window.
      */
     @Volatile private var filtering = false
+    /** Whether pages' dialog boxes are dismissed unseen ("Skip sign-ins and pop-ups"), asked with [filtering]. */
+    @Volatile private var quietDialogs = false
     @Volatile private var pageUrl = ""
     private val blockedCount = AtomicInteger()
     /** Requests asked about and the time the answers took, for the log: how much the filters cost a page. */
@@ -329,6 +333,11 @@ class BrowserActivity : ComponentActivity() {
         } catch (e: RemoteException) {
             false
         }
+        quietDialogs = try {
+            connected.quietDialogs(generation)
+        } catch (e: RemoteException) {
+            false
+        }
         filtersShown = filtering
     }
 
@@ -345,7 +354,13 @@ class BrowserActivity : ComponentActivity() {
         watchReader.execute {
             try {
                 val hiding = PageHiding.fromBundle(connected.hidingFor(generation, url))
-                runOnUiThread { if (view.url == url) injectStyle(view, hiding.css, "rift-hide") }
+                runOnUiThread {
+                    if (view.url != url) return@runOnUiThread
+                    injectStyle(view, hiding.css, "rift-hide")
+                    if (hiding.actions.isNotEmpty()) {
+                        view.evaluateJavascript("$PAGE_ACTIONS_SCRIPT(${org.json.JSONObject.quote(hiding.actions)})", null)
+                    }
+                }
                 if (!generic || hiding.genericHidden) return@execute
                 runOnUiThread {
                     if (view.url != url) return@runOnUiThread
@@ -813,6 +828,29 @@ class BrowserActivity : ComponentActivity() {
             return true
         }
 
+        // With "Skip sign-ins and pop-ups" on, a page's dialog boxes are
+        // answered as if dismissed, unseen: an alert is closed, a question
+        // gets "no" (and a prompt nothing), and "Leave this page?" lets you
+        // leave. Scam pages use these to keep you on them.
+        override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult): Boolean =
+            dismissed(url) { result.cancel() }
+
+        override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult): Boolean =
+            dismissed(url) { result.cancel() }
+
+        override fun onJsPrompt(view: WebView, url: String, message: String, defaultValue: String?, result: JsPromptResult): Boolean =
+            dismissed(url) { result.cancel() }
+
+        override fun onJsBeforeUnload(view: WebView, url: String, message: String, result: JsResult): Boolean =
+            dismissed(url) { result.confirm() }
+
+        private fun dismissed(url: String, answer: () -> Unit): Boolean {
+            if (!quietDialogs) return false
+            answer()
+            reportAttempt(PageWatch.Attempt.DIALOG, url)
+            return true
+        }
+
         // Fullscreen would cover the trusted indicator (INV-6), so it is refused.
         override fun onShowCustomView(view: View, callback: CustomViewCallback) {
             callback.onCustomViewHidden()
@@ -1204,6 +1242,36 @@ class BrowserActivity : ComponentActivity() {
             "e.className.split(/\\s+/).forEach(function(n){if(n&&!c[n]&&nc<1500){c[n]=1;nc++}})});" +
             "document.querySelectorAll('[id]').forEach(function(e){var n=e.id;if(n&&!i[n]&&ni<1500){i[n]=1;ni++}});" +
             "return JSON.stringify({c:Object.keys(c),i:Object.keys(i)})})()"
+
+        /**
+         * Applies the changes the core checked (§10.9; their form is in
+         * rift_core::filters::Cosmetic): it finds elements by the steps and
+         * hides, removes, restyles or strips a class or attribute, nothing
+         * else. It reads its input as JSON data, never as code, and reapplies
+         * for 20 s as the page changes, since sign-in walls appear late.
+         */
+        private const val PAGE_ACTIONS_SCRIPT = "(function(t){var list;try{list=JSON.parse(t)}catch(e){return}" +
+            "if(!Array.isArray(list))return;var done=new WeakMap();" +
+            "function all(r,s){try{return Array.prototype.slice.call(r.querySelectorAll(s),0,2000)}catch(e){return[]}}" +
+            "function find(steps){var els=null;for(var i=0;i<steps.length;i++){var k=steps[i][0],a=String(steps[i][1]),n=[];" +
+            "if(k==='css'){if(els===null)n=all(document,a);else els.forEach(function(e){all(e,':scope '+a).forEach(function(f){if(n.indexOf(f)<0)n.push(f)})})}" +
+            "else if(k==='text'){var m=/^\\/(.*)\\/([imsu]*)$/.exec(a),re=null;if(m){try{re=new RegExp(m[1],m[2])}catch(e){return[]}}" +
+            "n=(els||[]).filter(function(e){var x=e.textContent||'';return re?re.test(x):x.indexOf(a)>=0})}" +
+            "else if(k==='up'){var c=/^[0-9]+$/.test(a)?parseInt(a,10):0;(els||[]).forEach(function(e){var p=e;" +
+            "if(c>0){for(var j=0;j<c&&p;j++)p=p.parentElement}else{try{p=e.parentElement?e.parentElement.closest(a):null}catch(x){p=null}}" +
+            "if(p&&n.indexOf(p)<0)n.push(p)})}else return[];els=n.slice(0,2000);if(!els.length)return[]}return els||[]}" +
+            "function apply(e,a,key){var seen=done.get(e)||{};if(seen[key])return;" +
+            "if(a[0]==='hide')e.style.setProperty('display','none','important');" +
+            "else if(a[0]==='remove'){e.remove();return}" +
+            "else if(a[0]==='style')e.setAttribute('style',(e.getAttribute('style')||'')+';'+a[1]);" +
+            "else if(a[0]==='remove-class'){if(!e.classList.contains(a[1]))return;e.classList.remove(a[1])}" +
+            "else if(a[0]==='remove-attr'){if(!e.hasAttribute(a[1]))return;e.removeAttribute(a[1])}" +
+            "else return;if(a[0]==='hide'||a[0]==='style'){seen[key]=1;done.set(e,seen)}}" +
+            "function run(){list.forEach(function(x,i){if(!x||!Array.isArray(x.s)||!Array.isArray(x.a))return;" +
+            "find(x.s).forEach(function(e){apply(e,x.a,i)})})}" +
+            "run();var wait=false,until=Date.now()+20000;var o=new MutationObserver(function(){" +
+            "if(Date.now()>until){o.disconnect();return}if(wait)return;wait=true;setTimeout(function(){wait=false;run()},300)});" +
+            "o.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','inert']})})"
 
         /** The generation whose WebView data directory this process uses; fixed once set. */
         @Volatile private var processGeneration: Long? = null

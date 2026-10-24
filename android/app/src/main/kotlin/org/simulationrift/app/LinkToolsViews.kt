@@ -141,6 +141,16 @@ private fun EditAddress(address: String, onDone: (String) -> Unit) {
 private fun Cleaning(address: String, onAddress: (String) -> Unit) {
     val rules by LinkCleaning.state.collectAsState()
     val cleaned = remember(address, rules.updated) { LinkCleaning.clean(address) }
+    val filters by ContentFilter.state.collectAsState()
+    val listed = remember(address, filters.ready) { ContentFilter.listsAddress(address) }
+    if (listed) {
+        Text(
+            "Your content filters list this server as an ad or tracker server (EasyPrivacy and the other lists).",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.testTag("tools-tracker-server"),
+        )
+    }
     if (cleaned == null) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(

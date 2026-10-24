@@ -30,7 +30,8 @@ import org.simulationrift.core.fetchFilterList
  */
 object ContentFilter {
 
-    class Source(val id: String, val title: String, val about: String, val url: String, val defaultOn: Boolean)
+    /** `walls`: one of the lists "Skip sign-ins and pop-ups" turns on and off together. */
+    class Source(val id: String, val title: String, val about: String, val url: String, val defaultOn: Boolean, val walls: Boolean = false)
 
     /** The upstream lists on offer, most used first. */
     val catalog = listOf(
@@ -43,19 +44,32 @@ object ContentFilter {
         Source(
             "ubo-annoyances", "uBlock annoyances",
             "Cookie banners, pop-ups, overlays, newsletter nags and “Sign in with Google” prompts.",
-            "https://ublockorigin.github.io/uAssetsCDN/filters/annoyances.min.txt", true,
+            "https://ublockorigin.github.io/uAssetsCDN/filters/annoyances.min.txt", true, walls = true,
         ),
         Source(
             "fanboy-social", "Fanboy social", "Like and share buttons, and Facebook and other social sign-in widgets.",
-            "https://easylist.to/easylist/fanboy-social.txt", true,
+            "https://easylist.to/easylist/fanboy-social.txt", true, walls = true,
         ),
         Source(
             "adguard-popups", "AdGuard pop-ups", "Pop-ups, overlays and \u201Clog in to continue\u201D walls on Facebook, Instagram, X and others.",
-            "https://filters.adtidy.org/extension/ublock/filters/19.txt", true,
+            "https://filters.adtidy.org/extension/ublock/filters/19.txt", true, walls = true,
         ),
         Source(
             "adguard-social", "AdGuard social media", "Social buttons, widgets and sign-in prompts from Facebook, Instagram, X and more.",
-            "https://filters.adtidy.org/extension/ublock/filters/4.txt", true,
+            "https://filters.adtidy.org/extension/ublock/filters/4.txt", true, walls = true,
+        ),
+        Source(
+            "no-login", "Browse without logging in", "\u201CLog in to read more\u201D walls, from Dandelion Sprout.",
+            "https://raw.githubusercontent.com/DandelionSprout/adfilt/master/BrowseWebsitesWithoutLoggingIn.txt", true, walls = true,
+        ),
+        Source(
+            "no-login-ubo", "Browse without logging in (more)", "Its part for uBlock-style blockers: more sites, from Dandelion Sprout.",
+            "https://raw.githubusercontent.com/DandelionSprout/adfilt/master/uBO%20list%20extensions/BrowseWebsitesWithoutLoggingIn-uBOExtension.txt",
+            true, walls = true,
+        ),
+        Source(
+            "adguard-other", "AdGuard other annoyances", "Sign-up nags, blur and scroll locks, and other annoyances the lists above miss.",
+            "https://filters.adtidy.org/extension/ublock/filters/21.txt", true, walls = true,
         ),
         Source(
             "adguard-appbanners", "AdGuard app banners", "\u201COpen in the app\u201D and \u201CGet the app\u201D banners.",
@@ -108,6 +122,10 @@ object ContentFilter {
 
     data class State(
         val enabled: Boolean = true,
+        /** "Skip sign-ins and pop-ups": the [Source.walls] lists, and pages' dialog boxes dismissed unseen. */
+        val skipWalls: Boolean = true,
+        /** Lists downloaded once are downloaded again when [STALE_MS] old, while Rift runs. */
+        val autoUpdate: Boolean = true,
         val lists: Map<String, ListState> = emptyMap(),
         val custom: String = "",
         /** Set while a download or a rebuild runs. */
@@ -138,6 +156,8 @@ object ContentFilter {
     val state: StateFlow<State> = _state
 
     private val work = Executors.newSingleThreadExecutor { Thread(it, "rift-filters") }
+    /** Only wakes [refreshIfStale] up; the work itself runs on [work]. */
+    private val timer = Executors.newSingleThreadScheduledExecutor { Thread(it, "rift-filters-timer").apply { isDaemon = true } }
     private val blockedTotal = AtomicLong()
     /** A rebuild is waiting on [work]: changes made before it starts are all in it. */
     private val rebuildQueued = AtomicBoolean()
@@ -159,11 +179,50 @@ object ContentFilter {
             _state.value = read()
             rebuild()
         }
+        timer.scheduleWithFixedDelay({ work.execute(::refreshIfStale) }, START_CHECK_MS, CHECK_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
     }
 
     fun setEnabled(on: Boolean) {
         update { it.copy(enabled = on) }
         requestRebuild()
+    }
+
+    /** Turns every sign-in and pop-up list on or off at once, downloading those not yet downloaded. */
+    fun setSkipWalls(on: Boolean) {
+        val walls = catalog.filter { it.walls }.map { it.id }
+        val missing = walls.filter { _state.value.lists[it]?.downloaded == false }
+        update { now -> now.copy(skipWalls = on, lists = now.lists.mapValues { (id, list) -> if (id in walls) list.copy(on = on) else list }) }
+        if (on && missing.isNotEmpty()) download(missing) else requestRebuild()
+    }
+
+    fun setAutoUpdate(on: Boolean) {
+        update { it.copy(autoUpdate = on) }
+        if (on) refreshIfStale()
+    }
+
+    /** Whether the browser dismisses pages' dialog boxes: with "Skip sign-ins and pop-ups" and the filters on. */
+    fun quietDialogs(): Boolean = _state.value.let { it.enabled && it.skipWalls }
+
+    /**
+     * Downloads again the lists that are on and older than [STALE_MS] (upstream's own lists ask
+     * for a few days), and those switched on but missing, once any list has been downloaded:
+     * the first download is still the user's tap. Called at start and every [CHECK_MS].
+     */
+    private fun refreshIfStale() {
+        val now = _state.value
+        if (!now.autoUpdate) return
+        // Check's link-cleaning rules follow the same switch, filters on or off.
+        LinkCleaning.refreshIfStale(STALE_MS)
+        if (!now.enabled || now.busy != null && now.busy != APPLYING) return
+        if (now.lists.values.none { it.downloaded }) return
+        val due = catalog.filter { source ->
+            val list = now.lists[source.id] ?: return@filter false
+            list.on && (!list.downloaded || System.currentTimeMillis() - (list.updated ?: 0) > STALE_MS)
+        }.map { it.id }
+        if (due.isNotEmpty()) {
+            Log.i(TAG, "updating ${due.size} lists by themselves")
+            download(due)
+        }
     }
 
     /** Turns one list on or off; turning one on that is not downloaded downloads it. */
@@ -309,11 +368,21 @@ object ContentFilter {
         return blocked
     }
 
+    /**
+     * Whether the lists name [url]'s server itself as an ad or tracker server: a rule that blocks
+     * it as a whole page, which host rules such as EasyPrivacy's `||tracker.example^` do. Not
+     * counted as a block. Check uses it to tell the user before the link is opened.
+     */
+    fun listsAddress(url: String): Boolean {
+        if (url.length > MAX_URL_CHARS) return false
+        return guarded("listsAddress", false) { engine.isLoaded() && engine.blocks(url, "", "document") }
+    }
+
     fun hiding(url: String): PageHiding {
         if (url.length > MAX_URL_CHARS) return PageHiding.NONE
         return guarded("hiding", PageHiding.NONE) {
             val found = engine.hiding(url)
-            PageHiding(found.css, found.exceptions, found.genericHidden)
+            PageHiding(found.css, found.exceptions, found.genericHidden, found.actions)
         }
     }
 
@@ -337,7 +406,7 @@ object ContentFilter {
 
     private fun save() {
         val now = _state.value
-        val json = JSONObject().put("enabled", now.enabled).put("lists", JSONObject().also { o -> now.lists.forEach { (id, s) -> o.put(id, s.on) } })
+        val json = JSONObject().put("enabled", now.enabled).put("skipWalls", now.skipWalls).put("autoUpdate", now.autoUpdate).put("lists", JSONObject().also { o -> now.lists.forEach { (id, s) -> o.put(id, s.on) } })
         try {
             File(dir, SETTINGS).writeText(json.toString())
         } catch (e: IOException) {
@@ -356,6 +425,8 @@ object ContentFilter {
         val on = saved?.optJSONObject("lists")
         return State(
             enabled = saved?.optBoolean("enabled", true) ?: true,
+            skipWalls = saved?.optBoolean("skipWalls", true) ?: true,
+            autoUpdate = saved?.optBoolean("autoUpdate", true) ?: true,
             lists = catalog.associate { s ->
                 val file = File(dir, "${s.id}.txt")
                 s.id to ListState(
@@ -417,5 +488,9 @@ object ContentFilter {
     }
 
     private const val COUNT_PUBLISH_EVERY = 25L
+    /** Upstream lists say "Expires: 3 days" to "7 days"; four is the middle. */
+    private const val STALE_MS = 4L * 24 * 60 * 60 * 1000
+    private const val START_CHECK_MS = 60_000L
+    private const val CHECK_MS = 6L * 60 * 60 * 1000
     private val UPSTREAM_DATE = Regex("^!\\\\s*(?:Last modified|Version|TimeUpdated)\\\\s*:\\\\s*(.+)$", RegexOption.IGNORE_CASE)
 }

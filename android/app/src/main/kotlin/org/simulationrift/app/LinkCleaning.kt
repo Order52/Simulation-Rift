@@ -90,6 +90,15 @@ object LinkCleaning {
         _state.update { it.copy(busy = false, message = message) }
     }
 
+    /** With the filters' "Keep the lists up to date": downloads the rules again once older than [staleMs], if Rift has them. */
+    fun refreshIfStale(staleMs: Long) {
+        val now = _state.value
+        val updated = now.updated ?: return
+        if (now.busy || System.currentTimeMillis() - updated <= staleMs) return
+        Log.i(TAG, "updating the rules by themselves")
+        download()
+    }
+
     fun remove() {
         work.execute {
             file.delete()

@@ -116,6 +116,8 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
                 "$host asked for fullscreen, which would hide Rift's bar. Refused.")
             PageWatch.Attempt.DOWNLOAD -> record(Level.WARNING, kind, host,
                 "$host started a download by itself during the test-open. It was not fetched.")
+            PageWatch.Attempt.DIALOG -> record(Level.NOTE, kind, host,
+                "$host tried to show a dialog box (an alert, a question, or \u201cLeave this page?\u201d). Rift dismissed it unseen.")
         }
     }
 

@@ -45,8 +45,10 @@ data class PageWatch(val events: List<Event>, val coverage: List<String>) {
         const val FULLSCREEN = "fullscreen"
         /** A download started during a test-open, which is not fetched. */
         const val DOWNLOAD = "download-attempt"
+        /** A dialog box (alert, confirm, prompt, "Leave this page?"), dismissed unseen. */
+        const val DIALOG = "dialog"
 
-        val ALL = setOf(LOCATION, CAMERA, MICROPHONE, MIDI, PROTECTED_MEDIA, FILES, FULLSCREEN, DOWNLOAD)
+        val ALL = setOf(LOCATION, CAMERA, MICROPHONE, MIDI, PROTECTED_MEDIA, FILES, FULLSCREEN, DOWNLOAD, DIALOG)
     }
 
     /**

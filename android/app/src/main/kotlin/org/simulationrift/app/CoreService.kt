@@ -86,6 +86,11 @@ class CoreService : Service() {
             return Core.isBrowser(generation) && ContentFilter.active()
         }
 
+        override fun quietDialogs(generation: Long): Boolean {
+            checkCallerFast()
+            return Core.isBrowser(generation) && ContentFilter.quietDialogs()
+        }
+
         override fun blockRequest(generation: Long, url: String, page: String, kind: String): Boolean {
             checkCallerFast()
             return Core.isBrowser(generation) && ContentFilter.blocks(url, page, kind)

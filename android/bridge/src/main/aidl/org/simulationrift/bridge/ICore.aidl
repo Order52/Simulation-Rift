@@ -93,6 +93,13 @@ interface ICore {
     boolean filtersOn(long generation);
 
     /**
+     * Whether pages' dialog boxes (alert, confirm, prompt, "Leave this
+     * page?") are dismissed unseen: on with "Skip sign-ins and pop-ups"
+     * (§10.9). Asked with filtersOn, once for each page.
+     */
+    boolean quietDialogs(long generation);
+
+    /**
      * Whether a subresource request is blocked by the content filters:
      * `page` is the address of the page that makes it, `kind` one of the
      * filter engine's request kinds. The core bounds and validates both.
