@@ -25,7 +25,7 @@ use std::num::NonZeroU64;
 use std::path::{Path, PathBuf};
 
 use aws_lc_rs::rand::SystemRandom;
-use rift_core::pack::{self, Pack};
+use rift_core::pack::Pack;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
@@ -40,7 +40,7 @@ use tough::schema::{
 };
 use tough::sign::{Sign, parse_keypair};
 
-use crate::{Result, ToolError, io, refuse_inside_git, runtime, tuf};
+use crate::{Result, ToolError, io, pack_file_names, refuse_inside_git, runtime, tuf};
 
 const SPEC_VERSION: &str = "1.0.0";
 /// Roles whose keys stay offline.
@@ -289,7 +289,7 @@ pub fn draft_targets(
     let pack = read_pack(pack_dir)?;
     let mut targets = Targets::new(SPEC_VERSION.into(), version, expires);
     runtime()?.block_on(async {
-        for name in pack::FILES {
+        for name in pack_file_names(pack_dir) {
             let (target_name, target) = RepositoryEditor::build_target(pack_dir.join(name))
                 .await
                 .map_err(tuf)?;
@@ -362,13 +362,14 @@ pub fn publish_signed(
     })?;
     read_pack(pack_dir)?;
     let listed: HashSet<&str> = targets.signed.targets.keys().map(|n| n.raw()).collect();
-    if listed != pack::FILES.into_iter().collect() {
+    let names = pack_file_names(pack_dir);
+    if listed != names.iter().copied().collect() {
         return Err(ToolError::Refused(format!(
             "the targets list {listed:?}, not exactly the pack files"
         )));
     }
-    let mut files = Vec::with_capacity(pack::FILES.len());
-    for name in pack::FILES {
+    let mut files = Vec::with_capacity(names.len());
+    for name in names {
         let path = pack_dir.join(name);
         let bytes = fs::read(&path).map_err(io(&path))?;
         let digest = Sha256::digest(&bytes);
@@ -551,7 +552,7 @@ fn metafile(bytes: &[u8], version: NonZeroU64) -> Metafile {
 }
 
 fn read_pack(pack_dir: &Path) -> Result<Pack> {
-    let files: Vec<(&'static str, Vec<u8>)> = pack::FILES
+    let files: Vec<(&'static str, Vec<u8>)> = pack_file_names(pack_dir)
         .iter()
         .map(|name| {
             let path = pack_dir.join(name);

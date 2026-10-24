@@ -6,6 +6,7 @@
 //!   for development and tests; releases use [`production`]).
 //! - [`write_demo_pack`]: the first-party demo pack. It is harmless: its
 //!   indicators match only [`DEMO_FILE`] and a `.invalid` URL.
+//! - [`feeds::write_feeds_pack`]: a pack of real indicators from public feeds.
 //! - [`publish`]: a signed repository (`metadata/`, `targets/`) for a pack.
 //!
 //! - [`production`]: the release flow, with each key held by one person,
@@ -30,6 +31,7 @@ use tough::key_source::{KeySource, LocalKeySource};
 use tough::schema::{KeyHolder, RoleKeys, RoleType, Root, Signed};
 use tough::sign::{Sign, parse_keypair};
 
+pub mod feeds;
 pub mod production;
 
 /// The harmless file the demo pack's file indicator and marker rule match.
@@ -288,6 +290,19 @@ pub fn write_demo_pack(dir: &Path, created: jiff::Timestamp) -> Result<Pack> {
     write_pack(dir, &files)
 }
 
+/// The pack files in `pack_dir`: every required one, and the optional ones
+/// (Rift AI's model) that are there.
+pub fn pack_file_names(pack_dir: &Path) -> Vec<&'static str> {
+    pack::FILES
+        .into_iter()
+        .chain(
+            pack::OPTIONAL
+                .into_iter()
+                .filter(|name| pack_dir.join(name).exists()),
+        )
+        .collect()
+}
+
 /// Validates `files` as a pack, then writes them into `dir`.
 pub fn write_pack(dir: &Path, files: &[(&'static str, Vec<u8>)]) -> Result<Pack> {
     let pack = Pack::validate(files.iter().map(|(n, b)| (*n, b.as_slice())))?;
@@ -307,7 +322,8 @@ pub fn publish(
     out: &Path,
     release: &Release,
 ) -> Result<()> {
-    let files: Vec<(&'static str, Vec<u8>)> = pack::FILES
+    let names = pack_file_names(pack_dir);
+    let files: Vec<(&'static str, Vec<u8>)> = names
         .iter()
         .map(|name| {
             let path = pack_dir.join(name);
@@ -327,7 +343,7 @@ pub fn publish(
             .snapshot_expires(release.snapshot_expires)
             .timestamp_version(release.version)
             .timestamp_expires(release.timestamp_expires);
-        for name in pack::FILES {
+        for name in &names {
             let (target_name, target) = RepositoryEditor::build_target(pack_dir.join(name))
                 .await
                 .map_err(tuf)?;

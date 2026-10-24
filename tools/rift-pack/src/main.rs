@@ -6,6 +6,8 @@
 //! rift-pack keys <key-dir>                       one Ed25519 key per role (outside git)
 //! rift-pack root <key-dir> <root.json> [version]  signed root, valid for 365 days
 //! rift-pack demo <pack-dir>                       the harmless demo pack
+//! rift-pack feeds <pack-dir> <url-model.bin> [urlhaus=<file>] [phishing-database=<file>]...
+//!                                                 real indicators (§13.3) and that model (§16); its popular sites are never listed whole
 //! rift-pack publish <root.json> <key-dir> <pack-dir> <repo-dir> <version>
 //! ```
 //!
@@ -26,6 +28,7 @@ use std::num::NonZeroU64;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use rift_pack::feeds::{self, Feed};
 use rift_pack::production::{self, OnlineRelease};
 use rift_pack::{Release, ToolError};
 
@@ -78,6 +81,31 @@ fn run(args: &[&str]) -> Result<String, ToolError> {
                 pack.digest.hex()
             )
         }),
+        ["feeds", dir, model, sources @ ..] if !sources.is_empty() => {
+            let feeds = sources
+                .iter()
+                .map(|s| match s.split_once('=') {
+                    Some(("urlhaus", path)) => Ok((Feed::Urlhaus, path)),
+                    Some(("phishing-database", path)) => Ok((Feed::PhishingDatabase, path)),
+                    _ => Err(ToolError::Refused(format!(
+                        "{s:?}: expected urlhaus=<file> or phishing-database=<file>"
+                    ))),
+                })
+                .map(|f| f.and_then(|(feed, path)| Ok((feed, feeds::read_feed(Path::new(path))?))))
+                .collect::<Result<Vec<_>, _>>()?;
+            let model = std::fs::read(model).map_err(|e| ToolError::Refused(format!("{model}: {e}")))?;
+            feeds::write_feeds_pack(Path::new(dir), &feeds, &model, now).map(|(pack, counts)| {
+                format!(
+                    "feeds pack {} ({}): listed {:?}, dropped {} popular, {} repeated, {} unreadable",
+                    pack.metadata.snapshot,
+                    pack.digest.hex(),
+                    counts.listed,
+                    counts.popular,
+                    counts.repeated,
+                    counts.unreadable
+                )
+            })
+        }
         ["publish", root, keys, pack, out, v] => {
             let v = version(v)?;
             let release = Release::standard(v, now)?;
@@ -153,7 +181,7 @@ fn run(args: &[&str]) -> Result<String, ToolError> {
             })
         }
         _ => Err(ToolError::Refused(
-            "usage: rift-pack keys|root|demo|publish|key|public|root-draft|root-sign|root-check|\
+            "usage: rift-pack keys|root|demo|feeds|publish|key|public|root-draft|root-sign|root-check|\
              targets-draft|targets-sign|publish-signed … (see the source header)"
                 .into(),
         )),
