@@ -1239,6 +1239,63 @@ class SecurityTest {
     }
 
     /**
+     * "Skip sign-ins and pop-ups" (§10.9): a social site's sign-in wall comes
+     * down by the lists' own kinds of rules (here the user's, so the test
+     * needs no download): scrolling unlocked by `:style()`, the sign-up box
+     * removed even when it comes late, the post's blur class and `inert`
+     * stripped, a nag found by its text hidden with its section; and the
+     * page's dialog boxes are dismissed unseen. A list's script rule never
+     * runs.
+     */
+    @Test
+    fun f7_signInWallsAndDialogsAreSkipped() {
+        try {
+            ContentFilter.setEnabled(true)
+            ContentFilter.setAutoUpdate(false)
+            ContentFilter.setCustom(
+                "! test rules\nlocalhost##body:style(overflow: auto !important)\nlocalhost##.signup-wall:remove()\n" +
+                    "localhost##.feed:remove-class(blurred)\nlocalhost##main:remove-attr(inert)\nlocalhost##main:style(filter: none !important)\n" +
+                    "localhost##p:has-text(Sign up to continue):upward(section)\nlocalhost##+js(set, answers, 1)\n||tracker.example^\n",
+            )
+            ContentFilter.setSkipWalls(true)
+            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) {
+                ContentFilter.state.value.let { it.ready && it.busy == null } && ContentFilter.active()
+            }
+            val on = visit("f7", "/walls.html")
+            assertEquals("scrolling", "auto", on.getString("scroll"))
+            assertEquals("the sign-up boxes", "REMOVED", on.getString("wall"))
+            assertEquals("the post's blur class", "CLEAR", on.getString("blurred"))
+            assertEquals("the post's inert", "USABLE", on.getString("inert"))
+            assertEquals("the post's blur", "none", on.getString("filter"))
+            assertEquals("the nag found by its text", "HIDDEN", on.getString("nag"))
+            assertEquals("the dialogs were dismissed: no, nothing", "[false,null]", on.getString("dialogs"))
+            awaitCondition("the watch says a dialog was dismissed", UI_TIMEOUT_MS) {
+                Core.pageWatch(activeGeneration())?.events?.any { it.code == PageWatch.Attempt.DIALOG } == true
+            }
+            screenshot("f7-on")
+            // Check names a server the lists block whole as a tracker's.
+            assertTrue("a listed tracker server", ContentFilter.listsAddress("https://tracker.example/p?id=1"))
+            assertFalse("an unlisted server", ContentFilter.listsAddress("https://news.example/story"))
+
+            ContentFilter.setSkipWalls(false)
+            ContentFilter.setCustom("! test rules\nlocalhost##.unrelated\n")
+            awaitCondition("the rules are loaded again", SESSION_TIMEOUT_MS) {
+                ContentFilter.state.value.let { it.ready && it.busy == null } && !ContentFilter.quietDialogs()
+            }
+            val off = visit("f7", "/walls.html?dialogs=0")
+            assertEquals("hidden", off.getString("scroll"))
+            assertEquals("SHOWN", off.getString("wall"))
+            assertEquals("BLURRED", off.getString("blurred"))
+            assertFalse("dialogs are shown again", ContentFilter.quietDialogs())
+            report("f7", "skip on: scrolling unlocked, sign-up boxes removed (one added late), blur and inert stripped, text nag hidden, dialogs dismissed; off: the wall stays")
+        } finally {
+            ContentFilter.setCustom("")
+            ContentFilter.setSkipWalls(true)
+            ContentFilter.setAutoUpdate(true)
+        }
+    }
+
+    /**
      * What a page can learn about the device (§10.5): its model, its GPU, its
      * disk, its network, its time zone and what the browser sends with every
      * request. Everything the page finds is made up and the same on every phone.
@@ -2389,6 +2446,8 @@ class SecurityTest {
     }
 
     private fun allowFixtureHost() {
+        // A test run alone may come before the first session is up.
+        activeGeneration()
         Core.allowLocalHost("localhost")
         val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
         while ("localhost" !in Core.localHosts.value) {

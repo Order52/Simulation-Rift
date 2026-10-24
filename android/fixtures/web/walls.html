@@ -1,0 +1,34 @@
+<!doctype html><html data-test="f7"><meta charset="utf-8"><title>F7 sign-in walls</title>
+<script src="/report.js"></script>
+<body style="overflow: hidden">
+<main id="feed" class="feed blurred" inert style="filter: blur(6px)">A post anyone may read</main>
+<div class="signup-wall" id="wall">Create an account to keep reading</div>
+<section><div><p id="nag">Sign up to continue</p></div></section>
+<script>
+// F7: a social site's sign-in wall (scrolling locked, the post blurred and
+// inert, a sign-up box, a nag found only by its text) and its dialog boxes.
+// The wall and the nag come late, as real ones do.
+// With ?dialogs=0 it shows none (with the switch off they would wait for a tap).
+const answers = [];
+if (new URLSearchParams(location.search).get("dialogs") !== "0") {
+  answers.push(confirm("Log in to continue?"));
+  answers.push(prompt("Your email?", "x"));
+  alert("Sign up now");
+}
+setTimeout(() => {
+  document.body.insertAdjacentHTML("beforeend", '<div class="signup-wall" id="late">Sign in to see more</div>');
+}, 1500);
+setTimeout(async () => {
+  const feed = document.getElementById("feed");
+  const gone = id => !document.getElementById(id);
+  await report("scroll", getComputedStyle(document.body).overflow);
+  await report("wall", gone("wall") && gone("late") ? "REMOVED" : "SHOWN");
+  await report("blurred", feed.classList.contains("blurred") ? "BLURRED" : "CLEAR");
+  await report("inert", feed.hasAttribute("inert") ? "INERT" : "USABLE");
+  await report("filter", getComputedStyle(feed).filter);
+  const nag = document.getElementById("nag").closest("section");
+  await report("nag", getComputedStyle(nag).display === "none" ? "HIDDEN" : "SHOWN");
+  await report("dialogs", JSON.stringify(answers));
+  await report("done", "1");
+}, 4500);
+</script>
