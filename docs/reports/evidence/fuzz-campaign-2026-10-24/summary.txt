@@ -1,0 +1,14 @@
+# cargo +nightly-2026-10-17 fuzz run <target> -- -max_total_time=1200 -rss_limit_mb=2048 (macOS arm64, 4 at a time, 24 Oct 2026, commit 3d46385)
+# worker_image and worker_scan do not link on macOS (instrumented yara-x); they run in the Linux fuzz-campaign workflow
+target | runs in 1200 s | coverage at end | crashes
+display_name | 11010711 | cov: 257 ft: 1126 | 0
+egress_head | 14264211 | cov: 111 ft: 350 | 0
+filters | 1986825 | cov: 22614 ft: 86597 | 0
+intel_table | 14457412 | cov: 109 ft: 178 | 0
+link_clean | 169461 | cov: 9975 ft: 37992 | 0
+navigation | 2936370 | cov: 3636 ft: 15718 | 0
+protocol_response | 244654998 | cov: 828 ft: 1166 | 0
+session_from_browser | 321821080 | cov: 575 ft: 1008 | 0
+trusted_text | 2467949 | cov: 4058 ft: 20535 | 0
+url_canonicalize | 2060747 | cov: 2762 ft: 14729 | 0
+url_model | 295555 | cov: 2822 ft: 9116 | 0

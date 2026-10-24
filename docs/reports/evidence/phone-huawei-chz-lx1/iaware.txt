@@ -1,0 +1,9 @@
+# Rerun of s27 alone on the phone, 24 Oct 2026, logcat (filtered):
+W ActivityManager: Service starting has been prevented by iaware or trustsbase sInfo ServiceInfo{8ab8c4 org.simulationrift.browser.SessionService}
+W ActivityManager: Service starting has been prevented by iaware or trustsbase sInfo ServiceInfo{2476f2e org.simulationrift.browser.SessionService}
+E Rift    : org.simulationrift.core.SessionFailure$CleanupFailed: generation=6, reason=the browser app is not installed
+#
+# The browser app was installed throughout (pm list packages; dumpsys package: installed=true stopped=false).
+# EMUI's launch manager (iAware) refused to start the browser's session service for the controller,
+# so bindService returned false, which Rift reported as "not installed". The message now names this
+# case and the setting (Settings > Battery > App launch > Rift Browser: allow launch by other apps).

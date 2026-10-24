@@ -1,0 +1,18 @@
+# sh tools/rift-pack/ceremony.sh rehearse <scratch> (macOS arm64, 24 Oct 2026); throwaway keys, deleted at the end
+== one root signature: short of 2 of 3
+<scratch>/root-1.json signed by key f19b70bc866e8435e163cb35303bf6d2039fccfe8a3b5c17b3a8e63d81ddeeaa
+rift-pack: root v1 is not signed by its own root threshold: Signature threshold of 2 not met for role root (1 valid signatures)
+(not yet at its threshold: the next holder signs)
+== the second
+<scratch>/root-1.json signed by key 3be0d4dd9e2fb0449b83ff6905a233fd11ccfefd84cc659090d92e59480b2f08
+root v1 expires 2027-10-23T00:00:00Z: root 2 of 3, targets 2 of 2, snapshot 1 of 1, timestamp 1 of 1
+== a release, signed 2 of 2 offline, published with the online keys
+unsigned targets v1 for 54c4e8fa12eb03e401d6a78ec72b1035908b85bfc0c148719d437e7086506b09 written to <scratch>/targets-1.json
+<scratch>/targets-1.json signed by key 0cdb6668aeceb3a3ca07baf0d6a2465c351edd1992ee6d7d4ef94da51ba68091
+<scratch>/targets-1.json signed by key 0ca7a7d7ec1603464cba026790f49238fc3c21458f3a47835370b8ce8b539ebb
+published snapshot and timestamp v1 to <scratch>/repo
+== an offline key handed to the publishing step is refused
+rift-pack: <scratch>/drive-root-c/rift-root-c.pk8 is a root key; offline keys do not belong on the publishing machine
+== the app's own verifier
+OK snapshot demo-20261024T050206Z (54c4e8fa12eb03e401d6a78ec72b1035908b85bfc0c148719d437e7086506b09), targets v1, timestamp v1, demo=true, 1 file and 2 URL indicators, 2 rules
+rehearsal passed; its throwaway private keys are deleted

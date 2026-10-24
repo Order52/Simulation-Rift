@@ -1,0 +1,5 @@
+stat::number_of_executed_units: 14264211
+stat::average_exec_per_sec:     11876
+stat::new_units_added:          143
+stat::slowest_unit_time_sec:    0
+stat::peak_rss_mb:              129

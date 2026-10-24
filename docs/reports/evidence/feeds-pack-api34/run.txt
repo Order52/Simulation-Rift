@@ -1,0 +1,19 @@
+# Feeds pack on the Android emulator (API 34, arm64, debug build), 24 Oct 2026
+
+$ sh tools/rift-pack/feeds.sh <work> 2
+feeds pack feeds-20261024T051433Z (4f47291ba620665036a11b5405898204e19c6bb90d87077f956400773cec4c1e): listed [58633], dropped 476 popular, 116 repeated, 0 unreadable
+metadata sources: phishing-database (MIT) only; pack files: metadata.json url-hashes.bin file-hashes.bin rules.yar url-model.bin
+
+$ rift-pack publish <demo root> <demo keys> <work>/pack <work>/repo 29880314     # demo keys: debug builds only
+published version 29880314
+
+Imported through Security > Import an update folder (system folder picker):
+I Rift    : intel import: copied 9 files, skipped 0
+I Rift    : intel install: Installed feeds-20261024T051433Z.
+
+Security > protection details (pack-model-in-use.png):
+"Rift AI is on: the model from the installed threat database, run on this device (d6c2bc607dfd)."
+(d6c2bc607dfd… is models/url-model.bin of 24 Oct 2026, carried in the pack.)
+
+Home > Check http://001-a3s.pages.dev/ (a Phishing.Database ACTIVE link; listed-link-check.png):
+"Known malicious. This link is in the threat database. ..."
