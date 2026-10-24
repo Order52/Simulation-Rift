@@ -1,0 +1,105 @@
+10-24 07:02:07.268  4847  4898 I Rift    : reset to session 2 after 476 ms
+10-24 07:02:07.967  4847  4866 I Rift    : browser registered for generation 2, network LOCKED
+10-24 07:02:09.426  4847  4866 I Rift    : browser network in generation 2: proxied=true locked=true
+10-24 07:02:10.289  5020  5020 I RiftBrowser: first page started 2408 ms after the window was made
+10-24 07:02:10.548  5020  5020 I RiftBrowser: page finished 259 ms after it started
+10-24 07:02:17.286  5020  5020 I RiftBrowser: page finished 8 ms after it started
+10-24 07:02:22.122  5020  5020 I RiftBrowser: page finished 29 ms after it started
+10-24 07:02:36.702  5020  5020 I RiftBrowser: page finished 39 ms after it started
+10-24 07:02:47.340  5020  5020 I RiftBrowser: page finished 2 ms after it started
+10-24 07:02:52.729  5020  5020 I RiftBrowser: page finished 57 ms after it started
+10-24 07:03:14.328  5020  5020 I RiftBrowser: page finished 14 ms after it started
+10-24 07:03:15.074  5020  5020 I RiftBrowser: page finished 7 ms after it started
+10-24 07:03:16.439  5020  5020 I RiftBrowser: page finished 5 ms after it started
+10-24 07:03:17.617  4847  4898 I Rift    : reset to session 3 after 490 ms
+10-24 07:03:17.863  4847  5950 I Rift    : browser registered for generation 3, network LOCKED
+10-24 07:03:18.305  4847  4866 I Rift    : browser network in generation 3: proxied=true locked=true
+10-24 07:03:48.064  7212  7212 I RiftBrowser: first page started 30233 ms after the window was made
+10-24 07:03:48.156  7212  7212 I RiftBrowser: page finished 90 ms after it started
+10-24 07:03:49.596  4847  4898 I Rift    : reset to session 4 after 1188 ms
+10-24 07:03:50.527  4847  5950 I Rift    : browser registered for generation 4, network LOCKED
+10-24 07:03:51.472  4847  5950 I Rift    : browser network in generation 4: proxied=true locked=true
+10-24 07:03:53.171  4847  4898 I Rift    : reset to session 5 after 476 ms
+10-24 07:03:53.878  4847  4866 I Rift    : browser registered for generation 5, network LOCKED
+10-24 07:03:54.230  4847  5950 I Rift    : browser network in generation 5: proxied=true locked=true
+10-24 07:03:56.126  4847  4898 I Rift    : reset to session 6 after 914 ms
+10-24 07:03:56.838  4847  5950 I Rift    : browser registered for generation 6, network LOCKED
+10-24 07:03:57.380  4847  5950 I Rift    : browser network in generation 6: proxied=true locked=true
+10-24 07:04:23.816  8451  8451 I RiftBrowser: first page started 27050 ms after the window was made
+10-24 07:04:23.845  8451  8451 I RiftBrowser: page finished 30 ms after it started
+10-24 07:04:24.486  4847  4898 I Rift    : reset to session 7 after 558 ms
+10-24 07:04:24.734  4847  4861 I Rift    : browser registered for generation 7, network LOCKED
+10-24 07:04:25.218  4847  5040 I Rift    : browser network in generation 7: proxied=true locked=true
+10-24 07:04:25.660  9393  9393 I RiftBrowser: first page started 971 ms after the window was made
+10-24 07:04:25.724  9393  9393 I RiftBrowser: page finished 65 ms after it started
+10-24 07:04:40.670  9393  9393 I RiftBrowser: page finished 3 ms after it started
+10-24 07:04:40.803  9393  9393 I RiftBrowser: page finished 4 ms after it started
+10-24 07:04:40.938  9393  9393 I RiftBrowser: page finished 8 ms after it started
+10-24 07:04:57.113  4847  4898 I Rift    : reset to session 8 after 676 ms
+10-24 07:04:57.389  4847  5950 I Rift    : browser registered for generation 8, network LOCKED
+10-24 07:04:57.922  4847  4861 I Rift    : browser network in generation 8: proxied=true locked=true
+10-24 07:04:58.501 10691 10691 I RiftBrowser: first page started 1150 ms after the window was made
+10-24 07:04:58.503 10691 10691 I RiftBrowser: page finished 3 ms after it started
+10-24 07:04:59.330 10691 10691 I RiftBrowser: page finished 25 ms after it started
+10-24 07:04:59.552 10691 10691 I RiftBrowser: page finished 6 ms after it started
+10-24 07:05:00.398  4847  4898 I Rift    : reset to session 9 after 606 ms
+10-24 07:05:00.696  4847  4861 I Rift    : browser registered for generation 9, network LOCKED
+10-24 07:05:01.169  4847  4861 I Rift    : browser network in generation 9: proxied=true locked=true
+10-24 07:05:01.532 10983 10983 I RiftBrowser: first page started 892 ms after the window was made
+10-24 07:05:01.583 10983 10983 I RiftBrowser: page finished 51 ms after it started
+10-24 07:05:02.491  4847  4898 I Rift    : reset to session 10 after 696 ms
+10-24 07:05:02.867  4847  4866 I Rift    : browser registered for generation 10, network LOCKED
+10-24 07:05:03.338  4847  5950 I Rift    : browser network in generation 10: proxied=true locked=true
+10-24 07:05:04.832  4847  4898 I Rift    : reset to session 11 after 335 ms
+10-24 07:05:05.400  4847  5950 I Rift    : browser registered for generation 11, network LOCKED
+10-24 07:05:05.856  4847  5950 I Rift    : browser network in generation 11: proxied=true locked=true
+10-24 07:05:08.049  4847  4898 I Rift    : reset to session 12 after 439 ms
+10-24 07:05:08.347  4847  4866 I Rift    : browser registered for generation 12, network LOCKED
+10-24 07:05:08.819  4847  4861 I Rift    : browser network in generation 12: proxied=true locked=true
+10-24 07:05:42.670 11844 11844 I RiftBrowser: first page started 34358 ms after the window was made
+10-24 07:05:42.673 11844 11844 I RiftBrowser: page finished 2 ms after it started
+10-24 07:05:43.173 11844 11844 I RiftBrowser: page finished 2 ms after it started
+10-24 07:05:48.591 11844 11844 I RiftBrowser: page finished 2 ms after it started
+10-24 07:06:11.168 11844 11844 I RiftBrowser: page finished 32 ms after it started
+10-24 07:06:12.506  4847  4898 I Rift    : reset to session 13 after 892 ms
+10-24 07:06:25.223  4847  5040 I Rift    : browser registered for generation 13, network LOCKED
+10-24 07:06:26.471  4847  5950 I Rift    : browser network in generation 13: proxied=true locked=true
+10-24 07:06:27.224 13757 13757 I RiftBrowser: first page started 2088 ms after the window was made
+10-24 07:06:27.287 13757 13757 I RiftBrowser: page finished 61 ms after it started
+10-24 07:06:29.054  4847  4898 I Rift    : reset to session 14 after 1463 ms
+10-24 07:06:32.769  4847  4898 I Rift    : reset to session 15 after 750 ms
+10-24 07:06:33.395  4847  4866 I Rift    : browser registered for generation 15, network REDUCED
+10-24 07:06:34.436  4847  4866 I Rift    : browser network in generation 15: proxied=true locked=true
+10-24 07:06:36.125  4847  4898 I Rift    : reset to session 16 after 675 ms
+10-24 07:06:36.890  4847  4898 I Rift    : reset to session 17 after 691 ms
+10-24 07:06:37.576  4847  4863 I Rift    : browser registered for generation 17, network REDUCED
+10-24 07:06:38.807  4847  5950 I Rift    : browser network in generation 17: proxied=true locked=false
+10-24 07:06:39.963 14395 14395 I RiftBrowser: first page started 2465 ms after the window was made
+10-24 07:06:40.022 14395 14395 I RiftBrowser: page finished 59 ms after it started
+10-24 07:06:43.178  4847  4898 I Rift    : reset to session 18 after 1683 ms
+10-24 07:06:52.042  4847  4898 I Rift    : reset to session 19 after 403 ms
+10-24 07:06:52.469  4847  5384 I Rift    : browser registered for generation 19, network LOCKED
+10-24 07:06:53.024  4847  5384 I Rift    : browser network in generation 19: proxied=true locked=true
+10-24 07:08:41.212  4847  4898 I Rift    : reset to session 20 after 338 ms
+10-24 07:08:42.424  4847  4861 I Rift    : browser registered for generation 20, network LOCKED
+10-24 07:08:42.727  4847  5384 I Rift    : browser network in generation 20: proxied=true locked=true
+10-24 07:08:45.955  4847  4898 I Rift    : reset to session 21 after 377 ms
+10-24 07:08:46.108  4847  4861 I Rift    : browser registered for generation 21, network LOCKED
+10-24 07:08:46.367  4847  4863 I Rift    : browser network in generation 21: proxied=true locked=true
+10-24 07:08:46.505 17538 17538 I RiftBrowser: first page started 416 ms after the window was made
+10-24 07:08:46.520 17538 17538 I RiftBrowser: page finished 16 ms after it started
+10-24 07:08:48.014  4847  4898 I Rift    : reset to session 22 after 248 ms
+10-24 07:08:48.307  4847  4898 I Rift    : reset to session 23 after 278 ms
+10-24 07:08:48.489  4847 16642 I Rift    : browser registered for generation 23, network LOCKED
+10-24 07:08:48.779  4847  5384 I Rift    : browser network in generation 23: proxied=true locked=true
+10-24 07:08:48.905 17800 17800 I RiftBrowser: first page started 434 ms after the window was made
+10-24 07:08:48.922 17800 17800 I RiftBrowser: page finished 18 ms after it started
+10-24 07:09:01.231  4847  4898 I Rift    : reset to session 24 after 280 ms
+10-24 07:09:01.613  4847  4898 I Rift    : reset to session 25 after 162 ms
+10-24 07:09:02.077  4847  5384 I Rift    : browser registered for generation 25, network LOCKED
+10-24 07:09:02.343  4847  4861 I Rift    : browser network in generation 25: proxied=true locked=true
+10-24 07:09:19.407  4847  4898 I Rift    : reset to session 26 after 897 ms
+10-24 07:09:32.526  4847  4861 I Rift    : browser registered for generation 26, network LOCKED
+10-24 07:09:33.631  4847  4861 I Rift    : browser network in generation 26: proxied=true locked=true
+10-24 07:09:35.666 19231 19231 I RiftBrowser: first page started 3303 ms after the window was made
+10-24 07:09:36.559 19231 19231 I RiftBrowser: page finished 894 ms after it started

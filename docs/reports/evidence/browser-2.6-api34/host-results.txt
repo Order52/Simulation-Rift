@@ -1,0 +1,8 @@
+S16d PASS (intel import: copied 8 files, skipped 1;intel install: Installed demo-20261024T024122Z.;)
+S16f PASS (the clock warning was shown)
+S14 PASS (renderer killed; app alive (pid 20420); session 29 torn down; 30 active)
+S13 PASS (killed while RESETTING 31; recovery wiped the browser app (no files) before session 32 started)
+H1 PASS (task 1221: rows of one shade: 11.3% of the screenshot with the page shown, 100.0% of the stored snapshot)
+H4 PASS (it read the outsider's window and nothing of Rift's home screen or browser (outsider: org.simulationrift.outsider/org.simulationrift.outsider.OutsiderActivity; home: org.simulationrift.app/org.simulationrift.app.MainActivity; browser: org.simulationrift.browser/org.simulationrift.browser.BrowserActivity))
+F4 PASS (8 kills while installing (one install: 814 ms); 1:killed-after-install 2:killed-0.726 3:killed-0.167 4:killed-0.332 5:killed-0.738 6:killed-0.665 7:killed-0.050 8:killed-0.576)
+F6 PASS (filled, df shows 16384 KiB available; full: 0 bytes usable;install: the demo database could not be copied, so nothing was installed: could not create repo; database Installed(snapshot=demo-20261024T024122Z, digest=88556d48244e74eef29fe8ddeca7f802c54e0fd5c8d608223ac2473c93083ae6, demo=true, stale=false, clockBehind=false, createdUnix=1792809682, refreshAfterUnix=1793414482, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.]);download: storage error: encryption failed: failed to write header: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" });reset: Failed(message=Session storage failed: storage error: No space left on device (os error 28));after freeing the space: session 48;)
