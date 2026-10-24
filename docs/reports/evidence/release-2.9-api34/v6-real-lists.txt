@@ -1,0 +1,2 @@
+result v6 (by hand, API 34 emulator, 24 Oct 2026 13:06): Lists updated. in 29320 ms; hagezi-tif 563732 hosts, phishing-army 154587 hosts, ubo-badware 3454 hosts, stevenblack 71493 hosts; memory 93 MB more (Java + native heap right after the load); check p50 1021 us, p95 1409 us
+dumpsys meminfo after a restart, native heap PSS: 38997 KB with the lists, 32477 KB without

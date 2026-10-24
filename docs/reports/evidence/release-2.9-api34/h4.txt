@@ -1,0 +1,14 @@
+in front: outsider: org.simulationrift.outsider/org.simulationrift.outsider.OutsiderActivity; home: org.simulationrift.app/org.simulationrift.app.MainActivity; browser: org.simulationrift.browser/org.simulationrift.browser.BrowserActivity
+--------- beginning of main
+10-24 13:25:04.397  5087  5087 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Rift outsider (test) | Outsider text
+10-24 13:25:04.418  5087  5087 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Rift outsider (test) | Outsider text
+10-24 13:25:04.420  5087  5087 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Rift outsider (test) | Outsider text
+10-24 13:25:04.862  5087  5087 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Rift outsider (test) | Outsider text
+10-24 13:25:21.541  5087  5087 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sat, Oct 24 | Phone | Messages | Shizuku | Chrome | Camera
+10-24 13:25:21.586  5087  5087 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sat, Oct 24 | Phone | Messages | Shizuku | Chrome | Camera
+10-24 13:25:21.590  5087  5087 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sat, Oct 24 | Phone | Messages | Shizuku | Chrome | Camera
+10-24 13:25:21.686  5087  5087 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sat, Oct 24 | Phone | Messages | Shizuku | Chrome | Camera
+10-24 13:25:21.787  5087  5087 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sat, Oct 24 | Phone | Messages | Shizuku | Chrome | Camera
+10-24 13:25:21.897  5087  5087 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sat, Oct 24 | Phone | Messages | Shizuku | Chrome | Camera
+10-24 13:25:21.998  5087  5087 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sat, Oct 24 | Phone | Messages | Shizuku | Chrome | Camera
+10-24 13:25:22.053  5087  5087 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sat, Oct 24 | Phone | Messages | Shizuku | Chrome | Camera
