@@ -68,6 +68,7 @@ object Hardening {
     private const val REQUEST_CODE = 52
     private const val CALL_TIMEOUT_S = 30L
     private const val CONNECT_WAIT_S = 10L
+    private const val NO_BROWSER = "Applied once Rift Browser is installed, before the first page."
 
     /** The user's choice, under rift-core's directory (kept across resets). */
     private const val CHOICE_FILE = "rift/extra-isolation"
@@ -231,10 +232,14 @@ object Hardening {
     }
 
     private fun undo(connected: IHardening) {
+        // Without the browser app its app ops went with it. With root, its old
+        // UID's firewall jump (if any) stays until the browser is back and
+        // this runs again: it matches no app meanwhile.
+        val uid = browserUid()
         val problems = try {
             listOfNotNull(
-                connected.blockClipboard(false),
-                if (connected.uid() == 0) connected.unlockNetwork(browserUid()) else null,
+                if (uid != null) connected.blockClipboard(false) else null,
+                if (uid != null && connected.uid() == 0) connected.unlockNetwork(uid) else null,
             )
         } catch (e: RemoteException) {
             listOf("Rift's helper stopped: ${e.message}")
@@ -257,18 +262,32 @@ object Hardening {
     }
 
     private fun applyClipboard(connected: IHardening) {
+        if (browserUid() == null) {
+            _status.update { it.copy(clipboard = Measure.Pending(NO_BROWSER)) }
+            return
+        }
         val problem = connected.blockClipboard(true)
         _status.update { it.copy(clipboard = problem?.let(Measure::Problem) ?: Measure.InEffect) }
     }
 
     private fun applyNetwork(connected: IHardening, port: Int) {
-        val problem = connected.lockNetwork(browserUid(), port, NetworkLock.state.value != NetworkLock.State.TurnedOff)
+        val uid = browserUid()
+        if (uid == null) {
+            _status.update { it.copy(network = Measure.Pending(NO_BROWSER)) }
+            return
+        }
+        val problem = connected.lockNetwork(uid, port, NetworkLock.state.value != NetworkLock.State.TurnedOff)
         firewallPort = if (problem == null) port else null
         _status.update { it.copy(network = problem?.let(Measure::Problem) ?: Measure.InEffect) }
         if (problem != null) Log.e(TAG, "network rules not in effect: $problem")
     }
 
-    private fun browserUid(): Int = app.packageManager.getApplicationInfo(Rift.BROWSER_PACKAGE, 0).uid
+    /** Null while the browser app is not installed (Rift installs it before the first session, §8.10). */
+    private fun browserUid(): Int? = try {
+        app.packageManager.getApplicationInfo(Rift.BROWSER_PACKAGE, 0).uid
+    } catch (e: PackageManager.NameNotFoundException) {
+        null
+    }
 
     private fun lost(e: RemoteException) {
         Log.e(TAG, "the helper stopped", e)
