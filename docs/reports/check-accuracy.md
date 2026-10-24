@@ -24,14 +24,22 @@ URLCheck, the app this is measured against, checks a link's host against StevenB
 
 - **URLCheck's hosts check found none of the 300.** StevenBlack's file is an ad, tracker and malware list, and new phishing sites are not on it.
 - **The database found none either.** Phishing.Database is days behind OpenPhish, and its pack is a snapshot from that morning.
-- **Phishing Army's 97% is circular.** Phishing Army builds its list from OpenPhish among other feeds, so it already held these links. The figure shows that the lists reach Check and match as they should, not how well Check does on phishing nobody has reported yet. The time-separated test below is the honest figure for that.
+- **Phishing Army's 97% is circular.** Phishing Army builds its list from OpenPhish among other feeds, so it already held these links. The figure shows that the lists reach Check and match as they should, not how well Check does on phishing nobody has reported yet. The time-separated test below is the honest figure for that: 33.7% red and 63.7% any warning.
 - **Rift AI's false alarms here are flattering.** These ordinary pages come from the same Common Crawl collection Rift AI was trained on, and about 80% of their sites were in its training split. Its figures on sites it never saw are in [rift-ai.md](rift-ai.md): 0.08% of ordinary pages at High, 0.89% at Elevated. The lists' false alarms are not affected, since nothing was trained on them.
 - **The 13 ordinary pages HaGeZi lists** were looked at by their addresses only. Several look like scam sites (casino spam on an unrelated domain, an odd Pokémon shop), so some of that 0.1% is probably right; the pages themselves were not opened.
 - **The lists do not flag the 10,000 most visited sites** (§10.12). Without that rule, every Google Forms link would be "Listed as dangerous", because both danger lists name `docs.google.com`.
 
 ## Time-separated test
 
-*Pending: the result of new OpenPhish links, whose hosts were not in the 12:49 fetch, against the lists as downloaded at 12:55, is added here when the collection ends.*
+OpenPhish's public feed was fetched every 30 minutes after 12:49. It stayed the same until 15:25, when it brought **190 links whose hosts were not in the 12:49 fetch**. Check ran on them with the lists as downloaded at 12:55, about two and a half hours earlier, so no list could have taken these hosts from that OpenPhish update. The ordinary pages and the lists are the same as above.
+
+| Set | Links | URLCheck (StevenBlack hosts) | Rift 2.8: red | Rift 2.8: any warning | Rift 2.9: red | Rift 2.9: any warning | Each list |
+|---|---|---|---|---|---|---|---|
+| new phishing | 190 | 0.0% (0) | 17.9% (34) | 58.4% (111) | 33.7% (64) | 63.7% (121) | Phishing Army 16.3% (31); HaGeZi 7.9% (15) |
+
+- **This is the honest figure.** On phishing reported after the lists were taken, Check shows a third of the links red and warns about nearly two thirds. URLCheck's hosts check flags none.
+- **The lists add about 16 points of red** (from 17.9% to 33.7%). They had some of these hosts from other sources (PhishTank, CERT.PL) before OpenPhish named them. Most of the catch on new phishing is still Rift AI and the address checks, and a third of these links get no warning at all.
+- **Two and a half hours is a short gap.** In the app the lists update once a day, so on average they are older than this; the figure may be optimistic for that reason. It is also one afternoon's feed, 190 links.
 
 ## How to run it
 
