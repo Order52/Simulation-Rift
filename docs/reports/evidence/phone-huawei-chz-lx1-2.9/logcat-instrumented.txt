@@ -1,0 +1,60 @@
+10-24 15:49:03.914  1744  1796 I ActivityManager: Posting procStart msg for 0:org.simulationrift.browser:web/u0a483
+10-24 15:49:03.914  1744  1818 I ActivityManager: startProcess: asking zygote to start proc ProcessRecord{ca9b932 0:org.simulationrift.browser:web/u0a483}
+10-24 15:49:03.914  1744  1796 I ActivityManager: startProcess: name=org.simulationrift.browser:web app=ProcessRecord{ca9b932 0:org.simulationrift.browser:web/u0a483} knownToBeDead=false thread=null pid=0 preloadStatus=0
+10-24 15:49:03.914  1744  1796 I ActivityManager: startProcess: name=org.simulationrift.browser:web app=ProcessRecord{ca9b932 0:org.simulationrift.browser:web/u0a483} knownToBeDead=false thread=null pid=0 preloadStatus=0
+10-24 15:49:03.937  1744  1818 I ActivityManager: Start proc 26849:org.simulationrift.browser:web/u0a483 for pre-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-24 15:49:04.379  1744  2409 I ActivityManager: power push bindservice callingPkg:org.simulationrift.browser, pkg:org.simulationrift.app, callerApp pid:26849, pid:8409
+10-24 15:49:04.566  1744  1818 I ActivityManager: Start proc 26911:com.huawei.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i108 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-24 15:49:05.732  1744  2891 I ActivityManager: startProcess: name=org.simulationrift.app:org.simulationrift.app.PreviewService:worker_31 app=null knownToBeDead=true thread=null pid=-1 preloadStatus=-1
+10-24 15:49:05.735  1744  2891 I ActivityManager: Posting procStart msg for 0:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_31/u0a482i-8999
+10-24 15:49:05.735  1744  1818 I ActivityManager: startProcess: asking zygote to start proc ProcessRecord{d2a8651 0:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_31/u0a482i-8999}
+10-24 15:49:05.746  1744  1818 I ActivityManager: Start proc 27031:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_31/u0ai1 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_31}
+10-24 15:49:05.926  1744  3504 I ActivityManager: Killing 27031:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_31/u0a482i-8999 (adj 0): isolated not needed
+10-24 15:49:05.948  1744  2891 I ActivityManager: appDiedLocked: pid=27031, app=ProcessRecord{d2a8651 27031:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_31/u0a482i-8999}, fromBinderDied=true, reason=null
+10-24 15:49:05.967  1744  2891 I ActivityManager: startProcess: name=org.simulationrift.app:org.simulationrift.app.PreviewService:worker_32 app=null knownToBeDead=true thread=null pid=-1 preloadStatus=-1
+10-24 15:49:05.970  1744  2891 I ActivityManager: Posting procStart msg for 0:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_32/u0a482i-8998
+10-24 15:49:05.970  1744  1818 I ActivityManager: startProcess: asking zygote to start proc ProcessRecord{1b265af 0:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_32/u0a482i-8998}
+10-24 15:49:05.979  1744  1818 I ActivityManager: Start proc 27059:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_32/u0ai2 for  {org.simulationrift.app/org.simulationrift.app.PreviewService:worker_32}
+10-24 15:49:06.152  1744  2891 I ActivityManager: Killing 27059:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_32/u0a482i-8998 (adj 0): isolated not needed
+10-24 15:49:06.192  1744  3504 I ActivityManager: appDiedLocked: pid=27059, app=ProcessRecord{1b265af 27059:org.simulationrift.app:org.simulationrift.app.PreviewService:worker_32/u0a482i-8998}, fromBinderDied=true, reason=null
+10-24 15:49:21.781  1744  3504 I ActivityManager: power push bindservice callingPkg:org.simulationrift.app, pkg:org.simulationrift.browser, callerApp pid:8409, pid:26681
+10-24 15:49:21.861  1744  2891 I ActivityManager: Force stopping org.simulationrift.browser appid=10483 user=0: clear data
+10-24 15:49:21.863  1744  2891 I ActivityManager: Killing 26681:org.simulationrift.browser/u0a483 (adj 100): stop org.simulationrift.browser due to clear data
+10-24 15:49:21.877  1744  2891 I ActivityManager: Killing 26849:org.simulationrift.browser:web/u0a483 (adj 200): stop org.simulationrift.browser due to clear data
+10-24 15:49:21.882  1744  2891 I ActivityManager: Start to clean task when force stop the app org.simulationrift.browser , reason:clear data
+10-24 15:49:21.907  1744  2568 I ActivityManager: appDiedLocked: pid=26681, app=ProcessRecord{9592714 0:org.simulationrift.browser/u0a483}, fromBinderDied=true, reason=null
+10-24 15:49:21.907  1744  2568 W ActivityManager: Spurious death: diff, app=ProcessRecord{9592714 0:org.simulationrift.browser/u0a483}, curProc=null
+10-24 15:49:21.910  1744  1817 I ActivityManager: Force stopping org.simulationrift.browser appid=10483 user=-1: clearApplicationUserData
+10-24 15:49:21.915  1744  1817 I ActivityManager: Start to clean task when force stop the app org.simulationrift.browser , reason:clearApplicationUserData
+10-24 15:49:21.996  1744  2369 I ActivityManager: appDiedLocked: pid=26849, app=ProcessRecord{ca9b932 0:org.simulationrift.browser:web/u0a483}, fromBinderDied=true, reason=null
+10-24 15:49:21.996  1744  2369 W ActivityManager: Spurious death: diff, app=ProcessRecord{ca9b932 0:org.simulationrift.browser:web/u0a483}, curProc=null
+10-24 15:49:21.997  1744  3343 I ActivityManager: startProcess: name=org.simulationrift.browser app=null knownToBeDead=true thread=null pid=-1 preloadStatus=-1
+10-24 15:49:21.999  1744  3343 I ActivityManager: Posting procStart msg for 0:org.simulationrift.browser/u0a483
+10-24 15:49:21.999  1744  1818 I ActivityManager: startProcess: asking zygote to start proc ProcessRecord{c0e9d9e 0:org.simulationrift.browser/u0a483}
+10-24 15:49:21.999  1744  3343 I ActivityManager: power push bindservice callingPkg:org.simulationrift.app, pkg:org.simulationrift.browser, callerApp pid:8409, pid:0
+10-24 15:49:22.011  1744  1818 I ActivityManager: Start proc 27447:org.simulationrift.browser/u0a483 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+10-24 15:49:22.559  1744  1796 I ActivityManager: startProcess: name=org.simulationrift.browser:web app=null knownToBeDead=false thread=null pid=-1 preloadStatus=-1
+10-24 15:49:22.562  1744  1796 I ActivityManager: Posting procStart msg for 0:org.simulationrift.browser:web/u0a483
+10-24 15:49:22.562  1744  1818 I ActivityManager: startProcess: asking zygote to start proc ProcessRecord{8a76540 0:org.simulationrift.browser:web/u0a483}
+10-24 15:49:22.562  1744  1796 I ActivityManager: startProcess: name=org.simulationrift.browser:web app=ProcessRecord{8a76540 0:org.simulationrift.browser:web/u0a483} knownToBeDead=false thread=null pid=0 preloadStatus=0
+10-24 15:49:22.562  1744  1796 I ActivityManager: startProcess: name=org.simulationrift.browser:web app=ProcessRecord{8a76540 0:org.simulationrift.browser:web/u0a483} knownToBeDead=false thread=null pid=0 preloadStatus=0
+10-24 15:49:22.574  1744  1818 I ActivityManager: Start proc 27499:org.simulationrift.browser:web/u0a483 for pre-top-activity {org.simulationrift.browser/org.simulationrift.browser.BrowserActivity}
+10-24 15:49:22.986  1744  2568 I ActivityManager: power push bindservice callingPkg:org.simulationrift.browser, pkg:org.simulationrift.app, callerApp pid:27499, pid:8409
+10-24 15:49:23.098  8409 10375 I Rift    : browser registered for generation 26, network LOCKED
+10-24 15:49:23.209  1744  1818 I ActivityManager: Start proc 27548:com.huawei.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0/u0i109 for  {org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0}
+10-24 15:49:23.906  8409  8444 I Rift    : browser network in generation 26: proxied=true locked=true
+10-24 15:49:23.968 27499 27499 I RiftBrowser: X-Requested-With control: available
+10-24 15:49:24.442 27499 27499 I RiftBrowser: first page started 1499 ms after the window was made
+10-24 15:49:24.544 27499 27499 I RiftBrowser: page finished 102 ms after it started
+10-24 15:49:24.545 27499 27499 I RiftBrowser: content filters: 1 requests asked about, 4 ms in all (4382 us each), 0 blocked
+10-24 15:49:25.392  8409  8446 I Rift    : result x2: controller +0 bytes, browser +0 bytes on real networks; proxy requests allowed +1
+10-24 15:49:25.461  1744  7029 I ActivityManager: Force stopping org.simulationrift.app appid=10482 user=0: finished inst
+10-24 15:49:25.462  1744  7029 I ActivityManager: Killing 8409:org.simulationrift.app/u0a482 (adj 0): stop org.simulationrift.app due to finished inst
+10-24 15:49:25.464  1744  7029 I ActivityManager: Start to clean task when force stop the app org.simulationrift.app , reason:finished inst
+10-24 15:49:25.464  1744  7029 I ActivityManager:   Force stopping service ServiceRecord{5aba5cb u0 org.simulationrift.app/.PreviewService}
+10-24 15:49:25.465 27499 27499 I RiftBrowser: browser process exiting: core disconnected
+10-24 15:49:25.517  1744  7028 I ActivityManager: appDiedLocked: pid=27499, app=ProcessRecord{8a76540 27499:org.simulationrift.browser:web/u0a483}, fromBinderDied=true, reason=null
+10-24 15:49:25.518  1744  7028 I ActivityManager: Process org.simulationrift.browser:web (pid 27499) has died: fg  TOP 
+10-24 15:49:25.538  1744  7028 W ActivityManager: Exception when unbinding service org.simulationrift.browser/org.chromium.content.app.SandboxedProcessService0:0
+10-24 15:49:25.619  1744  3231 I ActivityManager: appDiedLocked: pid=8409, app=ProcessRecord{26a6e85 0:org.simulationrift.app/u0a482}, fromBinderDied=true, reason=null
+10-24 15:49:25.619  1744  3231 W ActivityManager: Spurious death: diff, app=ProcessRecord{26a6e85 0:org.simulationrift.app/u0a482}, curProc=null

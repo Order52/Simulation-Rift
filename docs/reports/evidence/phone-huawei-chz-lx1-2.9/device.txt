@@ -1,0 +1,5 @@
+android=12 sdk=31
+security_patch=2021-10-05
+device=CHZ-LX1 abi=arm64-v8a
+page_size=4096
+Current WebView package (name, version): (com.huawei.webview, 114.0.5.302)
