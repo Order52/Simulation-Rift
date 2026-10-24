@@ -559,6 +559,100 @@ class SecurityTest {
 
     // ---- S8 / S9 / S10: downloads go through the core (INV-13, §11.1) -----------
 
+    /**
+     * n9: Test-open runs a link out of sight in a new session for 10 s, then
+     * shows the core's report before the page (§10.11). The fixture page is
+     * reached by a redirect, calls itself PayPal, asks for a password and a
+     * card over plain HTTP, asks for the location and starts a download by
+     * itself: the report lists the hops, the look-alike check's warning,
+     * the site reached, and the download, which is not fetched.
+     */
+    @Test
+    fun n9_testOpenReportsWhatALinkDidBeforeItIsShown() {
+        // A session a page has used: the test-open must start a new one.
+        visit("s1", "/s1.html")
+        val first = activeGeneration()
+        Core.testOpen(fixture("/login?next=/fake-login.html"))
+        // Queued on the core's worker right behind the reset, so the new
+        // session allows the fixture host before its window can ask.
+        allowFixtureHost()
+        val second = activeGenerationAfter(first)
+        assertNotNull("the cover", device.wait(Until.findObject(By.res("test-open-running")), PAGE_TIMEOUT_MS))
+        screenshot("n9-running")
+        // The cover is replaced in the same Compose window, which API 34's cache keeps stale (freshTree).
+        assertNotNull("the report", awaitFresh(PAGE_TIMEOUT_MS) { device.findObject(By.res("test-report-summary")) })
+        screenshot("n9-report")
+
+        val codes = Core.pageWatch(second)?.events?.map { it.code }.orEmpty()
+        for (code in listOf("page-claims-brand", "page-password-no-tls", "page-asks-card", PageWatch.Attempt.DOWNLOAD)) {
+            assertTrue("$code in $codes", code in codes)
+        }
+        val report = Core.testOpenReport(second) ?: throw AssertionError("no report")
+        val hops = report.sections.first { it.title == "Where it went" }.items
+        assertTrue("hops: $hops", hops.any { "/login" in it } && hops.any { "/fake-login.html" in it } && hops.any { "/files/invoice.pdf" in it })
+        val sites = report.sections.first { it.title.startsWith("Sites it reached") }.items
+        assertTrue("sites: $sites", "localhost:$FIXTURE_PORT" in sites)
+        assertEquals(PageWatch.Level.WARNING, report.level)
+        assertTrue("nothing fetched: ${Core.downloads.value}", Core.downloads.value.isEmpty())
+        assertNull("not a test-open", Core.testOpenReport(first))
+
+        (swipeUntil(By.res("test-show")) ?: throw AssertionError("show the page")).let { settled(By.res("test-show"))?.click() ?: it.click() }
+        assertNotNull("the page is shown", awaitFresh { Unit.takeIf { device.findObject(By.res("test-open")) == null } })
+        report("n9", "hops ${hops.size}, sites $sites, watch $codes")
+    }
+
+    /**
+     * v4 (after s16, as it installs the demo database): a link the threat database lists can still be opened, after the
+     * warning, and only in a new session (§10.4): the core decides it again
+     * (a block the browser asks to lift for any other reason is refused),
+     * resets, and in the new session lets that host, and no other listed
+     * one, through the proxy. The bar says what the page is. The demo host
+     * never resolves, so the proxy's next check refuses it, which shows the
+     * database's refusal was lifted for that host only.
+     */
+    @Test
+    fun v4_aListedLinkOpensOnlyInANewSessionAfterTheWarning() {
+        Core.installDemoIntel()
+        assertTrue("${Core.intelMessage.value}", awaitIntel { it is IntelStatus.Installed } is IntelStatus.Installed)
+        val first = resetAndAwait(activeGeneration())
+        val listed = "http://rift-demo.invalid/known-bad"
+
+        // Asking to open a link that is not listed changes nothing.
+        Core.inspectAnyway(first, "javascript:alert(1)")
+        Core.inspectAnyway(first, "http://rift-demo.invalid/fine")
+        SystemClock.sleep(1_000)
+        assertEquals(Core.State.Active(first, null), Core.state.value)
+
+        openBrowser(first, listed)
+        assertNotNull(device.wait(Until.findObject(By.text("Page blocked")), PAGE_TIMEOUT_MS))
+        screenshot("v4-warning")
+        assertNotNull("what opening it means", swipeUntil(By.textContains("This lowers the risk; it does not remove it")))
+        swipeUntil(By.res("inspect-anyway"))
+        // Once the column stops: a tap while it still flings only stops it.
+        (settled(By.res("inspect-anyway")) ?: throw AssertionError("the open-anyway button")).click()
+        val second = activeGenerationAfter(first)
+        assertNotNull("the bar's banner", device.wait(Until.findObject(By.res("opened-listed")), PAGE_TIMEOUT_MS))
+        assertNotNull(device.wait(Until.findObject(By.res("protection").text("Known malicious · opened on purpose")), UI_TIMEOUT_MS))
+        screenshot("v4-opened")
+
+        val decision = Core.decide(second, listed)
+        assertTrue("$decision", decision is NavigationDecision.Proceed && decision.notes.any { it.code == NavigationDecision.OPENED_LISTED })
+        assertTrue("another listed host", Core.decide(second, "http://cdn.rift-demo.invalid/known-bad") is NavigationDecision.Block)
+        val seen = awaitWatch(second) { "opened-known-malicious" in it }
+        assertTrue("seen: $seen", "opened-known-malicious" in seen)
+        assertEquals(PageWatch.Level.DANGER, Core.pageWatch(second)?.level)
+        // The emulator's resolver takes 30 s to give up on a name.
+        val deadline = SystemClock.elapsedRealtime() + 90_000L
+        while (Core.egressStats()?.recent.isNullOrEmpty() && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(200)
+        val refused = Core.egressStats()?.recent.orEmpty().filter { it.destination.startsWith("rift-demo.invalid") }
+        assertTrue("refusals: $refused; stats: ${Core.egressStats()}; watch: ${Core.pageWatch(second)?.events}", refused.isNotEmpty() && refused.all { it.code == "does-not-resolve" })
+
+        // The allowance ends with the session.
+        val third = resetAndAwait(second)
+        assertTrue(Core.decide(third, listed) is NavigationDecision.Block)
+        report("v4", "listed link opened in session $second only, after the warning; proxy refusals there: ${refused.map { it.code }}")
+    }
+
     @Test
     fun s08_oversizedDownloadStopsAtTheLimit() {
         allowFixtureHost()
