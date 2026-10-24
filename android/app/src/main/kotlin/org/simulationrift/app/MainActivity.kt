@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -547,17 +549,21 @@ class MainActivity : ComponentActivity() {
                 CheckResult(
                     it, trace, onTrace = { found -> trace = found }, onAddress = checkInstead,
                     onUndo = earlier.lastOrNull()?.let { before -> { earlier.removeAt(earlier.lastIndex); typed = before; check() } },
-                    onOpen = open.takeIf { mayBrowse }, onClose = { result = null; trace = null },
+                    onOpen = open.takeIf { mayBrowse },
+                    onTestOpen = { Core.testOpen(typed) }.takeIf { mayBrowse },
+                    onClose = { result = null; trace = null },
                 )
             }
         }
     }
 
     /**
-     * What a check found (LinkCheckViews), with Open safely where Rift would
-     * load it, and the link tools (LinkToolsViews). Once the link has been
-     * followed, the headline is the worst of it and where it goes.
+     * What a check found (LinkCheckViews): the verdict and what it means in
+     * a sentence, then the evidence, the link tools (LinkToolsViews), and
+     * Open safely and Test-open where Rift would load it. Once the link has
+     * been followed, the headline is the worst of it and where it goes.
      */
+    @OptIn(ExperimentalLayoutApi::class)
     @Composable
     private fun CheckResult(
         check: LinkCheck,
@@ -566,6 +572,7 @@ class MainActivity : ComponentActivity() {
         onAddress: (String) -> Unit,
         onUndo: (() -> Unit)?,
         onOpen: (() -> Unit)?,
+        onTestOpen: (() -> Unit)?,
         onClose: () -> Unit,
     ) {
         val worst = worstOf(check, trace)
@@ -578,14 +585,26 @@ class MainActivity : ComponentActivity() {
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 CheckHeadline(verdict)
+                Text(verdictOf(check).summary, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("check-summary"))
                 if (worst !== check) Text("Where it goes: ${verdict.summary}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("check-where"))
                 CheckDetails(check, verdictOf(check))
                 LinkTools(check, trace, onTrace, onAddress, onUndo)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (onOpen != null && verdict.openable) {
-                        FilledTonalButton(onClick = onOpen, modifier = Modifier.testTag("check-open")) { Text("Open safely") }
+                        FilledTonalButton(onClick = onOpen, modifier = Modifier.testTag("check-open")) { Text(verdict.openLabel) }
+                    }
+                    // Not for a listed link: the core would block it unseen.
+                    if (onTestOpen != null && verdict.openable && verdict.title != "Known malicious") {
+                        OutlinedButton(onClick = onTestOpen, modifier = Modifier.testTag("check-test-open")) { Text("Test-open") }
                     }
                     TextButton(onClick = onClose, modifier = Modifier.testTag("check-close")) { Text("Clear") }
+                }
+                if (onTestOpen != null && verdict.openable && verdict.title != "Known malicious") {
+                    Text(
+                        "Test-open runs the page out of sight for 10 seconds in a new sealed session, then reports where it went, " +
+                            "what it asked for and which sites it reached, before you see it.",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
             }
         }

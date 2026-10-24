@@ -44,6 +44,14 @@ interface ICore {
 
     oneway void requestReset(long generation);
 
+    /**
+     * The user chose to open `url`, which the core blocked as known
+     * malicious, after the warning (§10.4). The core decides it again, and
+     * only for a link it blocks as listed resets the session and opens it
+     * in the new one: this window is closed.
+     */
+    oneway void inspectAnyway(long generation, String url);
+
     /** The renderer died: the session is torn down (INV-7). */
     oneway void rendererGone(long generation, boolean crashed);
 
@@ -65,6 +73,17 @@ interface ICore {
 
     /** This session's page watch, encoded by PageWatch; empty for any other generation. */
     Bundle pageWatch(long generation);
+
+    /**
+     * What a loaded page asks for and calls itself (§10.5), read by a script
+     * in it: `names` is its title, site name and first heading. The page can
+     * change what the script reads, so the core only adds warnings from it,
+     * and bounds every part.
+     */
+    oneway void reportPage(long generation, String url, String names, boolean password, boolean card);
+
+    /** The test-open report for this session (§10.11), encoded by TestReport; empty for any other. */
+    Bundle testOpenReport(long generation);
 
     /**
      * Whether the content filters (§10.9) are on and loaded now. Asked once

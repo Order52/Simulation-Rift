@@ -218,12 +218,12 @@ class ShareActivity : ComponentActivity() {
                                 ) {
                                     Icon(painterResource(R.drawable.ic_lock), contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Open safely", maxLines = 1)
+                                    Text(verdict.openLabel, maxLines = 1)
                                 }
                             }
                         }
                         Text(
-                            if (verdict.openable) "Open safely loads it in Rift's sealed browser, in a fresh session, behind the network lock. Nothing has been opened yet."
+                            if (verdict.openable) "${verdict.openLabel} loads it in Rift's sealed browser, in a fresh session, behind the network lock. Nothing has been opened yet."
                             else "Nothing has been opened.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -43,8 +43,10 @@ data class PageWatch(val events: List<Event>, val coverage: List<String>) {
         const val PROTECTED_MEDIA = "protected-media"
         const val FILES = "files"
         const val FULLSCREEN = "fullscreen"
+        /** A download started during a test-open, which is not fetched. */
+        const val DOWNLOAD = "download-attempt"
 
-        val ALL = setOf(LOCATION, CAMERA, MICROPHONE, MIDI, PROTECTED_MEDIA, FILES, FULLSCREEN)
+        val ALL = setOf(LOCATION, CAMERA, MICROPHONE, MIDI, PROTECTED_MEDIA, FILES, FULLSCREEN, DOWNLOAD)
     }
 
     /**

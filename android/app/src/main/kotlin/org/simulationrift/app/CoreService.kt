@@ -61,6 +61,11 @@ class CoreService : Service() {
             Core.reset(generation)
         }
 
+        override fun inspectAnyway(generation: Long, url: String) {
+            checkCaller()
+            Core.inspectAnyway(generation, url)
+        }
+
         override fun rendererGone(generation: Long, crashed: Boolean) {
             checkCaller()
             Core.rendererGone(generation, crashed)
@@ -99,6 +104,16 @@ class CoreService : Service() {
         override fun pageWatch(generation: Long): Bundle {
             checkCaller()
             return Core.pageWatch(generation)?.toBundle() ?: Bundle()
+        }
+
+        override fun reportPage(generation: Long, url: String, names: String, password: Boolean, card: Boolean) {
+            checkCaller()
+            Core.reportPage(generation, url, names, password, card)
+        }
+
+        override fun testOpenReport(generation: Long): Bundle {
+            checkCaller()
+            return Core.testOpenReport(generation)?.toBundle() ?: Bundle()
         }
     }
 

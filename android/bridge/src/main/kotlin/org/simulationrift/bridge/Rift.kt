@@ -27,6 +27,8 @@ object Rift {
 
     const val EXTRA_GENERATION = "org.simulationrift.GENERATION"
     const val EXTRA_URL = "org.simulationrift.URL"
+    /** The window test-opens its link (§10.11): the page is covered until the user chooses to see it. */
+    const val EXTRA_TEST_OPEN = "org.simulationrift.TEST_OPEN"
 
     /** The egress proxy listens here (§8.8); only this host's challenge is answered. */
     const val PROXY_HOST = "127.0.0.1"

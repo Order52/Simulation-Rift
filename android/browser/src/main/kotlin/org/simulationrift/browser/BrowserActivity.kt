@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -55,8 +56,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AssistChip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -69,13 +73,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
@@ -97,6 +106,7 @@ import org.simulationrift.bridge.PageHiding
 import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.SessionGrant
+import org.simulationrift.bridge.TestReport
 import org.simulationrift.bridge.WindowGuard
 
 /**
@@ -113,7 +123,7 @@ class BrowserActivity : ComponentActivity() {
         data class Unsupported(val detail: String) : Screen
         data object Page : Screen
         data class Interstitial(val url: String, val displayUrl: String, val reasons: List<Fact>) : Screen
-        data class Blocked(val displayUrl: String, val reason: Fact) : Screen
+        data class Blocked(val url: String, val displayUrl: String, val reason: Fact, val inspectAnyway: Boolean) : Screen
         data class Ended(val message: String) : Screen
     }
 
@@ -126,12 +136,28 @@ class BrowserActivity : ComponentActivity() {
     private var shuttingDown = false
 
     private var screen by mutableStateOf<Screen>(Screen.Connecting)
+
+    /** Over the page during a test-open (§10.11): running, then the core's report. */
+    private sealed interface Cover {
+        data object Testing : Cover
+        data class Report(val report: TestReport?) : Cover
+    }
+
+    /** Whether this window test-opens its link; while [cover] is up, downloads are reported, not fetched, and warnings do not wait. */
+    private var testOpen = false
+    private var cover by mutableStateOf<Cover?>(null)
+
+    /** For the timing logs (no addresses): when the window was made, and when the current page started. */
+    private val created = SystemClock.elapsedRealtime()
+    private var pageStarted = 0L
     private var address by mutableStateOf("")
     /** The core's notes for the page shown; null until the core has decided on one. */
     private var notes by mutableStateOf<List<Fact>?>(null)
     private var canGoBack by mutableStateOf(false)
     private var canGoForward by mutableStateOf(false)
     private var status by mutableStateOf<String?>(null)
+    /** The engine's progress on the page, 0–100. */
+    private var loading by mutableStateOf(100)
     /** The core's live watch of this session (§10.5); null until it answers, or if it cannot. */
     private var watch by mutableStateOf<PageWatch?>(null)
     private var watchAnswered by mutableStateOf(false)
@@ -196,6 +222,8 @@ class BrowserActivity : ComponentActivity() {
             if (processGen != null) exitProcess("stale browser process")
             return
         }
+        testOpen = intent.getBooleanExtra(Rift.EXTRA_TEST_OPEN, false)
+        if (testOpen) cover = Cover.Testing
         setContent { RiftTheme { NoPersonalizedLearning { BrowserScreen() } } }
         bound = bindService(Intent().setComponent(Rift.CORE_SERVICE), connection, Context.BIND_AUTO_CREATE)
         if (!bound) screen = Screen.Ended("The protection core is unavailable.")
@@ -211,6 +239,9 @@ class BrowserActivity : ComponentActivity() {
         val url = intent.getStringExtra(Rift.EXTRA_URL) ?: return
         // No address in the log: it is browsing data.
         Log.i(TAG, "new link in generation $generation (engine ${if (webView != null) "running" else "starting"})")
+        // A link opened directly is shown and its downloads fetched: a test-open ends here.
+        testOpen = false
+        cover = null
         if (webView != null) openTyped(url) else setIntent(intent)
     }
 
@@ -284,6 +315,7 @@ class BrowserActivity : ComponentActivity() {
         screen = Screen.Page
         polling.removeCallbacks(poll)
         polling.post(poll)
+        if (testOpen) polling.postDelayed(::showTestReport, TEST_OPEN_MS)
         intent.getStringExtra(Rift.EXTRA_URL)?.let(::openTyped)
     }
 
@@ -365,6 +397,51 @@ class BrowserActivity : ComponentActivity() {
 
     // ---- Live page watch (§10.5) --------------------------------------------------
 
+    /** The core's report on the test-open, over the page until the user chooses (§10.11). */
+    private fun showTestReport() {
+        val connected = core ?: return
+        watchReader.execute {
+            val report = try {
+                TestReport.fromBundle(connected.testOpenReport(generation))
+            } catch (e: RemoteException) {
+                exitProcess("core unreachable")
+                return@execute
+            }
+            runOnUiThread { if (cover != null) cover = Cover.Report(report) }
+        }
+    }
+
+    /**
+     * What the page asks for and calls itself, for the core's look-alike
+     * check (§10.5). The page can change what this script reads, so it can
+     * add warnings, never clear one.
+     */
+    private fun reportPage(view: WebView, url: String) {
+        view.evaluateJavascript(PAGE_FACTS_SCRIPT) { value ->
+            if (value == null || value.length > MAX_FACTS_REPLY_CHARS || view.url != url) return@evaluateJavascript
+            val facts = try {
+                val text = org.json.JSONTokener(value).nextValue() as? String ?: return@evaluateJavascript
+                org.json.JSONObject(text)
+            } catch (e: org.json.JSONException) {
+                return@evaluateJavascript
+            }
+            val connected = core ?: return@evaluateJavascript
+            watchReader.execute {
+                try {
+                    connected.reportPage(generation, url, facts.optString("n").take(MAX_FACT_NAMES), facts.optBoolean("p"), facts.optBoolean("c"))
+                } catch (e: RemoteException) {
+                    exitProcess("core unreachable")
+                }
+                refreshWatch(connected)
+            }
+        }
+    }
+
+    /** A check of the watch now, not at the next poll: a warning shows as soon as the core has it. */
+    private fun refreshWatchSoon() {
+        core?.let { connected -> if (!watchReader.isShutdown) watchReader.execute { refreshWatch(connected) } }
+    }
+
     /** On [watchReader]; the answer is shown on the UI thread. */
     private fun refreshWatch(connected: ICore) {
         val answer = try {
@@ -392,6 +469,7 @@ class BrowserActivity : ComponentActivity() {
         } catch (e: RemoteException) {
             exitProcess("core unreachable")
         }
+        refreshWatchSoon()
     }
 
     /**
@@ -411,6 +489,7 @@ class BrowserActivity : ComponentActivity() {
         } catch (e: RemoteException) {
             exitProcess("core unreachable")
         }
+        refreshWatchSoon()
     }
 
     /**
@@ -512,7 +591,8 @@ class BrowserActivity : ComponentActivity() {
         // into encrypted quarantine (§8.5). Downloads generated inside the
         // page (blob:, data:) never reach this listener (PoC A3).
         setDownloadListener { url, userAgent, contentDisposition, _, _ ->
-            submitDownload(url, userAgent, contentDisposition)
+            // Nothing is fetched while the user has not seen the page (§10.11).
+            if (cover != null) reportAttempt(PageWatch.Attempt.DOWNLOAD, url) else submitDownload(url, userAgent, contentDisposition)
         }
     }
 
@@ -543,7 +623,7 @@ class BrowserActivity : ComponentActivity() {
         } catch (e: RemoteException) {
             null // decodes as a block
         },
-    )
+    ).also { refreshWatchSoon() }
 
     private fun openTyped(input: String) {
         // A new address is for seeing its page: the live check folds back to its bar.
@@ -555,12 +635,16 @@ class BrowserActivity : ComponentActivity() {
         } ?: return
         when (val d = decide(url)) {
             is NavigationDecision.Proceed -> load(url, d.notes)
+            // Hidden from the user, a test-open loads past the warning; its report lists it (§10.11).
+            is NavigationDecision.Confirm -> if (cover != null) load(url, d.notes + d.reasons) else show(url, d)
             else -> show(url, d)
         }
     }
 
     private fun load(url: String, decisionNotes: List<Fact>) {
         notes = decisionNotes
+        // Shown while the page loads, not only once the engine starts it.
+        address = url
         // Before the engine starts the page: onPageStarted comes after its first subresources (found by F1).
         pageUrl = url
         refreshFiltering()
@@ -573,7 +657,7 @@ class BrowserActivity : ComponentActivity() {
         screen = when (decision) {
             is NavigationDecision.Proceed -> Screen.Page
             is NavigationDecision.Confirm -> Screen.Interstitial(url, decision.displayUrl, decision.reasons)
-            is NavigationDecision.Block -> Screen.Blocked(decision.displayUrl, decision.reason)
+            is NavigationDecision.Block -> Screen.Blocked(url, decision.displayUrl, decision.reason, decision.inspectAnyway)
         }
     }
 
@@ -589,6 +673,15 @@ class BrowserActivity : ComponentActivity() {
                     refreshFiltering()
                     false
                 }
+                is NavigationDecision.Confirm -> if (cover != null) {
+                    notes = d.notes + d.reasons
+                    pageUrl = url
+                    refreshFiltering()
+                    false
+                } else {
+                    show(url, d)
+                    true
+                }
                 else -> {
                     show(url, d)
                     true
@@ -597,6 +690,8 @@ class BrowserActivity : ComponentActivity() {
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            if (pageStarted == 0L) Log.i(TAG, "first page started ${SystemClock.elapsedRealtime() - created} ms after the window was made")
+            pageStarted = SystemClock.elapsedRealtime()
             address = url
             pageUrl = url
             refreshFiltering()
@@ -625,6 +720,8 @@ class BrowserActivity : ComponentActivity() {
         }
 
         override fun onPageFinished(view: WebView, url: String) {
+            Log.i(TAG, "page finished ${SystemClock.elapsedRealtime() - pageStarted} ms after it started")
+            reportPage(view, url)
             val asked = askedCount.get()
             if (filtering && asked > 0) {
                 Log.i(TAG, "content filters: $asked requests asked about, ${askedNanos.get() / 1_000_000} ms in all (${askedNanos.get() / 1_000 / asked} us each), ${blockedCount.get()} blocked")
@@ -672,6 +769,10 @@ class BrowserActivity : ComponentActivity() {
 
     // Every refusal is reported to the core's page watch (§10.5).
     private inner class Chrome : WebChromeClient() {
+        override fun onProgressChanged(view: WebView, newProgress: Int) {
+            loading = newProgress
+        }
+
         // Camera, microphone, MIDI, protected media: always denied (B4).
         override fun onPermissionRequest(request: PermissionRequest) {
             request.deny()
@@ -721,6 +822,20 @@ class BrowserActivity : ComponentActivity() {
 
     // ---- Lifecycle -------------------------------------------------------------
 
+    /**
+     * Asks the core to open a link it blocked as listed in a new session
+     * (§10.4). The core decides it again, and resets: this window closes.
+     */
+    private fun inspectAnyway(url: String) {
+        screen = Screen.Ended("Opening the link in a new sealed session…")
+        Log.i(TAG, "asking the core to open a listed link in a new session")
+        try {
+            core?.inspectAnyway(generation, url)
+        } catch (e: RemoteException) {
+            exitProcess("core unreachable")
+        }
+    }
+
     private fun requestReset() {
         try {
             core?.requestReset(generation)
@@ -765,11 +880,11 @@ class BrowserActivity : ComponentActivity() {
                 Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
                     webView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
                     when (val s = screen) {
-                        Screen.Page -> {}
+                        Screen.Page -> cover?.let { TestCover(it) }
                         Screen.Connecting -> Message("Connecting to the protection core…")
                         is Screen.Unsupported -> Message("Unsupported device configuration", "Browsing is refused: ${s.detail}.")
                         is Screen.Interstitial -> Interstitial(s)
-                        is Screen.Blocked -> Message("Page blocked", s.reason.text, s.displayUrl)
+                        is Screen.Blocked -> Blocked(s)
                         is Screen.Ended -> Message("Session ended", s.message)
                     }
                 }
@@ -779,29 +894,74 @@ class BrowserActivity : ComponentActivity() {
 
     @Composable
     private fun TrustedBar() {
-        var typed by androidx.compose.runtime.remember { mutableStateOf("") }
-        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp).testTag("trusted-bar")) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text("Session $generation") }, modifier = Modifier.testTag("session-chip"))
-                Text(protectionSummary(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f).testTag("protection"))
-                TextButton(onClick = ::requestReset, modifier = Modifier.testTag("reset")) { Text("Reset") }
-            }
+        val colors = LocalStatusColors.current
+        val focus = LocalFocusManager.current
+        // While the field has focus it holds what is typed, starting from the page's address.
+        var typed by androidx.compose.runtime.remember { mutableStateOf(TextFieldValue("")) }
+        var editing by androidx.compose.runtime.remember { mutableStateOf(false) }
+        val opened = notes?.any { it.code == NavigationDecision.OPENED_LISTED } == true
+        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = 4.dp, vertical = 4.dp).testTag("trusted-bar")) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { webView?.goBack() }, enabled = canGoBack) { Text("◀") }
-                TextButton(onClick = { webView?.goForward() }, enabled = canGoForward) { Text("▶") }
-                TextButton(onClick = { webView?.reload() }, enabled = webView != null) { Text("↻") }
+                BarButton(R.drawable.ic_back, "Back", screen is Screen.Page && canGoBack, "back") { webView?.goBack() }
+                BarButton(R.drawable.ic_forward, "Forward", screen is Screen.Page && canGoForward, "forward") { webView?.goForward() }
+                BarButton(R.drawable.ic_reload, "Reload", webView != null, "reload") {
+                    screen = Screen.Page
+                    webView?.reload()
+                }
                 OutlinedTextField(
-                    value = typed,
+                    value = if (editing) typed else TextFieldValue(shownAddress()),
                     onValueChange = { typed = it },
-                    placeholder = { Text(address.ifEmpty { "Address" }, maxLines = 1) },
+                    placeholder = { Text("Address", maxLines = 1) },
                     singleLine = true,
                     enabled = webView != null,
+                    textStyle = MaterialTheme.typography.bodyMedium,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = {
-                        openTyped(typed)
-                        typed = ""
+                        val text = typed.text
+                        focus.clearFocus()
+                        if (text.isNotBlank()) openTyped(text)
                     }),
-                    modifier = Modifier.noAutofill().weight(1f).testTag("address"),
+                    modifier = Modifier.noAutofill().weight(1f).padding(end = 4.dp).testTag("address").onFocusChanged { state ->
+                        if (state.isFocused && !editing) {
+                            typed = TextFieldValue(address, TextRange(0, address.length))
+                            editing = true
+                        } else if (!state.isFocused) {
+                            editing = false
+                        }
+                    },
+                )
+            }
+            if (loading < 100 && screen is Screen.Page) {
+                LinearProgressIndicator(progress = { loading / 100f }, modifier = Modifier.fillMaxWidth().height(2.dp).testTag("progress"))
+            }
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Session $generation",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 4.dp).testTag("session-chip"),
+                )
+                // The core's verdict on the page shown; never a green "safe" (§10.4).
+                val warned = notes?.any { !it.code.startsWith("intel-") } == true
+                val (back, fore) = when {
+                    opened || screen is Screen.Blocked -> MaterialTheme.colorScheme.error to MaterialTheme.colorScheme.onError
+                    warned -> colors.warningContainer to colors.onWarningContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                Text(
+                    protectionSummary(),
+                    color = fore,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f).background(back, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp).testTag("protection"),
+                )
+                TextButton(onClick = ::requestReset, modifier = Modifier.testTag("reset")) { Text("Reset") }
+            }
+            if (opened) {
+                Text(
+                    "Known malicious page, opened on purpose. Do not sign in, pay or type anything here. Reset ends the session and wipes what it stored.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onError,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).background(MaterialTheme.colorScheme.error, RoundedCornerShape(8.dp)).padding(8.dp).testTag("opened-listed"),
                 )
             }
             if (grant?.mode == NetworkMode.REDUCED) {
@@ -824,6 +984,16 @@ class BrowserActivity : ComponentActivity() {
             if (webView != null) WatchPanel()
         }
     }
+
+    @Composable
+    private fun BarButton(icon: Int, label: String, enabled: Boolean, tag: String, onClick: () -> Unit) {
+        IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.testTag(tag)) {
+            Icon(painterResource(icon), contentDescription = label)
+        }
+    }
+
+    /** The page's address without "https://", so the site name leads; "http://" stays, as it means no encryption. */
+    private fun shownAddress(): String = address.removePrefix("https://").removeSuffix("/")
 
     /**
      * The session's live status, from the core (§10.5). Never "safe": the
@@ -882,7 +1052,9 @@ class BrowserActivity : ComponentActivity() {
     private fun protectionSummary(): String {
         // Only a decision by the core may be summarized; anything else says so.
         if (screen is Screen.Unsupported) return "Browsing refused on this device"
+        if (screen is Screen.Blocked) return "Blocked by Rift: not loaded"
         val notes = notes ?: return "No page checked yet"
+        if (notes.any { it.code == NavigationDecision.OPENED_LISTED }) return "Known malicious · opened on purpose"
         val warnings = notes.filter { it.code != "intel-missing" && it.code != "intel-stale" }
         val intel = when {
             notes.any { it.code == "intel-missing" } -> "no threat database"
@@ -904,6 +1076,88 @@ class BrowserActivity : ComponentActivity() {
                     Button(onClick = { screen = Screen.Page }, modifier = Modifier.testTag("go-back")) { Text("Go back") }
                     OutlinedButton(onClick = { load(s.url, emptyList()) }, modifier = Modifier.testTag("continue")) {
                         Text("Continue anyway")
+                    }
+                }
+            }
+        }
+    }
+
+    /** Over the page during a test-open (§10.11): a notice while it runs, then the core's report and the choice. */
+    @Composable
+    private fun TestCover(c: Cover) {
+        Surface(Modifier.fillMaxSize().testTag("test-open"), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                when (c) {
+                    // Fixed text, no countdown: a screen reader (or UiAutomator) is not sent a change every second.
+                    is Cover.Testing -> {
+                        Text("Test-opening the link", style = MaterialTheme.typography.headlineSmall)
+                        Text(
+                            "The page is running in this sealed session, out of sight, for about ${TEST_OPEN_MS / 1000} seconds. " +
+                                "Rift is watching where it goes, what it asks for and which sites it reaches.",
+                            modifier = Modifier.testTag("test-open-running"),
+                        )
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                    }
+                    is Cover.Report -> TestReportView(c.report)
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun TestReportView(report: TestReport?) {
+        Text("What the link did", style = MaterialTheme.typography.headlineSmall)
+        if (report == null) {
+            Text("Rift could not get the report, so it cannot say what the page did. Treat it as unknown.", modifier = Modifier.testTag("test-report-summary"))
+        } else {
+            val colors = LocalStatusColors.current
+            val (back, fore) = when (report.level) {
+                PageWatch.Level.DANGER -> MaterialTheme.colorScheme.error to MaterialTheme.colorScheme.onError
+                PageWatch.Level.WARNING -> colors.warningContainer to colors.onWarningContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Text(
+                report.summary,
+                color = fore,
+                modifier = Modifier.fillMaxWidth().background(back, RoundedCornerShape(12.dp)).padding(12.dp).testTag("test-report-summary"),
+            )
+            report.sections.forEach { section ->
+                Text(section.title, style = MaterialTheme.typography.titleSmall)
+                section.items.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = ::requestReset, modifier = Modifier.testTag("test-close")) { Text("Close and wipe") }
+            OutlinedButton(onClick = { cover = null }, modifier = Modifier.testTag("test-show")) { Text("Show the page") }
+        }
+    }
+
+    /**
+     * A blocked page. For a link the threat database lists, the user may
+     * still open it (§10.4), in a new session; what that does and does not
+     * protect is said before the button, not after.
+     */
+    @Composable
+    private fun Blocked(s: Screen.Blocked) {
+        val color = if (s.inspectAnyway) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface
+        Surface(Modifier.fillMaxSize().testTag("message"), color = color) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Page blocked", style = MaterialTheme.typography.headlineSmall)
+                Text(s.reason.text)
+                Text(s.displayUrl, style = MaterialTheme.typography.bodySmall)
+                Button(onClick = { screen = Screen.Page }, modifier = Modifier.testTag("blocked-back")) { Text("Go back") }
+                if (s.inspectAnyway) {
+                    Text("You can still open it, to see what it does:", style = MaterialTheme.typography.titleSmall)
+                    listOf(
+                        "It opens in a new session with nothing else in it; this session is wiped first.",
+                        "Its own site is let through Rift's proxy. Other listed sites and your local network stay blocked.",
+                        "Camera, microphone, location and files get made-up answers or a refusal. Downloads go to quarantine.",
+                        "Reset ends the session and wipes everything it stored.",
+                        "This lowers the risk; it does not remove it. A page that attacks a flaw in the browser engine could still affect that session, and Rift cannot stop what you type into the page.",
+                    ).forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                    // After what it means, so it is read first.
+                    OutlinedButton(onClick = { inspectAnyway(s.url) }, modifier = Modifier.testTag("inspect-anyway")) {
+                        Text("Open in a new session")
                     }
                 }
             }
@@ -932,6 +1186,17 @@ class BrowserActivity : ComponentActivity() {
         private const val MAX_NAME_CHARS = 100
         private const val MAX_NAMES_REPLY_CHARS = 300_000
         private const val MAX_GENERIC_CSS_CHARS = 250_000
+        private const val TEST_OPEN_MS = 10_000L
+        private const val MAX_FACTS_REPLY_CHARS = 4_096
+        private const val MAX_FACT_NAMES = 512
+
+        /** What the page calls itself (title, site name, first heading) and whether it asks for a password or a card. */
+        private const val PAGE_FACTS_SCRIPT = "(function(){var q=function(s){return document.querySelector(s)};" +
+            "var m=q('meta[property=\"og:site_name\"]'),h=q('h1');" +
+            "var n=[document.title,m&&m.content,h&&h.textContent].filter(Boolean).join(' \u00b7 ').replace(/\\s+/g,' ').slice(0,512);" +
+            "var c=!!q('input[autocomplete^=\"cc-\"]')||Array.prototype.some.call(document.querySelectorAll('input'),function(i){" +
+            "return /card.?num|cc.?num|cvv|cvc|csc/i.test((i.name||'')+' '+(i.id||'')+' '+(i.placeholder||''))});" +
+            "return JSON.stringify({n:n,p:!!q('input[type=password]'),c:c})})()"
 
         /** The class names and ids in the page, as JSON; the only thing read back from it. */
         private const val PAGE_NAMES_SCRIPT = "(function(){var c={},i={},nc=0,ni=0;" +

@@ -139,9 +139,6 @@ object ContentFilter {
 
     private val work = Executors.newSingleThreadExecutor { Thread(it, "rift-filters") }
     private val blockedTotal = AtomicLong()
-    private val askNanos = AtomicLong()
-    private val askCount = AtomicLong()
-    @Volatile private var lastSpent = 0L
     /** A rebuild is waiting on [work]: changes made before it starts are all in it. */
     private val rebuildQueued = AtomicBoolean()
 
@@ -304,10 +301,7 @@ object ContentFilter {
 
     fun blocks(url: String, page: String, kind: String): Boolean {
         if (url.length > MAX_URL_CHARS || page.length > MAX_URL_CHARS) return false
-        val t0 = System.nanoTime()
         val blocked = guarded("blocks", false) { engine.blocks(url, page, kind.take(MAX_NAME_CHARS)) }
-        val spent = askNanos.addAndGet(System.nanoTime() - t0)
-        if (askCount.incrementAndGet() % 100 == 0L) { Log.i(TAG, "TIMING engine.blocks: calls ${askCount.get()}, last 100 took ${(spent - lastSpent) / 100 / 1000} us each"); lastSpent = spent }
         if (blocked) {
             val total = blockedTotal.incrementAndGet()
             if (total % COUNT_PUBLISH_EVERY == 1L) _state.update { it.copy(blocked = total) }

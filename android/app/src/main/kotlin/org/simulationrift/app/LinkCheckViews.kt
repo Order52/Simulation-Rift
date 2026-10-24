@@ -47,8 +47,9 @@ internal data class CheckVerdict(
     val icon: Int,
     val title: String,
     val summary: String,
-    /** Whether Rift would load it at all: false for a listed or refused address. */
+    /** Whether Rift would load it at all: false for a refused address. A listed one opens to a warning first. */
     val openable: Boolean,
+    val openLabel: String = "Open safely",
 )
 
 @Composable
@@ -60,7 +61,8 @@ internal fun verdictOf(check: LinkCheck): CheckVerdict {
     val refused = navigation is Navigation.Block && !listed
     return when {
         listed -> CheckVerdict(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_bug, "Known malicious",
-            "This link is in the threat database. Rift will not open it.", openable = false)
+            "This link is in the threat database. Do not sign in, pay or download there. Rift opens it only after a warning, in a new sealed session.",
+            openable = true, openLabel = "Open after a warning")
         refused -> CheckVerdict(status.warningContainer, status.onWarningContainer, R.drawable.ic_warning, "Rift won't open this",
             (navigation as Navigation.Block).reason.text, openable = false)
         check.ai?.level == AiLevel.HIGH -> CheckVerdict(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_warning, "Looks dangerous",

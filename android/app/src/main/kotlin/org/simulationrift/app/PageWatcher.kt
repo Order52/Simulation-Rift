@@ -6,6 +6,7 @@ import org.simulationrift.bridge.NavigationDecision
 import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.PageWatch.Level
 import org.simulationrift.core.EgressStats
+import org.simulationrift.core.PageFact
 import org.simulationrift.core.ScanStatus
 import org.simulationrift.core.Verdict
 import org.simulationrift.core.displaySafe
@@ -77,7 +78,12 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
                 decision.reasons.forEach { record(Level.WARNING, it.code, host, "$host: ${it.text}", Tally.WARNED) }
                 notes(host, decision.notes)
             }
-            is NavigationDecision.Proceed -> notes(host, decision.notes)
+            is NavigationDecision.Proceed -> if (decision.notes.any { it.code == NavigationDecision.OPENED_LISTED }) {
+                record(Level.DANGER, "opened-known-malicious", host,
+                    "You opened $host, which the threat database lists as malicious. Its page runs in this sealed session only.")
+            } else {
+                notes(host, decision.notes)
+            }
         }
     }
 
@@ -108,6 +114,8 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
                 "$host asked you to choose a file to upload. Rift does not allow uploads, so no file was shared.")
             PageWatch.Attempt.FULLSCREEN -> record(Level.NOTE, kind, host,
                 "$host asked for fullscreen, which would hide Rift's bar. Refused.")
+            PageWatch.Attempt.DOWNLOAD -> record(Level.WARNING, kind, host,
+                "$host started a download by itself during the test-open. It was not fetched.")
         }
     }
 
@@ -203,6 +211,12 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
                 "Something in the browser tried to connect to $destination directly, around Rift's proxy " +
                     "(WebRTC does this, and it can reveal your addresses). The network lock dropped it.")
         }
+    }
+
+    /** What a page asks for and calls itself (Navigator.assessPage); the texts are the core's. */
+    fun page(url: String, facts: List<PageFact>) {
+        val host = hostOf(url)
+        facts.forEach { record(if (it.warn) Level.WARNING else Level.NOTE, it.code, host, it.text, if (it.warn) Tally.WARNED else null) }
     }
 
     fun downloaded(name: String) =

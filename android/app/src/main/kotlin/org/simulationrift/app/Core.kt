@@ -9,6 +9,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import java.io.File
 import java.io.IOException
@@ -27,6 +28,7 @@ import org.simulationrift.bridge.NetworkMode
 import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.SessionGrant
+import org.simulationrift.bridge.TestReport
 import org.simulationrift.core.Ai
 import org.simulationrift.core.AiFailure
 import org.simulationrift.core.DisposalException
@@ -208,8 +210,18 @@ object Core {
         "paypal.com", "google.com", "apple.com", "microsoft.com", "amazon.com",
         "facebook.com", "instagram.com", "whatsapp.com", "netflix.com", "github.com",
     )
-    private val shorteners = listOf("bit.ly", "t.co", "tinyurl.com", "goo.gl", "ow.ly", "is.gd", "buff.ly")
-    private val navigator by lazy { Navigator.withAi(protectedDomains, shorteners, ai) }
+    private val shorteners = listOf(
+        "bit.ly", "t.co", "tinyurl.com", "goo.gl", "ow.ly", "is.gd", "buff.ly", "rb.gy", "cutt.ly", "shorturl.at",
+        "tiny.cc", "rebrand.ly", "s.id", "t.ly", "v.gd",
+    )
+    /** Platforms where anyone can publish a site under the platform's name, as fake pages often are. */
+    private val hosting = listOf(
+        "web.app", "firebaseapp.com", "github.io", "pages.dev", "workers.dev", "netlify.app", "vercel.app",
+        "glitch.me", "repl.co", "replit.app", "weebly.com", "wixsite.com", "blogspot.com", "000webhostapp.com",
+        "herokuapp.com", "onrender.com", "ngrok-free.app", "trycloudflare.com", "ipfs.io", "webflow.io",
+        "square.site", "godaddysites.com", "azurewebsites.net", "appspot.com", "surge.sh",
+    )
+    private val navigator by lazy { Navigator.withAi(protectedDomains, shorteners, hosting, ai) }
 
     /**
      * Rift AI's URL model (§16), shipped in the APK (assets/url-model.bin,
@@ -324,10 +336,14 @@ object Core {
     }
 
     /** Resets the active session; `generation` guards against stale requests. */
-    fun reset(generation: Long? = null) = worker.execute {
-        val current = currentGeneration ?: return@execute
-        if (generation != null && generation != current) return@execute
-        val opened = sessions ?: return@execute
+    fun reset(generation: Long? = null) = worker.execute { resetNow(generation) }
+
+    /** On [worker]: the reset itself; the new generation, or null if there is none. */
+    private fun resetNow(generation: Long?): Long? {
+        val current = currentGeneration ?: return null
+        if (generation != null && generation != current) return null
+        val opened = sessions ?: return null
+        val started = SystemClock.elapsedRealtime()
         _state.value = State.Resetting(current)
         currentGeneration = null // decisions for the old generation now block
         _downloads.value = emptyList()
@@ -339,9 +355,101 @@ object Core {
             opened.reset()
         } catch (e: SessionFailure) {
             fail(opened, e)
-            return@execute
+            return null
         }
         start(opened, recovered = null)
+        Log.i(TAG, "reset to session $currentGeneration after ${SystemClock.elapsedRealtime() - started} ms")
+        return currentGeneration
+    }
+
+    /**
+     * Test-opens `url` (§10.11): in a session no page or window has used
+     * (a new, wiped one unless the current one is still unused, which saves
+     * a reset), in a window that covers the page while it runs, then shows
+     * what the core saw. The page runs as any page does; only the user's
+     * view of it waits.
+     */
+    fun testOpen(url: String) = worker.execute {
+        val current = currentGeneration ?: return@execute
+        // A window already open in the session would take the link uncovered: then a reset too.
+        val unused = !hasBrowsed(current) && browser?.generation != current
+        val next = if (unused) current else resetNow(current) ?: return@execute
+        testing = TestOpen(next, SystemClock.elapsedRealtime())
+        Log.i(TAG, "test-opening a link in session $next")
+        openWindow(app, next, url, testOpen = true)
+    }
+
+    /** The session being test-opened, and the addresses its window was sent to. */
+    private class TestOpen(val generation: Long, val started: Long) {
+        val hops = mutableListOf<String>()
+    }
+
+    @Volatile private var testing: TestOpen? = null
+
+    /** Each main-frame address decided in a test-open, with what the core said. */
+    private fun hop(generation: Long, url: String, decision: NavigationDecision) {
+        val test = testing?.takeIf { it.generation == generation } ?: return
+        val said = when (decision) {
+            is NavigationDecision.Proceed -> decision.notes.firstOrNull { it.code == NavigationDecision.OPENED_LISTED }?.text ?: "not flagged"
+            is NavigationDecision.Confirm -> "warning: ${decision.reasons.joinToString(" ") { it.text }}"
+            is NavigationDecision.Block -> "blocked: ${decision.reason.text}"
+        }
+        synchronized(test) { if (test.hops.size < MAX_HOPS) test.hops += "${displaySafe(url).take(MAX_HOP_CHARS)}: $said" }
+    }
+
+    /** What the test-open of `generation` saw so far; null if it is not one. */
+    fun testOpenReport(generation: Long): TestReport? {
+        val test = testing?.takeIf { it.generation == generation } ?: return null
+        val watch = pageWatch(generation) ?: return null
+        val seconds = (SystemClock.elapsedRealtime() - test.started) / 1000
+        val hops = synchronized(test) { test.hops.toList() }
+        val stats = egressStats()
+        val summary = when (watch.level) {
+            PageWatch.Level.DANGER -> "Rift saw signs of danger. Close it; look at the page only if you need to see what it is."
+            PageWatch.Level.WARNING -> "Rift saw warning signs. Read them before you look at the page."
+            else -> "Nothing suspicious seen in $seconds seconds. That does not make the page safe: it can act later, or only for some visitors."
+        }
+        val sites = stats?.contacted.orEmpty()
+        val refused = stats?.recent.orEmpty().map { "${it.destination}: ${it.reason}" }
+        return TestReport(watch.level, summary, listOfNotNull(
+            TestReport.Section("Where it went", hops.ifEmpty { listOf("It did not load a page.") }),
+            TestReport.Section("What Rift saw", watch.events.map { (if (it.count > 1) "×${it.count} " else "") + it.text }.ifEmpty { listOf("Nothing.") }),
+            TestReport.Section("Sites it reached (${sites.size})", sites.ifEmpty { listOf("None.") }),
+            refused.takeIf { it.isNotEmpty() }?.let { TestReport.Section("Refused by Rift's proxy (${it.size})", it) },
+        ))
+    }
+
+    /** What a page asks for and calls itself, from the browser (ICore.reportPage). */
+    fun reportPage(generation: Long, url: String, names: String, password: Boolean, card: Boolean) {
+        if (browser?.generation != generation) return
+        val facts = navigator.assessPage(url.take(MAX_ORIGIN_CHARS), names.take(MAX_PAGE_NAMES), password, card)
+        watcher(generation)?.page(url.take(MAX_ORIGIN_CHARS), facts)
+    }
+
+    /**
+     * Opens a known-malicious link the user chose to see after the warning
+     * (§10.4): only one the core itself blocks as listed, and only in a new,
+     * wiped session. In that session the link's host, and no other listed
+     * one, passes the proxy; the session ends like any other, and its data
+     * is wiped. The browser's own request is not trusted: the core decides
+     * the link again.
+     */
+    fun inspectAnyway(generation: Long, url: String) = worker.execute {
+        if (generation != currentGeneration) {
+            Log.w(TAG, "inspect-anyway refused: generation $generation is not current")
+            return@execute
+        }
+        val verified = browser?.takeIf { it.generation == generation }?.sandbox?.verified == true
+        val listed = navigator.decide(url, verified, database, nowUnix())
+        if (listed !is Navigation.Block || !listed.inspectAnyway) {
+            Log.w(TAG, "inspect-anyway refused: the core does not block this link as listed")
+            return@execute
+        }
+        val opened = sessions ?: return@execute
+        val next = resetNow(generation) ?: return@execute
+        if (!opened.allowInspection(next.toULong(), url)) return@execute
+        Log.i(TAG, "opening a listed link in new session $next, after the user's warning")
+        openWindow(app, next, url)
     }
 
     private fun openAndStart() {
@@ -531,9 +639,15 @@ object Core {
         val decision = when (val d = navigator.decide(url, sandboxVerified, database, nowUnix())) {
             is Navigation.Proceed -> NavigationDecision.Proceed(d.notes.map(::fact))
             is Navigation.Confirm -> NavigationDecision.Confirm(d.reasons.map(::fact), d.notes.map(::fact), displaySafe(url))
-            is Navigation.Block -> NavigationDecision.Block(fact(d.reason), d.inspectAnyway, displaySafe(url))
+            // The link the user chose to open in this session (inspectAnyway); nothing else listed.
+            is Navigation.Block -> if (d.inspectAnyway && sessions?.isInspected(generation.toULong(), url) == true) {
+                NavigationDecision.Proceed(listOf(Fact(NavigationDecision.OPENED_LISTED, "Known malicious: ${d.reason.text} You chose to open it in this sealed session.")))
+            } else {
+                NavigationDecision.Block(fact(d.reason), d.inspectAnyway, displaySafe(url))
+            }
         }
         watcher(generation)?.navigation(url, decision)
+        hop(generation, url, decision)
         WeeklyStats.count(Tally.LINK_CHECKED)
         if (decision is NavigationDecision.Block) return decision
         // INV-14: nothing loads unless every request goes through the proxy,
@@ -954,11 +1068,12 @@ object Core {
      * [WINDOW_ATTACH_MS], the window is opened again, at most
      * [WINDOW_REOPENS] times; each reopen is logged.
      */
-    fun openWindow(context: Context, generation: Long, url: String?, reopens: Int = WINDOW_REOPENS) {
+    fun openWindow(context: Context, generation: Long, url: String?, reopens: Int = WINDOW_REOPENS, testOpen: Boolean = false) {
         context.startActivity(
             Intent().setComponent(Rift.BROWSER_ACTIVITY)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .putExtra(Rift.EXTRA_GENERATION, generation)
+                .putExtra(Rift.EXTRA_TEST_OPEN, testOpen)
                 .apply { url?.let { putExtra(Rift.EXTRA_URL, it) } },
         )
         if (reopens <= 0) return
@@ -966,7 +1081,7 @@ object Core {
         Handler(Looper.getMainLooper()).postDelayed({
             if (browser?.generation != generation && currentGeneration == generation) {
                 Log.w(TAG, "browser window for generation $generation did not attach; opening it again")
-                openWindow(appContext, generation, url, reopens - 1)
+                openWindow(appContext, generation, url, reopens - 1, testOpen)
             }
         }, WINDOW_ATTACH_MS)
     }
@@ -1032,6 +1147,9 @@ object Core {
     )
 
     private const val MAX_ORIGIN_CHARS = 2_048
+    private const val MAX_PAGE_NAMES = 512
+    private const val MAX_HOPS = 20
+    private const val MAX_HOP_CHARS = 200
     private const val MAX_DECOY_DETAIL_CHARS = 200
 
     /** The browser registered for disposal, detached so no further calls reach it. */

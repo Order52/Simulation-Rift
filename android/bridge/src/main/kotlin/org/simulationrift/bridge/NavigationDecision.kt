@@ -37,6 +37,12 @@ sealed interface NavigationDecision {
     }
 
     companion object {
+        /**
+         * The note on a known-malicious link the user chose to open in its
+         * own session (ICore.inspectAnyway): the browser shows it as a danger.
+         */
+        const val OPENED_LISTED = "opened-known-malicious"
+
         private const val KIND = "kind"
         private const val PROCEED = "proceed"
         private const val CONFIRM = "confirm"
