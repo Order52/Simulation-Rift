@@ -4,9 +4,11 @@
 # no tag for 7.0.2, so its texts are from master, 20 Oct 2026). Where the
 # repository has no licence file either, generic-mit is the MIT permission
 # notice without a copyright line (the crate's authors are printed as the
-# holders) and generic-apache the Apache License 2.0 (for crates offered
-# under it, which Rift then uses under it). A crate whose version changes
-# fails android/notices.py until this list is checked and updated.
+# holders), generic-apache the Apache License 2.0 (for crates offered
+# under it, which Rift then uses under it) and generic-mpl the Mozilla
+# Public License 2.0 (selectors; servo/stylo has no licence file). A crate
+# whose version changes fails android/notices.py until this list is checked
+# and updated.
 cranelift-assembler-x64 0.132.3 wasmtime-v45.0.3
 cranelift-bitset 0.132.3 wasmtime-v45.0.3
 pulley-interpreter 45.0.3 wasmtime-v45.0.3
@@ -23,6 +25,7 @@ intl_pluralrules 7.0.2 pluralrules-master
 age 0.12.1 rage-v0.12.1
 age-core 0.12.0 rage-v0.12.1
 fluent-langneg 0.13.1 fluent-langneg-0.13.1
+selectors 0.32.0 generic-mpl
 ascii_tree 0.1.1 generic-mit
 cookie-factory 0.3.3 generic-mit
 io_tee 0.1.1 generic-apache

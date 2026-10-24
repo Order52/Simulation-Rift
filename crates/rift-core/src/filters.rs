@@ -9,6 +9,14 @@
 //! them to every connection), and the CSS made from them is rebuilt here
 //! from selectors that pass [`safe_selector`], one rule each, so no list can
 //! write a rule of its own into a page.
+//!
+//! The lists' other changes to a page (`:style()`, `:remove()`,
+//! `:remove-class()`, `:remove-attr()`, and hiding found by `:has-text()` or
+//! `:upward()`) are what get a page out from under a sign-in wall. They are
+//! checked here too and sent as data, which a fixed script in the browser
+//! applies: a style may change only how an element looks (no resource, no
+//! rule of its own), and anything else, including every list's scripts
+//! (`##+js()`), is dropped.
 
 use std::collections::HashSet;
 
@@ -28,6 +36,16 @@ const MAX_CSS_BYTES: usize = 200_000;
 const MAX_PAGE_NAMES: usize = 4_000;
 /// Longest class name or id taken from a page.
 const MAX_NAME_LEN: usize = 100;
+/// Most changes beyond hiding returned for one page.
+const MAX_ACTIONS: usize = 300;
+/// Most bytes of those changes at once (they cross Binder too).
+const MAX_ACTIONS_BYTES: usize = 100_000;
+/// Most steps in one change's selector.
+const MAX_STEPS: usize = 8;
+/// Longest declaration a `:style()` may set.
+const MAX_STYLE_LEN: usize = 300;
+/// Longest text a `:has-text()` may look for.
+const MAX_TEXT_LEN: usize = 200;
 
 /// Request kinds the engine knows; anything else is `other`.
 const KINDS: &[&str] = &[
@@ -64,6 +82,12 @@ pub struct Cosmetic {
     pub exceptions: Vec<String>,
     /// The site opted out of generic rules (`$generichide`).
     pub generic_hidden: bool,
+    /// Changes a style sheet cannot make, as a JSON array for the browser's
+    /// script (empty if none). Each is `{"s": steps, "a": action}`: steps are
+    /// `["css", selector]`, `["text", text or /regex/flags]` or `["up", n or
+    /// selector]`, and the action is `["hide"]`, `["remove"]`, `["style",
+    /// declarations]`, `["remove-class", name]` or `["remove-attr", name]`.
+    pub actions: String,
 }
 
 impl Filters {
@@ -128,10 +152,44 @@ impl Filters {
         let mut exceptions: Vec<String> = found.exceptions.into_iter().collect();
         exceptions.sort();
         exceptions.truncate(MAX_PAGE_NAMES);
+        let mut procedural: Vec<&String> = found.procedural_actions.iter().collect();
+        procedural.sort();
+        let mut styles = Vec::new();
+        let mut actions = Vec::new();
+        for json in procedural {
+            match change(json) {
+                Some(Change::Rule(rule)) => styles.push(rule),
+                Some(Change::Script(action)) if actions.len() < MAX_ACTIONS => actions.push(action),
+                _ => {}
+            }
+        }
+        let mut css = rules(selectors.iter().map(|s| s.as_str()));
+        for rule in styles {
+            if css.len().saturating_add(rule.len()) > MAX_CSS_BYTES {
+                break;
+            }
+            css.push_str(&rule);
+        }
+        let mut actions = serde_json::Value::Array(actions).to_string();
+        while actions.len() > MAX_ACTIONS_BYTES {
+            // Rare: halve the list until it fits, rather than cut a JSON text.
+            let Ok(serde_json::Value::Array(mut list)) =
+                serde_json::from_str::<serde_json::Value>(&actions)
+            else {
+                actions.clear();
+                break;
+            };
+            list.truncate(list.len() / 2);
+            actions = serde_json::Value::Array(list).to_string();
+        }
+        if actions == "[]" {
+            actions.clear();
+        }
         Cosmetic {
-            css: rules(selectors.iter().map(|s| s.as_str())),
+            css,
             exceptions,
             generic_hidden: found.generichide,
+            actions,
         }
     }
 
@@ -174,6 +232,98 @@ fn rules<'a>(selectors: impl Iterator<Item = &'a str>) -> String {
         css.push_str(RULE);
     }
     css
+}
+
+/// One checked change from a list.
+enum Change {
+    /// A style rule (a plain selector and its declarations, or hidden).
+    Rule(String),
+    /// A change for the browser's script.
+    Script(serde_json::Value),
+}
+
+/// Checks one of the engine's JSON-encoded procedural or action filters;
+/// `None` if any part is unsupported or unsafe, so the rule is dropped whole.
+fn change(json: &str) -> Option<Change> {
+    use serde_json::{Value, json};
+    let value: Value = serde_json::from_str(json).ok()?;
+    let steps = value.get("selector")?.as_array()?;
+    if steps.is_empty() || steps.len() > MAX_STEPS {
+        return None;
+    }
+    let mut checked = Vec::with_capacity(steps.len());
+    for step in steps {
+        let arg = step.get("arg")?.as_str()?;
+        let kind = match step.get("type")?.as_str()? {
+            "css-selector" if safe_selector(arg.trim()) => "css",
+            "has-text"
+                if !arg.is_empty()
+                    && arg.len() <= MAX_TEXT_LEN
+                    && !arg.chars().any(char::is_control) =>
+            {
+                "text"
+            }
+            "upward" if arg.parse::<u8>().is_ok_and(|n| n > 0) || safe_selector(arg) => "up",
+            _ => return None,
+        };
+        checked.push(json!([kind, arg.trim()]));
+    }
+    let action = match value.get("action") {
+        None | Some(Value::Null) => json!(["hide"]),
+        Some(action) => match action.get("type")?.as_str()? {
+            "remove" => json!(["remove"]),
+            "style" => {
+                let style = action.get("arg")?.as_str()?.trim();
+                safe_style(style).then(|| json!(["style", style]))?
+            }
+            kind @ ("remove-class" | "remove-attr") => {
+                let name = action.get("arg")?.as_str()?;
+                let plain = !name.is_empty()
+                    && name.len() <= MAX_NAME_LEN
+                    && name
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+                plain.then(|| json!([kind, name]))?
+            }
+            _ => return None,
+        },
+    };
+    // A plain selector that is styled or hidden needs no script: a style
+    // rule, which also holds for elements the page adds later.
+    if let ([only], Some(kind)) = (steps.as_slice(), action.get(0).and_then(Value::as_str))
+        && only.get("type").and_then(Value::as_str) == Some("css-selector")
+        && (kind == "hide" || kind == "style")
+    {
+        let selector = only.get("arg")?.as_str()?.trim();
+        let body = action
+            .get(1)
+            .and_then(Value::as_str)
+            .unwrap_or("display:none!important");
+        return Some(Change::Rule(format!("{selector}{{{body}}}\n")));
+    }
+    Some(Change::Script(json!({ "s": checked, "a": action })))
+}
+
+/// Whether a list's `:style()` declarations change only how an element
+/// looks: nothing that closes the rule, loads a resource, imports, escapes
+/// or comments.
+fn safe_style(style: &str) -> bool {
+    const MARKERS: &[&str] = &[
+        "url(",
+        "image-set(",
+        "image(",
+        "expression(",
+        "/*",
+        "-moz-binding",
+        "behavior",
+    ];
+    let lower = style.to_ascii_lowercase();
+    !style.is_empty()
+        && style.len() <= MAX_STYLE_LEN
+        && !style
+            .chars()
+            .any(|c| matches!(c, '{' | '}' | '@' | '\\' | '<' | '"' | '\'') || c.is_control())
+        && !MARKERS.iter().any(|m| lower.contains(m))
 }
 
 /// Whether a selector from a list is plain enough to put in a style rule
@@ -232,7 +382,7 @@ mod tests {
         Filters::new(vec![
             "! Title: test\n||ads.example^\n||track.example/pixel.gif\n@@||ads.example/ok.js\n\
              ||accounts.example.org/gsi/$third-party\n\
-             ##.banner-ad\nnews.example##.cookie-wall\n###sponsor\nnews.example##div{x}\n"
+             ##.banner-ad\nnews.example##.cookie-wall\n###sponsor\nnews.example##div{color:red} body{display:none}\n"
                 .into(),
             "||custom.example^$script\n".into(),
         ])
@@ -310,8 +460,8 @@ mod tests {
         let f = filters();
         let news = f.cosmetic("https://news.example/story");
         assert!(news.css.contains(".cookie-wall{display:none!important}"));
-        // The injected "div{x}" selector never reaches the CSS.
-        assert!(!news.css.contains("div{x}"));
+        // A rule that tries to close itself and open another never reaches the CSS.
+        assert!(!news.css.contains("body{"), "{}", news.css);
         let other = f.cosmetic("https://other.example/");
         assert!(!other.css.contains(".cookie-wall"));
     }
@@ -430,5 +580,101 @@ mod tests {
         let f = Filters::new(Vec::new());
         assert!(!f.blocks("https://ads.example/a.js", "https://n.example/", "script"));
         assert_eq!(f.cosmetic("https://n.example/"), Cosmetic::default());
+    }
+
+    fn walls() -> Filters {
+        Filters::new(vec![
+            "social.example##body:style(overflow: auto !important;)\n\
+             social.example##.signup-wall:remove()\n\
+             social.example##div:has-text(Sign up to continue):upward(2)\n\
+             social.example##.feed:remove-class(blurred)\n\
+             social.example##main:remove-attr(inert)\n\
+             social.example#?#.modal:has-text(/log ?in/i)\n\
+             social.example##+js(set, signupWall, false)\n\
+             social.example##.q:matches-css(position: fixed)\n\
+             evil.example##body:style(background: url(https://track.example/p.gif))\n\
+             evil.example##body:style(color: red} * {display: none)\n\
+             evil.example##body:style(color: \\72 ed)\n\
+             evil.example##.x:remove-attr(on\"click)\n"
+                .into(),
+        ])
+    }
+
+    #[test]
+    fn sign_in_walls_are_taken_down() {
+        let page = walls().cosmetic("https://www.social.example/post/1");
+        // A plain selector with a style becomes a style rule.
+        assert!(
+            page.css.contains("body{overflow: auto !important;}"),
+            "{}",
+            page.css
+        );
+        let actions: serde_json::Value = serde_json::from_str(&page.actions).unwrap();
+        let actions = actions.as_array().unwrap();
+        let has = |want: serde_json::Value| actions.contains(&want);
+        assert!(
+            has(serde_json::json!({"s": [["css", ".signup-wall"]], "a": ["remove"]})),
+            "{actions:?}"
+        );
+        assert!(has(serde_json::json!({
+            "s": [["css", "div"], ["text", "Sign up to continue"], ["up", "2"]],
+            "a": ["hide"]
+        })));
+        assert!(has(
+            serde_json::json!({"s": [["css", ".feed"]], "a": ["remove-class", "blurred"]})
+        ));
+        assert!(has(
+            serde_json::json!({"s": [["css", "main"]], "a": ["remove-attr", "inert"]})
+        ));
+        assert!(has(
+            serde_json::json!({"s": [["css", ".modal"], ["text", "/log ?in/i"]], "a": ["hide"]})
+        ));
+        // A list's scripts never reach the page, nor what the script cannot do.
+        assert!(!page.actions.contains("signupWall"));
+        assert!(!page.actions.contains("matches-css") && !page.actions.contains("position: fixed"));
+        assert_eq!(actions.len(), 5);
+        // Other sites get none of it.
+        let other = walls().cosmetic("https://other.example/");
+        assert!(other.actions.is_empty() && !other.css.contains("overflow"));
+    }
+
+    #[test]
+    fn a_style_can_only_change_how_things_look() {
+        let page = walls().cosmetic("https://evil.example/");
+        assert!(page.actions.is_empty(), "{}", page.actions);
+        assert!(
+            !page.css.contains("url(") && !page.css.contains("color"),
+            "{}",
+            page.css
+        );
+        for bad in [
+            "a} b{color:red",
+            "background:url(x)",
+            "color:\\72",
+            "@import x",
+            "color:red/*",
+            "width:expression(1)",
+            "a<b",
+        ] {
+            assert!(!safe_style(bad), "{bad}");
+        }
+        assert!(safe_style(
+            "overflow: auto !important; position: static !important"
+        ));
+    }
+
+    #[test]
+    fn changes_are_bounded() {
+        let many: String = (0..2 * MAX_ACTIONS)
+            .map(|i| format!("social.example##.w{i}:remove()\n"))
+            .collect();
+        let page = Filters::new(vec![many]).cosmetic("https://social.example/");
+        let actions: serde_json::Value = serde_json::from_str(&page.actions).unwrap();
+        assert_eq!(actions.as_array().unwrap().len(), MAX_ACTIONS);
+        assert!(page.actions.len() <= MAX_ACTIONS_BYTES);
+        assert!(change("not json").is_none());
+        assert!(change(r#"{"selector":[]}"#).is_none());
+        assert!(change(r#"{"selector":[{"type":"xpath","arg":"//div"}]}"#).is_none());
+        assert!(change(r#"{"selector":[{"type":"css-selector","arg":"a"}],"action":{"type":"inject","arg":"x"}}"#).is_none());
     }
 }

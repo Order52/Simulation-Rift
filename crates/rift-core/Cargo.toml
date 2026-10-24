@@ -14,7 +14,7 @@ workspace = true
 [dependencies]
 # Content-filter lists (EasyList syntax). No default features: single-thread would make
 # the engine !Send, and the rest are not needed.
-adblock = { version = "=0.13.3", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+adblock = { version = "=0.13.3", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling", "css-validation"] }
 age = { version = "=0.12.1", default-features = false } # pre-1.0: pinned exactly
 getrandom = "0.4.3"
 hex = "0.4.3"

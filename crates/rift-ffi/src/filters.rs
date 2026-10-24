@@ -20,6 +20,8 @@ pub struct Hiding {
     pub css: String,
     pub exceptions: Vec<String>,
     pub generic_hidden: bool,
+    /// Changes beyond hiding, as JSON for the browser's script (empty if none).
+    pub actions: String,
 }
 
 /// The compiled lists. Replaced as a whole by [`ContentFilters::load`]; a request in flight uses the set it started with.
@@ -94,12 +96,14 @@ impl ContentFilters {
                     css: found.css,
                     exceptions: found.exceptions,
                     generic_hidden: found.generic_hidden,
+                    actions: found.actions,
                 }
             }
             None => Hiding {
                 css: String::new(),
                 exceptions: Vec::new(),
                 generic_hidden: false,
+                actions: String::new(),
             },
         }
     }
