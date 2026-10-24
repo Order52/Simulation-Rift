@@ -136,16 +136,20 @@ pub enum FilterFetchFailure {
 /// Fetches one list over HTTPS, checked like a download (every hop, no local addresses).
 #[uniffi::export]
 pub fn fetch_filter_list(url: String) -> Result<String, FilterFetchFailure> {
+    fetch_text(&url, MAX_LIST_BYTES)
+}
+
+pub(crate) fn fetch_text(url: &str, max_bytes: u64) -> Result<String, FilterFetchFailure> {
     if !url.starts_with("https://") {
         return Err(FilterFetchFailure::Failed {
             reason: "a list is fetched over HTTPS only".into(),
         });
     }
     let bytes = download::fetch(
-        &url,
+        url,
         &DownloadPolicy::default(),
         "Rift-update",
-        MAX_LIST_BYTES,
+        max_bytes,
         &AtomicBool::new(false),
     )
     .map_err(|e| FilterFetchFailure::Failed {

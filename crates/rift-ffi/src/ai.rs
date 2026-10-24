@@ -11,6 +11,7 @@ use rift_core::text::escape_for_display;
 use rift_core::urlcanon;
 use rift_core::urlmodel::{Assessment, Level, ModelError, UrlModel, View};
 
+use crate::lists::ThreatLists;
 use crate::{Intel, Navigation, Navigator};
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -73,6 +74,10 @@ pub struct LinkCheck {
     pub navigation: Navigation,
     /// None if Rift AI is not loaded, or the text is not a web address.
     pub ai: Option<AiView>,
+    /// The ids of the threat lists that name the link's host (§10.12), in
+    /// the order loaded. Empty without lists, and on the most visited sites,
+    /// which lists name whole by mistake (`docs.google.com`).
+    pub listed: Vec<String>,
     /// How long the whole check took, in microseconds.
     pub micros: u64,
 }
@@ -150,17 +155,46 @@ impl Navigator {
             .or(self.ai.as_ref().map(|ai| &ai.model));
         let ai = model.and_then(|model| assess(model, &url, View::Address));
         let address = policy::engine_address(url.as_bytes()).unwrap_or(url);
+        let listed = self.listed(&address, model);
         LinkCheck {
             address: escape_for_display(&address),
             navigation,
             ai,
+            listed,
             micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
+        }
+    }
+
+    /// Has [`Navigator::check`] consult `lists` from now on; None stops it.
+    pub fn set_threat_lists(&self, lists: Option<Arc<ThreatLists>>) {
+        if let Ok(mut current) = self.lists.write() {
+            *current = lists;
         }
     }
 
     /// Whether Rift AI is loaded in this navigator.
     pub fn has_ai(&self) -> bool {
         self.ai.is_some()
+    }
+}
+
+impl Navigator {
+    /// The lists that name `address`'s host; none for a site the model
+    /// leaves unscored as one of the most visited.
+    fn listed(&self, address: &str, model: Option<&UrlModel>) -> Vec<String> {
+        let Ok(lists) = self.lists.read() else {
+            return Vec::new();
+        };
+        let Some(lists) = lists.as_ref() else {
+            return Vec::new();
+        };
+        let Ok(canonical) = urlcanon::canonicalize(address.as_bytes()) else {
+            return Vec::new();
+        };
+        if model.is_some_and(|model| model.abstains(&canonical)) {
+            return Vec::new();
+        }
+        lists.lists.lookup(canonical.host())
     }
 }
 

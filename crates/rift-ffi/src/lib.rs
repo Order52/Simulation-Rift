@@ -24,6 +24,7 @@ mod filters;
 pub use filters::{ContentFilters, FilterFetchFailure, Hiding, fetch_filter_list};
 mod intake;
 mod link;
+mod lists;
 pub use ai::{Ai, AiFailure, AiLevel, AiView, LinkCheck};
 pub use link::{
     CleanFailure, CleanedLink, LinkCleaner, LinkTrace, TraceHop, TraceOutcome, link_with_https,
@@ -32,6 +33,7 @@ pub use link::{
 mod scan;
 pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressRemark, EgressStats};
 pub use intake::Intake;
+pub use lists::{ThreatListLoaded, ThreatListText, ThreatLists, fetch_threat_list};
 /// The Linux controller's proxy, from [`Sessions::forwarded_egress`].
 pub use rift_core::egress::ForwardedEgress;
 pub use scan::{
@@ -65,6 +67,8 @@ pub enum Navigation {
 pub struct Navigator {
     heuristics: HeuristicConfig,
     ai: Option<Arc<Ai>>,
+    /// The threat lists Check consults (§10.12); set when they load.
+    lists: std::sync::RwLock<Option<Arc<ThreatLists>>>,
 }
 
 #[uniffi::export]
@@ -92,6 +96,7 @@ impl Navigator {
                 ..HeuristicConfig::default()
             },
             ai,
+            lists: std::sync::RwLock::new(None),
         })
     }
 

@@ -8,6 +8,7 @@ pub mod download;
 pub mod egress;
 pub mod filters;
 pub mod heuristics;
+pub mod hostlists;
 pub mod intel;
 pub mod pack;
 pub mod page;

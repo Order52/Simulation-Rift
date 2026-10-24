@@ -112,3 +112,10 @@ path = "fuzz_targets/url_model.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "host_lists"
+path = "fuzz_targets/host_lists.rs"
+test = false
+doc = false
+bench = false
