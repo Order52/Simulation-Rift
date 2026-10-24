@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.os.RemoteException
@@ -230,7 +231,21 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
                 }
                 if (!bound) {
                     app.unbindService(connection)
-                    throw DisposalException.Failed("the browser app is not installed")
+                    val installed = try {
+                        app.packageManager.getPackageInfo(Rift.BROWSER_PACKAGE, 0)
+                        true
+                    } catch (e: PackageManager.NameNotFoundException) {
+                        false
+                    }
+                    // Some phones (Huawei's app launch manager) refuse to start
+                    // an app for another one unless the user allows it.
+                    throw DisposalException.Failed(
+                        if (installed) {
+                            "the system would not start the browser app; allow Rift Browser to be launched by other apps (on Huawei: Settings, Battery, App launch)"
+                        } else {
+                            "the browser app is not installed"
+                        },
+                    )
                 }
                 val binder = try {
                     connected.get(BIND_TIMEOUT_MS, TimeUnit.MILLISECONDS)

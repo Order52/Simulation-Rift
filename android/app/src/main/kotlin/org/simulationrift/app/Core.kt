@@ -226,12 +226,13 @@ object Core {
     /**
      * Rift AI's URL model (§16), shipped in the APK (assets/url-model.bin,
      * trained offline by tools/rift-train). Advisory only; if it is missing
-     * or does not validate, Rift runs without it and says so.
+     * or does not validate, Rift runs without it and says so. An installed
+     * threat database with a model of its own replaces it while current.
      */
     private val ai: Ai? by lazy {
         try {
             app.assets.open(AI_MODEL).use { Ai.load(it.readBytes()) }.also {
-                _aiStatus.value = AiStatus(true, "Rift AI is on: a model trained on real phishing and malware links, run on this device (${it.digest().take(12)}).")
+                _aiStatus.value = aiStatus(it)
             }
         } catch (e: AiFailure) {
             Log.e(TAG, "Rift AI unavailable", e)
@@ -242,6 +243,20 @@ object Core {
             _aiStatus.value = AiStatus(false, "Rift AI is unavailable: its model could not be read. The other checks still run.")
             null
         }
+    }
+
+    /** Which model checks links: the database's, if it has one, or the app's own. */
+    private fun aiStatus(shipped: Ai): AiStatus {
+        val fromDatabase = database?.aiDigest()
+        return if (fromDatabase != null) {
+            AiStatus(true, "Rift AI is on: the model from the installed threat database, run on this device (${fromDatabase.take(12)}).")
+        } else {
+            AiStatus(true, "Rift AI is on: a model trained on real phishing and malware links, run on this device (${shipped.digest().take(12)}).")
+        }
+    }
+
+    private fun showAiStatus() {
+        ai?.let { _aiStatus.value = aiStatus(it) }
     }
 
     data class AiStatus(val on: Boolean, val text: String)
@@ -481,6 +496,7 @@ object Core {
         try {
             database = Intel.open(File(app.filesDir, "rift/intel").path)
             _intel.value = database?.status(nowUnix())
+            showAiStatus()
         } catch (e: IntelFailure) {
             Log.e(TAG, "threat database unavailable", e)
             _intelMessage.value = "The threat database could not be opened: ${Scanner.describe(e)}"
@@ -853,6 +869,7 @@ object Core {
                 verify(intel).use { pending ->
                     Scanner.check(app, pending, service)
                     _intel.value = pending.install(nowUnix())
+                    showAiStatus()
                     "Installed ${pending.snapshot()}."
                 }
             } catch (e: IntelFailure) {
