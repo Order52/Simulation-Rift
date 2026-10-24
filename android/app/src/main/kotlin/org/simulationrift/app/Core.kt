@@ -264,7 +264,7 @@ object Core {
     val aiStatus: StateFlow<AiStatus?> = _aiStatus
 
     /**
-     * Checks a link without opening it: what "Open safely" would decide,
+     * Checks a link without opening it: what "Open in Rift" would decide,
      * with Rift AI's score. Nothing is loaded and nothing leaves the device.
      */
     fun check(input: String): LinkCheck {
@@ -275,8 +275,12 @@ object Core {
             is Navigation.Confirm -> WeeklyStats.count(Tally.WARNED)
             is Navigation.Proceed -> {}
         }
+        CheckHistory.record(result)
         return result
     }
+
+    /** Has Check consult [lists] (§10.12), or no lists. */
+    fun useThreatLists(lists: org.simulationrift.core.ThreatLists?) = navigator.setThreatLists(lists)
 
     /**
      * Where [address] goes (§10.10): its redirects followed by the core, which
@@ -304,6 +308,8 @@ object Core {
             Hardening.init(app)
             ContentFilter.init(app)
             LinkCleaning.init(app)
+            ThreatLists.init(app)
+            CheckHistory.init(app)
             // The user's network lock choice, before the first session starts.
             NetworkLock.init(app)
             updating.execute {

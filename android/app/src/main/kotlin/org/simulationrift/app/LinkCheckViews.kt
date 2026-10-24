@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -49,7 +50,7 @@ internal data class CheckVerdict(
     val summary: String,
     /** Whether Rift would load it at all: false for a refused address. A listed one opens to a warning first. */
     val openable: Boolean,
-    val openLabel: String = "Open safely",
+    val openLabel: String = "Open in Rift",
 )
 
 @Composable
@@ -59,32 +60,40 @@ internal fun verdictOf(check: LinkCheck): CheckVerdict {
     val navigation = check.navigation
     val listed = navigation is Navigation.Block && navigation.reason.code == "known-malicious"
     val refused = navigation is Navigation.Block && !listed
+    val dangerLists = check.listed.mapNotNull { ThreatLists.source(it) }.filter { it.danger }
+    val warningLists = check.listed.mapNotNull { ThreatLists.source(it) }.filterNot { it.danger }
     return when {
         listed -> CheckVerdict(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_bug, "Known malicious",
             "This link is in the threat database. Do not sign in, pay or download there. Rift opens it only after a warning, in a new sealed session.",
             openable = true, openLabel = "Open after a warning")
         refused -> CheckVerdict(status.warningContainer, status.onWarningContainer, R.drawable.ic_warning, "Rift won't open this",
             (navigation as Navigation.Block).reason.text, openable = false)
+        dangerLists.isNotEmpty() -> CheckVerdict(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_bug, "Listed as dangerous",
+            "${dangerLists.joinToString(" and ") { it.name }} list${if (dangerLists.size > 1) "" else "s"} this site as malware, phishing or a scam. Do not sign in, pay or download there.",
+            openable = true)
         check.ai?.level == AiLevel.HIGH -> CheckVerdict(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_warning, "Looks dangerous",
             "It looks like the phishing and malware links Rift AI learned from. Do not sign in or pay there.", openable = true)
-        navigation is Navigation.Confirm || check.ai?.level == AiLevel.ELEVATED ->
+        navigation is Navigation.Confirm || check.ai?.level == AiLevel.ELEVATED || warningLists.isNotEmpty() ->
             CheckVerdict(status.warningContainer, status.onWarningContainer, R.drawable.ic_warning, "Warning signs",
                 // The main finding, where the address checks made one.
                 (navigation as? Navigation.Confirm)?.reasons?.firstOrNull { !it.code.startsWith("ai-") }?.text
+                    ?: warningLists.firstOrNull()?.let { "${it.name} lists this site as ${it.kind}." }
                     ?: "Rift AI found things in this address that phishing and malware links share.", openable = true)
         else -> CheckVerdict(scheme.surfaceContainerHigh, scheme.onSurface, R.drawable.ic_info, "No known threats found",
             "Nothing suspicious was found. No check can prove a link is safe.", openable = true)
     }
 }
 
-/** How serious a check's finding is, in [verdictOf]'s order: 4 listed, 3 refused, 2 looks dangerous, 1 warning signs, 0 none. */
+/** How serious a check's finding is, in [verdictOf]'s order: 5 listed, 4 refused, 3 on a danger list, 2 looks dangerous, 1 warning signs, 0 none. */
 internal fun severity(check: LinkCheck): Int {
     val navigation = check.navigation
+    val lists = check.listed.mapNotNull { ThreatLists.source(it) }
     return when {
-        navigation is Navigation.Block && navigation.reason.code == "known-malicious" -> 4
-        navigation is Navigation.Block -> 3
+        navigation is Navigation.Block && navigation.reason.code == "known-malicious" -> 5
+        navigation is Navigation.Block -> 4
+        lists.any { it.danger } -> 3
         check.ai?.level == AiLevel.HIGH -> 2
-        navigation is Navigation.Confirm || check.ai?.level == AiLevel.ELEVATED -> 1
+        navigation is Navigation.Confirm || check.ai?.level == AiLevel.ELEVATED || lists.isNotEmpty() -> 1
         else -> 0
     }
 }
@@ -130,6 +139,18 @@ internal fun CheckDetails(check: LinkCheck, verdict: CheckVerdict) {
             Text("• $text", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("check-finding-$i"))
         }
         Text(database, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("check-database"))
+        val lists by ThreatLists.state.collectAsState()
+        val inUse = ThreatLists.catalog.filter { lists.lists[it.id]?.let { l -> l.on && l.hosts > 0 } == true }
+        if (inUse.isNotEmpty() && !refused) {
+            val on = check.listed.mapNotNull { ThreatLists.source(it)?.name }
+            Text(
+                if (on.isEmpty()) "Not on the threat lists (${inUse.joinToString(", ") { it.name }})."
+                else "On the threat lists: ${on.joinToString(", ")}.",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (on.isEmpty()) null else FontWeight.SemiBold,
+                modifier = Modifier.testTag("check-lists"),
+            )
+        }
         // A refused address is not a web address: there is nothing to score.
         if (check.ai != null || !refused) AiMeter(check.ai)
         Text(

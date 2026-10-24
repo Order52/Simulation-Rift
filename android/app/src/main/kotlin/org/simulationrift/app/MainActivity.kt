@@ -288,12 +288,17 @@ class MainActivity : ComponentActivity() {
                         Tab.ACTIVITY -> {
                             Text("Activity", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                             DashboardCard()
+                            HistoryCard(onCheck = { address ->
+                                CheckHistory.again.value = address
+                                tab = Tab.HOME
+                            })
                         }
                         Tab.SECURITY -> {
                             Text("Security", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                             ProtectionCard(lock, active?.generation, reduced)
                             ExtraIsolationCard()
                             IntelCard()
+                            ThreatListsCard()
                         }
                         Tab.ABOUT -> AboutTab(onLicences = { showingNotices = true })
                     }
@@ -398,7 +403,7 @@ class MainActivity : ComponentActivity() {
                         AddressField(state.generation, mayBrowse)
                         if (mayBrowse) {
                             Text(
-                                "Check looks at the link on this device without opening it. Open safely loads it in a sealed browser " +
+                                "Check looks at the link on this device without opening it. Open in Rift loads it in a sealed browser " +
                                     "with no access to your files, accounts or network, wiped with the session.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -500,6 +505,15 @@ class MainActivity : ComponentActivity() {
             typed = address
             check()
         }
+        // A link tapped in Check's history (Activity tab).
+        val again by CheckHistory.again.collectAsState()
+        LaunchedEffect(again) {
+            val address = again ?: return@LaunchedEffect
+            CheckHistory.again.value = null
+            typed = address
+            earlier.clear()
+            check()
+        }
         OutlinedTextField(
             value = typed,
             onValueChange = {
@@ -533,7 +547,7 @@ class MainActivity : ComponentActivity() {
                 Text(if (checking) "Checking…" else "Check", style = MaterialTheme.typography.titleSmall, maxLines = 1, softWrap = false)
             }
             Button(onClick = open, enabled = mayBrowse, contentPadding = padding, modifier = Modifier.weight(1.3f).height(52.dp).testTag("browse")) {
-                Text("Open safely", style = MaterialTheme.typography.titleSmall, maxLines = 1, softWrap = false)
+                Text("Open in Rift", style = MaterialTheme.typography.titleSmall, maxLines = 1, softWrap = false)
                 if (roomy) {
                     Spacer(Modifier.width(8.dp))
                     Icon(painterResource(R.drawable.ic_arrow_forward), contentDescription = null, modifier = Modifier.size(18.dp))
@@ -560,7 +574,7 @@ class MainActivity : ComponentActivity() {
     /**
      * What a check found (LinkCheckViews): the verdict and what it means in
      * a sentence, then the evidence, the link tools (LinkToolsViews), and
-     * Open safely and Test-open where Rift would load it. Once the link has
+     * Open in Rift and Test-open where Rift would load it. Once the link has
      * been followed, the headline is the worst of it and where it goes.
      */
     @OptIn(ExperimentalLayoutApi::class)
@@ -834,7 +848,7 @@ class MainActivity : ComponentActivity() {
                 if (downloads.isEmpty()) {
                     Text(
                         "Files you download while browsing, or open or share with Rift from other apps, land here: " +
-                            "encrypted, scanned, and viewable safely. They are deleted with the session.",
+                            "encrypted, scanned, and viewable in Rift's viewer. They are deleted with the session.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -861,7 +875,7 @@ class MainActivity : ComponentActivity() {
                         FilledTonalButton(onClick = { view(file.id) }, modifier = Modifier.testTag("preview-${file.id}")) {
                             Icon(painterResource(R.drawable.ic_eye), contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("View safely")
+                            Text("View in Rift")
                         }
                     }
                 }

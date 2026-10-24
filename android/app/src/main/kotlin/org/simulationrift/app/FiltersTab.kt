@@ -105,7 +105,7 @@ internal fun FiltersTab() {
                 ) { Text(if (downloaded == 0) "Download the lists" else "Update the lists") }
                 SwitchRow(
                     title = "Keep the lists up to date",
-                    about = "After your first download, Rift downloads each list again from its own website when it is four days old, while Rift is running. Check's ClearURLs rules are kept up to date the same way.",
+                    about = "After your first download, Rift downloads each list again from its own website when it is four days old, while Rift is running. Check's ClearURLs rules are kept up to date the same way, and its threat lists once a day.",
                     checked = state.autoUpdate,
                     enabled = state.enabled,
                     tag = "filters-auto-update",

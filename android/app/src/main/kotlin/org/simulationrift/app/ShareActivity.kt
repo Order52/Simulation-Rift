@@ -70,7 +70,7 @@ import org.simulationrift.core.LinkTrace
 /**
  * Rift's share target (§10.1). A link shared to Rift is checked at once, on
  * the device, and the verdict is shown in a sheet over the app it came
- * from: what was found, on request, and "Open safely", which hands it to
+ * from: what was found, on request, and "Open in Rift", which hands it to
  * the home screen to open in a session's sealed browser. Nothing is loaded
  * before that. A shared file goes to the home screen, which quarantines it.
  */
