@@ -1,9 +1,34 @@
 name: ci
 
+# Changes that cannot affect a build or test (documentation, screenshots,
+# evidence, and workflows other than this one) do not start CI again.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - docs/**
+      - .github/workflows/fuzz-campaign.yml
+      - .github/workflows/linux-app.yml
+      - .github/workflows/linux-qt-poc.yml
+      - .github/workflows/retrain.yml
+      - poc/**
+      - linux/**
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - docs/**
+      - .github/workflows/fuzz-campaign.yml
+      - .github/workflows/linux-app.yml
+      - .github/workflows/linux-qt-poc.yml
+      - .github/workflows/retrain.yml
+      - poc/**
+      - linux/**
+
+# A newer push to the same branch or pull request cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

@@ -7,6 +7,9 @@ name: linux-qt-poc
 on:
   workflow_dispatch:
   push:
+    # Branches only: GitHub ignores path filters on tag pushes, so without
+    # this every release tag started the PoCs.
+    branches: [main]
     paths:
       - poc/linux-qt/**
       - .github/workflows/linux-qt-poc.yml
