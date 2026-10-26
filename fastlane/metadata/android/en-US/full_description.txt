@@ -1,0 +1,10 @@
+<p>Rift checks a link before it opens and then opens it in a sealed, disposable browser, so the page never runs inside your usual browser or near your data. Everything happens on the device.</p>
+<ul>
+<li><b>Check:</b> a threat database, address checks for lookalikes and tricks, optional threat lists, and Rift AI, a small model that rates how much an address resembles phishing. Nothing is sent anywhere.</li>
+<li><b>Sealed browser:</b> a separate app with no permissions, whose only way out is Rift's own proxy. Every new session wipes it completely.</li>
+<li><b>Files:</b> downloads are quarantined, scanned and previewed in isolated workers.</li>
+<li><b>Filters:</b> ad and tracker blocking, sign-in walls and pop-ups taken down.</li>
+<li><b>Dark theme</b>, following the system or forced either way.</li>
+<li><b>Updates itself</b> from its signed GitHub releases.</li>
+</ul>
+<p>Rift is in development and has not been audited. No check can prove a link is harmless; see STATUS.md in the source repository for what is tested and its limits.</p>

@@ -1,0 +1,1 @@
+Check links before they open, then open them in a sealed, disposable browser

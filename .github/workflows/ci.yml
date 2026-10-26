@@ -18,6 +18,7 @@ on:
       - .github/scripts/bump_toolchains.py
       - .github/scripts/kev_update.py
       - .github/workflows/caretaker.yml
+      - fastlane/**
       - .github/workflows/dependabot-automerge.yml
       - .github/workflows/fuzz-campaign.yml
       - .github/workflows/kev.yml

@@ -1,0 +1,2 @@
+- On phones that refuse to start Rift Browser for Rift (Huawei's App launch and similar), Rift starts it through a windowless screen, and names the phone's setting if that is refused too.
+- Check keeps working while the browser cannot be cleaned.
