@@ -187,5 +187,6 @@ jobs:
       - name: Every test passed
         run: |
           cat "$EVIDENCE/device.txt" "$EVIDENCE/instrumented-results.txt" "$EVIDENCE/host-results.txt" | tee -a "$GITHUB_STEP_SUMMARY"
-          grep -q "^OK (" "$EVIDENCE/instrumentation.txt"
+          # The run finished (a failure that passed on its retry leaves "Tests run:", not "OK").
+          grep -qE "^(OK \(|Tests run:)" "$EVIDENCE/instrumentation.txt"
           ! grep -q FAIL "$EVIDENCE/instrumented-results.txt" "$EVIDENCE/host-results.txt"

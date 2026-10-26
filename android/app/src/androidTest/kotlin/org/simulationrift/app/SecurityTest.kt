@@ -2463,15 +2463,22 @@ class SecurityTest {
             repeat(20) {
                 // Read after the column stops: a tap while it still flings only stops it.
                 val found = settled(selector)
-                if (found != null) {
+                // Redrawn since the read: looked for again after the swipe.
+                val bounds = try { found?.visibleBounds } catch (e: StaleObjectException) { null }
+                if (found != null && bounds != null) {
                     // Higher, or as high as the column goes.
-                    if (found.visibleBounds.bottom <= limit || found.visibleBounds == last) return found
-                    last = found.visibleBounds
+                    if (bounds.bottom <= limit || bounds == last) return found
+                    last = bounds
                 }
                 val (from, to) = if (down) limit to device.displayHeight / 2 else device.displayHeight / 2 to limit
                 // About half a second per swipe, so the column barely flings on release.
                 device.swipe(x, from, x, to, 100)
             }
+        }
+        // The swipes missed it (seen on API 33's emulator): the column's own scrolling, from the top.
+        try {
+            device.findObject(By.scrollable(true))?.scrollUntil(Direction.DOWN, Until.findObject(selector))?.let { return it }
+        } catch (e: StaleObjectException) {
         }
         // Evidence for run-tests.sh, which pulls the evidence folder.
         freshNodes()
@@ -2490,13 +2497,15 @@ class SecurityTest {
     /** `selector`'s object once it is in the same place in two reads 300 ms apart (bounded), or null. */
     private fun settled(selector: androidx.test.uiautomator.BySelector): UiObject2? {
         freshNodes()
-        var before = device.findObject(selector)?.visibleBounds
+        var before = try { device.findObject(selector)?.visibleBounds } catch (e: StaleObjectException) { null }
         repeat(10) {
             SystemClock.sleep(300)
             freshNodes()
-            val found = device.findObject(selector)
-            if (found == null || found.visibleBounds == before) return found
-            before = found.visibleBounds
+            val found = device.findObject(selector) ?: return null
+            // Redrawn between the find and the read: still moving.
+            val bounds = try { found.visibleBounds } catch (e: StaleObjectException) { null }
+            if (bounds != null && bounds == before) return found
+            before = bounds
         }
         return null
     }
