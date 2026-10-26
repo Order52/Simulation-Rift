@@ -17,6 +17,15 @@
 4. **Toolchains move by themselves.** A monthly workflow (`toolchains.yml`, `.github/scripts/bump_toolchains.py`) moves stable Rust, the fuzzing nightly, the NDK, cargo-ndk and OSV-Scanner (with the SHA-256 of the binary) to their latest releases. Its pull request merges itself when CI passes.
 5. **The README's screenshots** are now the dark theme, taken from the instrumented tests' evidence (w1, n7, n10) on the API 34 emulator.
 
+6. **0.11.1: nobody needs to look after it.**
+   - Rift AI's gate also holds every new model to the hand-checked model's report (`tools/rift-train/baseline.json`), not just the last one, so small losses within the limits cannot add up from month to month.
+   - `caretaker.yml` runs a failed CI run's failed jobs once more (a flaky emulator test no longer holds back a merge or a release). Weekly, it turns every workflow on again (GitHub turns scheduled workflows off after 60 days without activity), rebases bot pull requests that failed on an older `main` and starts CI on them, and closes monthly bot pull requests still open after 40 days.
+   - The README has a one-tap **Add Rift to Obtainium** link, with the APK filter set.
+7. **0.11.1: phones that refuse to start Rift Browser for Rift.** On a phone whose maker blocks one app from starting another (Huawei's App launch, Xiaomi's Autostart, ColorOS's auto launch and the like), the first cleanup failed with "the system would not start the browser app", and Rift stopped there.
+   - The controller now opens the browser's `WakeActivity` when the system refuses to start the browser for a binding. It has no window, finishes at once, and needs the signature permission. These phones let the app in front open another app's screen. Once the browser's process runs, the controller binds again. The wipe and its inventory are unchanged, so a wake that left a file would still fail the reset.
+   - If the phone blocks that too, the message names this phone maker's setting, and the card has a button for Rift Browser's app settings.
+   - **Check keeps working** while cleanup has failed: the address field and Check stay on the card, and only Open in Rift waits for a clean session. Check needs no browser.
+
 ## Verified
 
 - **Rust:** 264 tests in the product workspace pass, with `clippy -D warnings`, `fmt` and `cargo deny`. Five are new, in `appupdate`:
@@ -30,6 +39,13 @@
   - n7, n10 and w1 pass, and their screenshots are the README's.
   - By hand: About shows the Appearance and Updates cards. Choosing Light while the system is dark turns both the controller and the browser light, and the page is served light. On a debug build the update switch is off and disabled, with "A test build".
 - **The memory script** with fixtures: it keeps the newest month for a URL, drops entries older than 24 months and malformed lines, and refuses a bad month.
+- **The wake screen, on the API 34 emulator (root):**
+  - started after a clear, it brings up the browser's default process, leaves no file in its data directories, and no activity remains;
+  - a caller without Rift's permission (the shell's UID) is refused (`Permission Denial … requires org.simulationrift.permission.RIFT`);
+  - with SessionService disabled (a binding that can never succeed), launch ends in the new message with the settings button and the address field. Check works there (659 µs), and Retry cleanup recovers once the service is enabled ("browser wiped: pid 4884 -> 4932, no files");
+  - a normal launch and s12 (a reset destroys every session store), l1 and s15 still pass.
+- **The gate's baseline:** an unchanged model passes; a model 0.004 AUC below the baseline passes; a further 0.004 drop passes against the shipped model alone (the old rule) but is refused against the baseline.
+- **The caretaker's queries** on the live repository: they list every workflow, and they pick out both Dependabot pull requests, which had failed on a `main` without the `tools/kev` fix.
 - **The toolchain bump** with stubbed answers, on a copy of the files: every pin moved, and a second run changed nothing.
 
 ## Unverified
@@ -41,6 +57,9 @@
   - the replaced app restarting.
 - The install-result broadcast is registered by the application context. Android ends the process on success, so a successful update is seen only as the new version.
 - The memory hand-over, the toolchain bump and the automatic merges have not run on GitHub yet.
+- The caretaker has not run on GitHub yet. That turning a workflow on again restarts GitHub's 60-day count is how GitHub documents and others use it, not something seen here. Whether `gh pr update-branch` rebases a Dependabot branch without Dependabot then giving up on that pull request is not known; Dependabot opens a new one for newer versions either way.
+- The Obtainium link was not opened on a phone.
+- **The wake was not tried on a phone that blocks launches.** The emulator cannot block a binding the way these phones do, so the case where the wake itself lets the binding through is unverified. The Huawei CHZ-LX1 has passed before with App launch allowed (2.9).
 - x1 (nothing sent by itself) still ran on a debug build only, where self-update is off. A release build makes the daily request (§17).
 
 ## Could be improved
