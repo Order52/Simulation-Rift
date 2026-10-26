@@ -57,13 +57,13 @@ internal fun AboutTab(onLicences: () -> Unit) {
             }
         }
 
-        AppearanceCard()
-
-        UpdatesCard()
-
         AboutCard("Made by") {
             Text("Ali Alakber and Teeba Nazar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("about-authors"))
         }
+
+        AppearanceCard()
+
+        UpdatesCard()
 
         AboutCard("What it does") {
             Point("Opens a link in a sealed browser: a separate app with its own Android user, so a page cannot reach Rift's files or the rest of your phone.")
