@@ -64,6 +64,7 @@ jobs:
                 ':(exclude).github/dependabot.yml'
                 ':(exclude).github/scripts/bump_toolchains.py'
                 ':(exclude).github/scripts/kev_update.py'
+                ':(exclude).github/workflows/caretaker.yml'
                 ':(exclude).github/workflows/dependabot-automerge.yml'
                 ':(exclude).github/workflows/fuzz-campaign.yml'
                 ':(exclude).github/workflows/kev.yml'

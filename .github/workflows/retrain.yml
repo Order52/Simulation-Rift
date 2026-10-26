@@ -71,7 +71,7 @@ jobs:
           if-no-files-found: error
       - name: Gate
         shell: bash  # pipefail: a failed gate must fail the step, not be hidden by tee
-        run: python3 -I tools/rift-train/gate.py "$RUNNER_TEMP/shipped.json" models/url-model.json | tee "$RUNNER_TEMP/gate.txt"
+        run: python3 -I tools/rift-train/gate.py "$RUNNER_TEMP/shipped.json" models/url-model.json tools/rift-train/baseline.json | tee "$RUNNER_TEMP/gate.txt"
       - name: The shipped-model tests still hold
         run: "cargo test --locked -p rift-ffi ai::"
       - name: Open a pull request

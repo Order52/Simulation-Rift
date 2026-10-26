@@ -1,0 +1,70 @@
+name: caretaker
+
+# Does what would otherwise need someone to look after the repository:
+# - A CI run that fails is run again once (only its failed jobs), so one
+#   flaky emulator test does not hold back a merge or a release.
+# - Weekly: GitHub turns scheduled workflows off after 60 days without
+#   activity; this turns every workflow on again, which restarts that count.
+# - Weekly: a bot's pull request that failed CI and is behind main is
+#   rebased onto main and CI starts again (it may have failed on a main
+#   that has since been fixed).
+# - Weekly: a monthly bot pull request (retrain/, toolchains/, kev/) that
+#   is still open after 40 days is closed; a newer one has replaced it.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+  schedule:
+    - cron: "47 2 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  retry:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Run the failed jobs once more
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.event.workflow_run.id }}
+        run: gh run rerun "$RUN" --failed --repo "$GITHUB_REPOSITORY"
+
+  tend:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Keep the scheduled workflows on
+        run: |
+          for id in $(gh api "repos/$GH_REPO/actions/workflows" --paginate --jq '.workflows[] | select(.path | startswith(".github/workflows/")) | .id'); do
+            gh api -X PUT "repos/$GH_REPO/actions/workflows/$id/enable"
+          done
+      - name: Rebase bot pull requests that failed on an older main
+        run: |
+          gh pr list --state open --json number,headRefName,author,statusCheckRollup \
+            --jq '.[] | select(.author.is_bot) | select([.statusCheckRollup[] | .conclusion] | index("FAILURE")) | "\(.number) \(.headRefName)"' |
+          while read -r number branch; do
+            # Fails, and nothing more happens, when the branch is already on main.
+            if gh pr update-branch "$number" --rebase; then
+              gh workflow run ci.yml --ref "$branch"
+              echo "Rebased #$number and started CI." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: Close monthly bot pull requests a newer one replaced
+        run: |
+          cutoff="$(date -u -d '40 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          gh pr list --state open --json number,headRefName,createdAt \
+            --jq ".[] | select(.headRefName | test(\"^(retrain|toolchains|kev)/\")) | select(.createdAt < \"$cutoff\") | .number" |
+          while read -r number; do
+            gh pr close "$number" --delete-branch --comment "Closed by the caretaker: open for 40 days, and a newer run has replaced it."
+          done

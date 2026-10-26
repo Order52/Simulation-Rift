@@ -1,0 +1,458 @@
+{
+  "auc_trained_sources_address_view": 0.9802750002517546,
+  "fit": {
+    "test": {
+      "benign_at_high": 0.0004935766483403485,
+      "log_loss": 0.18864228094068783,
+      "malicious_at_high": 0.5469788419446839,
+      "n": 148322
+    },
+    "train": {
+      "benign_at_high": 0.00012536923816720477,
+      "log_loss": 0.11642288459432704,
+      "malicious_at_high": 0.6781294729055994,
+      "n": 1102775
+    },
+    "validation": {
+      "benign_at_high": 0.0004467730798911498,
+      "log_loss": 0.18588056619216548,
+      "malicious_at_high": 0.5518502090138043,
+      "n": 148260
+    }
+  },
+  "model": {
+    "bits": 19,
+    "bytes": 1802976,
+    "epochs": 1,
+    "factors": {
+      "bits": 16,
+      "k": 4,
+      "l2": 0.10000000149011612
+    },
+    "feature_schema": 1,
+    "file": "url-model.bin",
+    "l2": 0.0,
+    "popular_from": "tranco-hosts.txt:10000",
+    "popular_sites_not_scored": 10000,
+    "seed": 24301,
+    "sha256": "d6c2bc607dfdc4d7f0d4e6117e0d1e751629c8c9025a11d0fe66f67454348e04",
+    "thresholds": {
+      "elevated": 0.8074731826782227,
+      "high": 0.9771996140480042
+    }
+  },
+  "scoring_microseconds_on_this_machine": {
+    "max": 93.584,
+    "p50": 3.25,
+    "p95": 7.583
+  },
+  "seen_sites_address_view": [
+    {
+      "elevated_or_high_rate": 0.9058435124025712,
+      "high_rate": 0.7213146095970417,
+      "n": 428903,
+      "source": "phishdb"
+    },
+    {
+      "elevated_or_high_rate": 0.8906641103477659,
+      "high_rate": 0.6863449965383182,
+      "n": 37554,
+      "source": "phishdb-2026"
+    },
+    {
+      "elevated_or_high_rate": 0.536400310892335,
+      "high_rate": 0.3296569081017062,
+      "n": 54038,
+      "source": "phiusiil-phish"
+    },
+    {
+      "elevated_or_high_rate": 0.0011177644710578841,
+      "high_rate": 0.00010413954699297059,
+      "n": 288075,
+      "source": "commoncrawl"
+    },
+    {
+      "elevated_or_high_rate": 0.002204740191411535,
+      "high_rate": 0.00015032319486896827,
+      "n": 19957,
+      "source": "popular"
+    },
+    {
+      "elevated_or_high_rate": 0.01483575941634377,
+      "high_rate": 0.0010123224072328691,
+      "n": 28647,
+      "source": "platforms"
+    },
+    {
+      "elevated_or_high_rate": 0.025036638983878846,
+      "high_rate": 0.0003663898387884709,
+      "n": 8188,
+      "source": "github-platforms"
+    },
+    {
+      "elevated_or_high_rate": 0.002126142801755944,
+      "high_rate": 0.000031266805908175645,
+      "n": 159914,
+      "source": "tranco"
+    },
+    {
+      "elevated_or_high_rate": 0.0005568962316688324,
+      "high_rate": 0.00002784481158344162,
+      "n": 107740,
+      "source": "phiusiil-legit"
+    }
+  ],
+  "selection": {
+    "by": "validation recall at a 0.1% false-positive rate (benign validation pages pooled), ties to lower validation loss",
+    "max_epochs": 3,
+    "tried": [
+      {
+        "epochs": 1,
+        "l2": 0.0,
+        "validation_loss": 0.18583692837682256,
+        "validation_recall_at_0.1%_fpr": 0.6128741750339396
+      },
+      {
+        "epochs": 2,
+        "l2": 0.0,
+        "validation_loss": 0.18981440089062032,
+        "validation_recall_at_0.1%_fpr": 0.6126322297942122
+      },
+      {
+        "epochs": 3,
+        "l2": 0.0,
+        "validation_loss": 0.19278840690963878,
+        "validation_recall_at_0.1%_fpr": 0.6047421266986572
+      },
+      {
+        "epochs": 1,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.18624776114379316,
+        "validation_recall_at_0.1%_fpr": 0.6115300348132318
+      },
+      {
+        "epochs": 2,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.1903988084956535,
+        "validation_recall_at_0.1%_fpr": 0.6123768431522777
+      },
+      {
+        "epochs": 3,
+        "l2": 0.00009999999747378752,
+        "validation_loss": 0.19350089747426583,
+        "validation_recall_at_0.1%_fpr": 0.605575493635496
+      },
+      {
+        "epochs": 1,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.18981971321778074,
+        "validation_recall_at_0.1%_fpr": 0.6080621530438055
+      },
+      {
+        "epochs": 2,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.19532047089972504,
+        "validation_recall_at_0.1%_fpr": 0.6074976141511083
+      },
+      {
+        "epochs": 3,
+        "l2": 0.0010000000474974513,
+        "validation_loss": 0.1993006255491926,
+        "validation_recall_at_0.1%_fpr": 0.6034651934889848
+      },
+      {
+        "epochs": 1,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.19663391098051816,
+        "validation_recall_at_0.1%_fpr": 0.6029813030095299
+      },
+      {
+        "epochs": 2,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.20380318975052383,
+        "validation_recall_at_0.1%_fpr": 0.595265938142667
+      },
+      {
+        "epochs": 3,
+        "l2": 0.003000000026077032,
+        "validation_loss": 0.20858343526689482,
+        "validation_recall_at_0.1%_fpr": 0.5831283519496754
+      },
+      {
+        "epochs": 1,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.21280808780765975,
+        "validation_recall_at_0.1%_fpr": 0.5792437867118297
+      },
+      {
+        "epochs": 2,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.22207440185674573,
+        "validation_recall_at_0.1%_fpr": 0.5711655039853758
+      },
+      {
+        "epochs": 3,
+        "l2": 0.009999999776482582,
+        "validation_loss": 0.22706634943846282,
+        "validation_recall_at_0.1%_fpr": 0.5599150503380512
+      }
+    ]
+  },
+  "sources": [
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "malicious",
+      "name": "phishdb"
+    },
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "malicious",
+      "name": "phishdb-2026"
+    },
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "malicious",
+      "name": "phiusiil-phish"
+    },
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "benign",
+      "name": "commoncrawl"
+    },
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "benign",
+      "name": "popular"
+    },
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "benign",
+      "name": "platforms"
+    },
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "benign",
+      "name": "github-platforms"
+    },
+    {
+      "eval_only": false,
+      "kind": "hosts",
+      "label": "benign",
+      "name": "tranco"
+    },
+    {
+      "eval_only": false,
+      "kind": "urls",
+      "label": "benign",
+      "name": "phiusiil-legit"
+    }
+  ],
+  "split": "by site (Public Suffix List): 80% train, 10% validation, 10% test; eval-only sources are all test",
+  "test": [
+    {
+      "elevated_or_high_rate": 0.8231169202881267,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.00003180206395395061,
+      "high_rate": 0.5785272464182926,
+      "label": "malicious",
+      "n": 62889,
+      "not_scored_rate": 0.0,
+      "source": "phishdb",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.4694175991861648,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.21515768056968465,
+      "label": "malicious",
+      "n": 15728,
+      "not_scored_rate": 0.0,
+      "source": "phishdb",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.8235410484668645,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.6025717111770524,
+      "label": "malicious",
+      "n": 5055,
+      "not_scored_rate": 0.0,
+      "source": "phishdb-2026",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.6472868217054264,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.35968992248062015,
+      "label": "malicious",
+      "n": 1290,
+      "not_scored_rate": 0.0,
+      "source": "phishdb-2026",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.44147292030641044,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.00026878107781212203,
+      "high_rate": 0.24257492272544012,
+      "label": "malicious",
+      "n": 7441,
+      "not_scored_rate": 0.0,
+      "source": "phiusiil-phish",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.36150490730643403,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.1619411123227917,
+      "label": "malicious",
+      "n": 1834,
+      "not_scored_rate": 0.0,
+      "source": "phiusiil-phish",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.008933277847135525,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.0008322929671244278,
+      "label": "benign",
+      "n": 36045,
+      "not_scored_rate": 0.003551116659730892,
+      "source": "commoncrawl",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.00732519422863485,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.0,
+      "label": "benign",
+      "n": 9010,
+      "not_scored_rate": 0.004328523862375139,
+      "source": "commoncrawl",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.007456140350877193,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.0,
+      "label": "benign",
+      "n": 2280,
+      "not_scored_rate": 0.9105263157894737,
+      "source": "popular",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.011532125205930808,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.008237232289950576,
+      "label": "benign",
+      "n": 607,
+      "not_scored_rate": 0.9093904448105437,
+      "source": "popular",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.029092983456930975,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.0002852253280091272,
+      "label": "benign",
+      "n": 3506,
+      "not_scored_rate": 0.0,
+      "source": "platforms",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.016091954022988506,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.0011494252873563218,
+      "label": "benign",
+      "n": 870,
+      "not_scored_rate": 0.0,
+      "source": "platforms",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.04553903345724907,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.0009293680297397769,
+      "label": "benign",
+      "n": 1076,
+      "not_scored_rate": 0.0,
+      "source": "github-platforms",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.03773584905660377,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.0,
+      "label": "benign",
+      "n": 265,
+      "not_scored_rate": 0.0,
+      "source": "github-platforms",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.004205677664847544,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.0002002703649927402,
+      "label": "benign",
+      "n": 19973,
+      "not_scored_rate": 0.047063535773293946,
+      "source": "tranco",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.0052070294898112456,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.0002002703649927402,
+      "label": "benign",
+      "n": 19973,
+      "not_scored_rate": 0.047063535773293946,
+      "source": "tranco",
+      "view": "host only"
+    },
+    {
+      "elevated_or_high_rate": 0.0019407329999253564,
+      "eval_only": false,
+      "heuristics_warn_rate": 0.0,
+      "high_rate": 0.0,
+      "label": "benign",
+      "n": 13397,
+      "not_scored_rate": 0.014630141076360379,
+      "source": "phiusiil-legit",
+      "view": "address"
+    },
+    {
+      "elevated_or_high_rate": 0.002348106838861168,
+      "eval_only": false,
+      "heuristics_warn_rate": null,
+      "high_rate": 0.0,
+      "label": "benign",
+      "n": 3407,
+      "not_scored_rate": 0.014969181097739948,
+      "source": "phiusiil-legit",
+      "view": "host only"
+    }
+  ]
+}
