@@ -67,7 +67,7 @@ sign app/build/outputs/apk/release/app-release-unsigned.apk "$out/rift-$version.
 # The two apps must carry the same certificate, or the install would be refused.
 # The first signer's digest, whichever way this apksigner labels it ("Signer #1",
 # or "Signer (minSdkVersion=…, maxSdkVersion=…)" for each SDK range).
-cert() { "$build_tools/apksigner" verify --print-certs "$1" | sed -n 's/^Signer .* certificate SHA-256 digest: //p' | head -1; }
+cert() { "$build_tools/apksigner" verify --print-certs "$1" | sed -n 's/.*[Ss]igner.* certificate SHA-256 digest: //p' | head -1; }
 [ "$(cert "$out/rift-$version.apk")" = "$(cert "$out/browser-signed.apk")" ] || { echo "release: Rift and its browser are signed differently" >&2; exit 1; }
 # An update signed by another key would not install over the last release.
 [ -z "${RIFT_RELEASE_CERT:-}" ] || [ "$(cert "$out/rift-$version.apk")" = "$RIFT_RELEASE_CERT" ] || {
