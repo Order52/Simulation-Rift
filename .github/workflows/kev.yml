@@ -2,7 +2,7 @@ name: exploited webview bugs
 
 # Weekly: adds the Chromium bugs CISA's Known Exploited Vulnerabilities
 # catalogue gained to the WebView refusal list (KnownExploited.kt, §8.4,
-# INV-7) with tools/kev/update.py, and opens a pull request that merges
+# INV-7) with .github/scripts/kev_update.py, and opens a pull request that merges
 # itself once CI passes; the next weekly release ships it. A new bug with no
 # fixed version in NVD fails this run instead of being left out.
 on:
@@ -29,7 +29,7 @@ jobs:
           curl -fsSL --retry 3 -o "$RUNNER_TEMP/kev.json" \
             https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
       - name: Add new Chromium bugs
-        run: python3 -I tools/kev/update.py "$LIST" "$RUNNER_TEMP/kev.json" | tee "$RUNNER_TEMP/added.txt"
+        run: python3 -I .github/scripts/kev_update.py "$LIST" "$RUNNER_TEMP/kev.json" | tee "$RUNNER_TEMP/added.txt"
         shell: bash
       - name: Open a pull request that merges itself
         env:

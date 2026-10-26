@@ -15,6 +15,7 @@ on:
       - poc/**
       - linux/**
       - .github/dependabot.yml
+      - .github/scripts/kev_update.py
       - .github/workflows/dependabot-automerge.yml
       - .github/workflows/fuzz-campaign.yml
       - .github/workflows/kev.yml

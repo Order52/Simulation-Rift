@@ -3,7 +3,7 @@ catalogue to KnownExploited.kt (architecture §8.4, INV-7).
 
 Run weekly by .github/workflows/kev.yml:
 
-    python3 -I tools/kev/update.py <KnownExploited.kt> <kev.json> [nvd.json]
+    python3 -I .github/scripts/kev_update.py <KnownExploited.kt> <kev.json> [nvd.json]
 
 A bug is new if the catalogue added it on or after the date in CHECKED and
 the list does not have it. Its fixed version is the one NVD's description
