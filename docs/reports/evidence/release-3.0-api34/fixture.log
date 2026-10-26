@@ -1,0 +1,961 @@
+serving /Users/alithebig/Documents/University/UOT/simulation-rift/android/fixtures/web on http://127.0.0.1:8766, UDP on 3478
+127.0.0.1 "GET /clear?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /decoys.html HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+REPORT d1 media=video=live audio=live label=Front camera size=640x480
+127.0.0.1 "GET /report?test=d1&key=media&value=video%3Dlive%20audio%3Dlive%20label%3DFront%20camera%20size%3D640x480 HTTP/1.1" 200 -
+REPORT d1 devices=audioinput:Microphone,videoinput:Front camera,audiooutput:Speaker
+127.0.0.1 "GET /report?test=d1&key=devices&value=audioinput%3AMicrophone%2Cvideoinput%3AFront%20camera%2Caudiooutput%3ASpeaker HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+REPORT d1 geolocation=ALLOWED 41.91,12.49 acc=30
+127.0.0.1 "GET /report?test=d1&key=geolocation&value=ALLOWED%2041.91%2C12.49%20acc%3D30 HTTP/1.1" 200 -
+REPORT d1 permission_camera=UNAVAILABLE
+127.0.0.1 "GET /report?test=d1&key=permission_camera&value=UNAVAILABLE HTTP/1.1" 200 -
+REPORT d1 notification=granted granted
+127.0.0.1 "GET /report?test=d1&key=notification&value=granted%20granted HTTP/1.1" 200 -
+REPORT d1 clipboard_write=OK
+127.0.0.1 "GET /report?test=d1&key=clipboard_write&value=OK HTTP/1.1" 200 -
+REPORT d1 clipboard_read=""
+127.0.0.1 "GET /report?test=d1&key=clipboard_read&value=%22%22 HTTP/1.1" 200 -
+REPORT d1 battery=0.82
+127.0.0.1 "GET /report?test=d1&key=battery&value=0.82 HTTP/1.1" 200 -
+REPORT d1 vibrate=true
+127.0.0.1 "GET /report?test=d1&key=vibrate&value=true HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+REPORT d1 motion=15 trusted=0
+127.0.0.1 "GET /report?test=d1&key=motion&value=15%20trusted%3D0 HTTP/1.1" 200 -
+REPORT d1 looks_native=true
+127.0.0.1 "GET /report?test=d1&key=looks_native&value=true HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+REPORT d1 done=1
+127.0.0.1 "GET /report?test=d1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+REPORT d1 file=IMG_20260925_165404.jpg 27886 image/jpeg jpeg=true
+127.0.0.1 "GET /report?test=d1&key=file&value=IMG_20260925_165404.jpg%2027886%20image%2Fjpeg%20jpeg%3Dtrue HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=d1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /filters.html HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+REPORT f1 ad_script=BLOCKED
+127.0.0.1 "GET /report?test=f1&key=ad_script&value=BLOCKED HTTP/1.1" 200 -
+REPORT f1 banner=HIDDEN
+127.0.0.1 "GET /report?test=f1&key=banner&value=HIDDEN HTTP/1.1" 200 -
+REPORT f1 popup=HIDDEN
+127.0.0.1 "GET /report?test=f1&key=popup&value=HIDDEN HTTP/1.1" 200 -
+REPORT f1 content=SHOWN
+127.0.0.1 "GET /report?test=f1&key=content&value=SHOWN HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+REPORT f1 done=1
+127.0.0.1 "GET /report?test=f1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /filters.html HTTP/1.1" 200 -
+127.0.0.1 "GET /ads/banner.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+REPORT f1 ad_script=LOADED
+127.0.0.1 "GET /report?test=f1&key=ad_script&value=LOADED HTTP/1.1" 200 -
+REPORT f1 banner=SHOWN
+127.0.0.1 "GET /report?test=f1&key=banner&value=SHOWN HTTP/1.1" 200 -
+REPORT f1 popup=SHOWN
+127.0.0.1 "GET /report?test=f1&key=popup&value=SHOWN HTTP/1.1" 200 -
+REPORT f1 content=SHOWN
+127.0.0.1 "GET /report?test=f1&key=content&value=SHOWN HTTP/1.1" 200 -
+REPORT f1 done=1
+127.0.0.1 "GET /report?test=f1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /walls.html HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+REPORT f7 scroll=auto
+127.0.0.1 "GET /report?test=f7&key=scroll&value=auto HTTP/1.1" 200 -
+REPORT f7 wall=REMOVED
+127.0.0.1 "GET /report?test=f7&key=wall&value=REMOVED HTTP/1.1" 200 -
+REPORT f7 blurred=CLEAR
+127.0.0.1 "GET /report?test=f7&key=blurred&value=CLEAR HTTP/1.1" 200 -
+REPORT f7 inert=USABLE
+127.0.0.1 "GET /report?test=f7&key=inert&value=USABLE HTTP/1.1" 200 -
+REPORT f7 filter=none
+127.0.0.1 "GET /report?test=f7&key=filter&value=none HTTP/1.1" 200 -
+REPORT f7 nag=HIDDEN
+127.0.0.1 "GET /report?test=f7&key=nag&value=HIDDEN HTTP/1.1" 200 -
+REPORT f7 dialogs=[false,null]
+127.0.0.1 "GET /report?test=f7&key=dialogs&value=%5Bfalse%2Cnull%5D HTTP/1.1" 200 -
+REPORT f7 done=1
+127.0.0.1 "GET /report?test=f7&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /walls.html?dialogs=0 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+REPORT f7 scroll=hidden
+127.0.0.1 "GET /report?test=f7&key=scroll&value=hidden HTTP/1.1" 200 -
+REPORT f7 wall=SHOWN
+127.0.0.1 "GET /report?test=f7&key=wall&value=SHOWN HTTP/1.1" 200 -
+REPORT f7 blurred=BLURRED
+127.0.0.1 "GET /report?test=f7&key=blurred&value=BLURRED HTTP/1.1" 200 -
+REPORT f7 inert=INERT
+127.0.0.1 "GET /report?test=f7&key=inert&value=INERT HTTP/1.1" 200 -
+REPORT f7 filter=blur(6px)
+127.0.0.1 "GET /report?test=f7&key=filter&value=blur(6px) HTTP/1.1" 200 -
+REPORT f7 nag=SHOWN
+127.0.0.1 "GET /report?test=f7&key=nag&value=SHOWN HTTP/1.1" 200 -
+REPORT f7 dialogs=[]
+127.0.0.1 "GET /report?test=f7&key=dialogs&value=%5B%5D HTTP/1.1" 200 -
+REPORT f7 done=1
+127.0.0.1 "GET /report?test=f7&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=f7 HTTP/1.1" 200 -
+127.0.0.1 "GET /type.html HTTP/1.1" 200 -
+127.0.0.1 "GET /sign-in.html HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=i1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=i1 HTTP/1.1" 200 -
+127.0.0.1 "GET /identity.html HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=i1 HTTP/1.1" 200 -
+127.0.0.1 "GET /echo-headers HTTP/1.1" 200 -
+REPORT i1 userAgent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Mobile Safari/537.36"
+127.0.0.1 "GET /report?test=i1&key=userAgent&value=%22Mozilla%2F5.0%20(Linux%3B%20Android%2010%3B%20K)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20Chrome%2F113.0.0.0%20Mobile%20Safari%2F537.36%22 HTTP/1.1" 200 -
+REPORT i1 platform="Linux armv8l"
+127.0.0.1 "GET /report?test=i1&key=platform&value=%22Linux%20armv8l%22 HTTP/1.1" 200 -
+REPORT i1 hardwareConcurrency=8
+127.0.0.1 "GET /report?test=i1&key=hardwareConcurrency&value=8 HTTP/1.1" 200 -
+REPORT i1 deviceMemory=4
+127.0.0.1 "GET /report?test=i1&key=deviceMemory&value=4 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=i1 HTTP/1.1" 200 -
+REPORT i1 maxTouchPoints=5
+127.0.0.1 "GET /report?test=i1&key=maxTouchPoints&value=5 HTTP/1.1" 200 -
+REPORT i1 languages=["en-US"]
+127.0.0.1 "GET /report?test=i1&key=languages&value=%5B%22en-US%22%5D HTTP/1.1" 200 -
+REPORT i1 connection={"effectiveType":"4g","rtt":50,"downlink":10}
+127.0.0.1 "GET /report?test=i1&key=connection&value=%7B%22effectiveType%22%3A%224g%22%2C%22rtt%22%3A50%2C%22downlink%22%3A10%7D HTTP/1.1" 200 -
+REPORT i1 timezone="UTC"
+127.0.0.1 "GET /report?test=i1&key=timezone&value=%22UTC%22 HTTP/1.1" 200 -
+REPORT i1 screen=[320,640,1]
+127.0.0.1 "GET /report?test=i1&key=screen&value=%5B320%2C640%2C1%5D HTTP/1.1" 200 -
+REPORT i1 offset=0
+127.0.0.1 "GET /report?test=i1&key=offset&value=0 HTTP/1.1" 200 -
+REPORT i1 dates=["2026-10-22T10:00:00.000Z",22,"Thu Jan 01 1970 00:00:00 GMT+0000 (Coordinated Universal Time)"]
+127.0.0.1 "GET /report?test=i1&key=dates&value=%5B%222026-10-22T10%3A00%3A00.000Z%22%2C22%2C%22Thu%20Jan%2001%201970%2000%3A00%3A00%20GMT%2B0000%20(Coordinated%20Universal%20Time)%22%5D HTTP/1.1" 200 -
+REPORT i1 gpu="none"
+127.0.0.1 "GET /report?test=i1&key=gpu&value=%22none%22 HTTP/1.1" 200 -
+REPORT i1 headers={"host":"localhost:8766","user-agent":"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Mobile Safari/537.36","accept":"*/*","x-requested-with":"org.simulationrift.browser","sec-fetch-site":"same-origin","sec-fetch-mode":"cors","sec-fetch-dest":"empty","referer":"http://localhost:8766/identity.html","accept-encoding":"gzip, deflate","accept-language":"en-US,en;q=0.9","connection":"close"}
+127.0.0.1 "GET /report?test=i1&key=headers&value=%7B%22host%22%3A%22localhost%3A8766%22%2C%22user-agent%22%3A%22Mozilla%2F5.0%20(Linux%3B%20Android%2010%3B%20K)%20AppleWebKit%2F537.36%20(KHTML%2C%20like%20Gecko)%20Chrome%2F113.0.0.0%20Mobile%20Safari%2F537.36%22%2C%22accept%22%3A%22*%2F*%22%2C%22x-requested-with%22%3A%22org.simulationrift.browser%22%2C%22sec-fetch-site%22%3A%22same-origin%22%2C%22sec-fetch-mode%22%3A%22cors%22%2C%22sec-fetch-dest%22%3A%22empty%22%2C%22referer%22%3A%22http%3A%2F%2Flocalhost%3A8766%2Fidentity.html%22%2C%22accept-encoding%22%3A%22gzip%2C%20deflate%22%2C%22accept-language%22%3A%22en-US%2Cen%3Bq%3D0.9%22%2C%22connection%22%3A%22close%22%7D HTTP/1.1" 200 -
+REPORT i1 hardwareApis=["wakeLock","locks","credentials","Accelerometer","Gyroscope","AbsoluteOrientationSensor","RelativeOrientationSensor","LinearAccelerationSensor","GravitySensor","IdleDetector","BarcodeDetector","NDEFReader"]
+127.0.0.1 "GET /report?test=i1&key=hardwareApis&value=%5B%22wakeLock%22%2C%22locks%22%2C%22credentials%22%2C%22Accelerometer%22%2C%22Gyroscope%22%2C%22AbsoluteOrientationSensor%22%2C%22RelativeOrientationSensor%22%2C%22LinearAccelerationSensor%22%2C%22GravitySensor%22%2C%22IdleDetector%22%2C%22BarcodeDetector%22%2C%22NDEFReader%22%5D HTTP/1.1" 200 -
+REPORT i1 uaData=null
+127.0.0.1 "GET /report?test=i1&key=uaData&value=null HTTP/1.1" 200 -
+REPORT i1 storage=[2147483648,0]
+127.0.0.1 "GET /report?test=i1&key=storage&value=%5B2147483648%2C0%5D HTTP/1.1" 200 -
+REPORT i1 webgl={"vendor":"WebKit","renderer":"WebKit WebGL","unmaskedVendor":"Google Inc. (Google)","unmaskedRenderer":"ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"}
+127.0.0.1 "GET /report?test=i1&key=webgl&value=%7B%22vendor%22%3A%22WebKit%22%2C%22renderer%22%3A%22WebKit%20WebGL%22%2C%22unmaskedVendor%22%3A%22Google%20Inc.%20(Google)%22%2C%22unmaskedRenderer%22%3A%22ANGLE%20(Google%2C%20Vulkan%201.3.0%20(SwiftShader%20Device%20(Subzero)%20(0x0000C0DE))%2C%20SwiftShader%20driver)%22%7D HTTP/1.1" 200 -
+REPORT i1 perfMemory=[2172649472,10000000]
+127.0.0.1 "GET /report?test=i1&key=perfMemory&value=%5B2172649472%2C10000000%5D HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=i1 HTTP/1.1" 200 -
+REPORT i1 battery=0.82
+127.0.0.1 "GET /report?test=i1&key=battery&value=0.82 HTTP/1.1" 200 -
+REPORT i1 done=1
+127.0.0.1 "GET /report?test=i1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=i1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /s1.html HTTP/1.1" 200 -
+REPORT s1 bridge.globals=none
+127.0.0.1 "GET /report?test=s1&key=bridge.globals&value=none HTTP/1.1" 200 -
+REPORT s1 webkit.messageHandlers=undefined
+127.0.0.1 "GET /report?test=s1&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+REPORT s1 chrome.webview=undefined
+127.0.0.1 "GET /report?test=s1&key=chrome.webview&value=undefined HTTP/1.1" 200 -
+REPORT s1 plain.objects.with.native.methods=none
+127.0.0.1 "GET /report?test=s1&key=plain.objects.with.native.methods&value=none HTTP/1.1" 200 -
+REPORT s1 done=1
+127.0.0.1 "GET /report?test=s1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /kit.html HTTP/1.1" 200 -
+127.0.0.1 "GET /links.html?go=intent%3A%2F%2Fscan%2F%23Intent%3Bscheme%3Dzxing%3Bend HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+REPORT links loaded=1
+127.0.0.1 "GET /report?test=links&key=loaded&value=1 HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 "GET /links.html?go=https%3A%2F%2Fpaypa1.com%2Flogin HTTP/1.1" 200 -
+REPORT links loaded=1
+127.0.0.1 "GET /report?test=links&key=loaded&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /s1.html HTTP/1.1" 200 -
+REPORT s1 bridge.globals=none
+127.0.0.1 "GET /report?test=s1&key=bridge.globals&value=none HTTP/1.1" 200 -
+REPORT s1 webkit.messageHandlers=undefined
+127.0.0.1 "GET /report?test=s1&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+REPORT s1 chrome.webview=undefined
+127.0.0.1 "GET /report?test=s1&key=chrome.webview&value=undefined HTTP/1.1" 200 -
+REPORT s1 plain.objects.with.native.methods=none
+127.0.0.1 "GET /report?test=s1&key=plain.objects.with.native.methods&value=none HTTP/1.1" 200 -
+REPORT s1 done=1
+127.0.0.1 "GET /report?test=s1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /s1.html HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+REPORT s1 bridge.globals=none
+127.0.0.1 "GET /report?test=s1&key=bridge.globals&value=none HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+REPORT s1 webkit.messageHandlers=undefined
+127.0.0.1 "GET /report?test=s1&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+REPORT s1 chrome.webview=undefined
+127.0.0.1 "GET /report?test=s1&key=chrome.webview&value=undefined HTTP/1.1" 200 -
+REPORT s1 plain.objects.with.native.methods=none
+127.0.0.1 "GET /report?test=s1&key=plain.objects.with.native.methods&value=none HTTP/1.1" 200 -
+REPORT s1 done=1
+127.0.0.1 "GET /report?test=s1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /s1.html HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+REPORT s1 bridge.globals=none
+127.0.0.1 "GET /report?test=s1&key=bridge.globals&value=none HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+REPORT s1 webkit.messageHandlers=undefined
+127.0.0.1 "GET /report?test=s1&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+REPORT s1 chrome.webview=undefined
+127.0.0.1 "GET /report?test=s1&key=chrome.webview&value=undefined HTTP/1.1" 200 -
+REPORT s1 plain.objects.with.native.methods=none
+127.0.0.1 "GET /report?test=s1&key=plain.objects.with.native.methods&value=none HTTP/1.1" 200 -
+REPORT s1 done=1
+127.0.0.1 "GET /report?test=s1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /login?next=/fake-login.html HTTP/1.1" 302 -
+127.0.0.1 "GET /fake-login.html HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 "GET /files/invoice.pdf HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/document.pdf HTTP/1.1" 200 -
+127.0.0.1 "GET /files/document.pdf HTTP/1.1" 200 -
+127.0.0.1 "GET /files/broken.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/broken.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/notes.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/notes.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=r1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=r1 HTTP/1.1" 200 -
+127.0.0.1 "GET /recents.html?test=r1 HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+REPORT r1 viewport=400 400
+127.0.0.1 "GET /report?test=r1&key=viewport&value=400%20400 HTTP/1.1" 200 -
+REPORT r1 done=true
+127.0.0.1 "GET /report?test=r1&key=done&value=true HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=r1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /s1.html HTTP/1.1" 200 -
+REPORT s1 bridge.globals=none
+127.0.0.1 "GET /report?test=s1&key=bridge.globals&value=none HTTP/1.1" 200 -
+REPORT s1 webkit.messageHandlers=undefined
+127.0.0.1 "GET /report?test=s1&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+REPORT s1 chrome.webview=undefined
+127.0.0.1 "GET /report?test=s1&key=chrome.webview&value=undefined HTTP/1.1" 200 -
+REPORT s1 plain.objects.with.native.methods=none
+127.0.0.1 "GET /report?test=s1&key=plain.objects.with.native.methods&value=none HTTP/1.1" 200 -
+REPORT s1 done=1
+127.0.0.1 "GET /report?test=s1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /s2.html HTTP/1.1" 200 -
+REPORT s2 secure_context=true
+127.0.0.1 "GET /report?test=s2&key=secure_context&value=true HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+REPORT s2 camera=DENIED NotAllowedError
+127.0.0.1 "GET /report?test=s2&key=camera&value=DENIED%20NotAllowedError HTTP/1.1" 200 -
+REPORT s2 microphone=DENIED NotAllowedError
+127.0.0.1 "GET /report?test=s2&key=microphone&value=DENIED%20NotAllowedError HTTP/1.1" 200 -
+REPORT s2 geolocation=DENIED code=1
+127.0.0.1 "GET /report?test=s2&key=geolocation&value=DENIED%20code%3D1 HTTP/1.1" 200 -
+REPORT s2 clipboard_read=DENIED NotAllowedError
+127.0.0.1 "GET /report?test=s2&key=clipboard_read&value=DENIED%20NotAllowedError HTTP/1.1" 200 -
+REPORT s2 file_fetch=DENIED TypeError
+127.0.0.1 "GET /report?test=s2&key=file_fetch&value=DENIED%20TypeError HTTP/1.1" 200 -
+REPORT s2 content_fetch=DENIED TypeError
+127.0.0.1 "GET /report?test=s2&key=content_fetch&value=DENIED%20TypeError HTTP/1.1" 200 -
+REPORT s2 window_open=BLOCKED
+127.0.0.1 "GET /report?test=s2&key=window_open&value=BLOCKED HTTP/1.1" 200 -
+REPORT s2 done=1
+127.0.0.1 "GET /report?test=s2&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/big HTTP/1.1" 200 -
+127.0.0.1 "GET /files/big HTTP/1.1" 200 -
+127.0.0.1 "GET /files/to-loopback HTTP/1.1" 302 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 "GET /files/hello.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/hello.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/hostile HTTP/1.1" 200 -
+127.0.0.1 "GET /files/hostile HTTP/1.1" 200 -
+127.0.0.1 "GET /login?next=/files/private.bin HTTP/1.1" 302 -
+127.0.0.1 "GET /files/private.bin HTTP/1.1" 200 -
+127.0.0.1 "GET /files/private.bin HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=seed HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=seed HTTP/1.1" 200 -
+127.0.0.1 "GET /seed.html HTTP/1.1" 200 -
+127.0.0.1 "GET /cacheable.js HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+127.0.0.1 "GET /set-cookie HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=seed HTTP/1.1" 200 -
+127.0.0.1 "GET /sw.js HTTP/1.1" 200 -
+REPORT seed seeded=cookie,server_cookie,localStorage,indexedDB,cacheStorage,serviceWorker,httpCache
+127.0.0.1 "GET /report?test=seed&key=seeded&value=cookie%2Cserver_cookie%2ClocalStorage%2CindexedDB%2CcacheStorage%2CserviceWorker%2ChttpCache HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=seed HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=probe-before HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-before HTTP/1.1" 200 -
+127.0.0.1 "GET /probe.html?test=probe-before HTTP/1.1" 200 -
+REPORT probe-before cookie=PRESENT
+127.0.0.1 "GET /report?test=probe-before&key=cookie&value=PRESENT HTTP/1.1" 200 -
+REPORT probe-before server_cookie=PRESENT
+127.0.0.1 "GET /report?test=probe-before&key=server_cookie&value=PRESENT HTTP/1.1" 200 -
+REPORT probe-before localStorage=PRESENT
+127.0.0.1 "GET /report?test=probe-before&key=localStorage&value=PRESENT HTTP/1.1" 200 -
+REPORT probe-before indexedDB=PRESENT
+127.0.0.1 "GET /report?test=probe-before&key=indexedDB&value=PRESENT HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-before HTTP/1.1" 200 -
+REPORT probe-before cacheStorage=PRESENT
+127.0.0.1 "GET /report?test=probe-before&key=cacheStorage&value=PRESENT HTTP/1.1" 200 -
+REPORT probe-before serviceWorker=PRESENT
+127.0.0.1 "GET /report?test=probe-before&key=serviceWorker&value=PRESENT HTTP/1.1" 200 -
+REPORT probe-before done=1
+127.0.0.1 "GET /report?test=probe-before&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-before HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /probe.html?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+REPORT probe-after cookie=absent
+127.0.0.1 "GET /report?test=probe-after&key=cookie&value=absent HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+REPORT probe-after server_cookie=absent
+127.0.0.1 "GET /report?test=probe-after&key=server_cookie&value=absent HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+REPORT probe-after localStorage=absent
+127.0.0.1 "GET /report?test=probe-after&key=localStorage&value=absent HTTP/1.1" 200 -
+REPORT probe-after indexedDB=absent
+127.0.0.1 "GET /report?test=probe-after&key=indexedDB&value=absent HTTP/1.1" 200 -
+REPORT probe-after cacheStorage=absent
+127.0.0.1 "GET /report?test=probe-after&key=cacheStorage&value=absent HTTP/1.1" 200 -
+REPORT probe-after serviceWorker=absent
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /report?test=probe-after&key=serviceWorker&value=absent HTTP/1.1" 200 -
+REPORT probe-after done=1
+127.0.0.1 "GET /report?test=probe-after&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=probe-after HTTP/1.1" 200 -
+127.0.0.1 "GET /files/hello.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/hello.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/invoice.pdf HTTP/1.1" 200 -
+127.0.0.1 "GET /files/invoice.pdf HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/document.pdf HTTP/1.1" 200 -
+127.0.0.1 "GET /files/document.pdf HTTP/1.1" 200 -
+127.0.0.1 "GET /files/notes.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/notes.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/notes.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/notes.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/notes.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/notes.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /s1.html HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+REPORT s1 bridge.globals=none
+127.0.0.1 "GET /report?test=s1&key=bridge.globals&value=none HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+REPORT s1 webkit.messageHandlers=undefined
+127.0.0.1 "GET /report?test=s1&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+REPORT s1 chrome.webview=undefined
+127.0.0.1 "GET /report?test=s1&key=chrome.webview&value=undefined HTTP/1.1" 200 -
+REPORT s1 plain.objects.with.native.methods=none
+127.0.0.1 "GET /report?test=s1&key=plain.objects.with.native.methods&value=none HTTP/1.1" 200 -
+REPORT s1 done=1
+127.0.0.1 "GET /report?test=s1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /arrivals/clear HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /reach.html?test=s25 HTTP/1.1" 200 -
+HIT /hit/control Host=localhost:8766
+127.0.0.1 "GET /hit/control HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+REPORT s25 control=answered
+127.0.0.1 "GET /report?test=s25&key=control&value=answered HTTP/1.1" 200 -
+REPORT s25 loopback=answered
+127.0.0.1 "GET /report?test=s25&key=loopback&value=answered HTTP/1.1" 200 -
+REPORT s25 emulator_host=answered
+127.0.0.1 "GET /report?test=s25&key=emulator_host&value=answered HTTP/1.1" 200 -
+REPORT s25 loopback_v6=answered
+127.0.0.1 "GET /report?test=s25&key=loopback_v6&value=answered HTTP/1.1" 200 -
+REPORT s25 websocket=error
+127.0.0.1 "GET /report?test=s25&key=websocket&value=error HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+REPORT s25 webrtc=candidate:4132139613 1 udp 2113937151 10.111.0.1 59073 typ host generation 0 ufrag utx1 network-cost 999
+127.0.0.1 "GET /report?test=s25&key=webrtc&value=candidate%3A4132139613%201%20udp%202113937151%2010.111.0.1%2059073%20typ%20host%20generation%200%20ufrag%20utx1%20network-cost%20999 HTTP/1.1" 200 -
+REPORT s25 done=1
+127.0.0.1 "GET /report?test=s25&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s25 HTTP/1.1" 200 -
+127.0.0.1 "GET /arrivals HTTP/1.1" 200 -
+127.0.0.1 "GET /arrivals/clear HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /reach.html?test=s26 HTTP/1.1" 200 -
+HIT /hit/control Host=localhost:8766
+127.0.0.1 "GET /hit/control HTTP/1.1" 200 -
+REPORT s26 control=answered
+127.0.0.1 "GET /report?test=s26&key=control&value=answered HTTP/1.1" 200 -
+REPORT s26 loopback=answered
+127.0.0.1 "GET /report?test=s26&key=loopback&value=answered HTTP/1.1" 200 -
+REPORT s26 emulator_host=answered
+127.0.0.1 "GET /report?test=s26&key=emulator_host&value=answered HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+REPORT s26 loopback_v6=answered
+127.0.0.1 "GET /report?test=s26&key=loopback_v6&value=answered HTTP/1.1" 200 -
+REPORT s26 websocket=error
+127.0.0.1 "GET /report?test=s26&key=websocket&value=error HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+REPORT s26 webrtc=candidate:4079136590 1 udp 2113937151 10.111.0.1 56166 typ host generation 0 ufrag 0rWZ network-cost 999
+127.0.0.1 "GET /report?test=s26&key=webrtc&value=candidate%3A4079136590%201%20udp%202113937151%2010.111.0.1%2056166%20typ%20host%20generation%200%20ufrag%200rWZ%20network-cost%20999 HTTP/1.1" 200 -
+REPORT s26 done=1
+127.0.0.1 "GET /report?test=s26&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s26 HTTP/1.1" 200 -
+127.0.0.1 "GET /arrivals HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=seed HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=seed HTTP/1.1" 200 -
+127.0.0.1 "GET /seed.html HTTP/1.1" 200 -
+127.0.0.1 "GET /cacheable.js HTTP/1.1" 200 -
+127.0.0.1 "GET /set-cookie HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=seed HTTP/1.1" 200 -
+127.0.0.1 "GET /sw.js HTTP/1.1" 200 -
+REPORT seed seeded=cookie,server_cookie,localStorage,indexedDB,cacheStorage,serviceWorker,httpCache
+127.0.0.1 "GET /report?test=seed&key=seeded&value=cookie%2Cserver_cookie%2ClocalStorage%2CindexedDB%2CcacheStorage%2CserviceWorker%2ChttpCache HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=seed HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /s1.html HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+REPORT s1 bridge.globals=none
+127.0.0.1 "GET /report?test=s1&key=bridge.globals&value=none HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+REPORT s1 webkit.messageHandlers=undefined
+127.0.0.1 "GET /report?test=s1&key=webkit.messageHandlers&value=undefined HTTP/1.1" 200 -
+REPORT s1 chrome.webview=undefined
+127.0.0.1 "GET /report?test=s1&key=chrome.webview&value=undefined HTTP/1.1" 200 -
+REPORT s1 plain.objects.with.native.methods=none
+127.0.0.1 "GET /report?test=s1&key=plain.objects.with.native.methods&value=none HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+REPORT s1 done=1
+127.0.0.1 "GET /report?test=s1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s1 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /s2.html HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+REPORT s2 secure_context=true
+127.0.0.1 "GET /report?test=s2&key=secure_context&value=true HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+REPORT s2 camera=DENIED NotAllowedError
+127.0.0.1 "GET /report?test=s2&key=camera&value=DENIED%20NotAllowedError HTTP/1.1" 200 -
+REPORT s2 microphone=DENIED NotAllowedError
+127.0.0.1 "GET /report?test=s2&key=microphone&value=DENIED%20NotAllowedError HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+REPORT s2 geolocation=DENIED code=1
+127.0.0.1 "GET /report?test=s2&key=geolocation&value=DENIED%20code%3D1 HTTP/1.1" 200 -
+REPORT s2 clipboard_read=DENIED NotAllowedError
+127.0.0.1 "GET /report?test=s2&key=clipboard_read&value=DENIED%20NotAllowedError HTTP/1.1" 200 -
+REPORT s2 file_fetch=DENIED TypeError
+127.0.0.1 "GET /report?test=s2&key=file_fetch&value=DENIED%20TypeError HTTP/1.1" 200 -
+REPORT s2 content_fetch=DENIED TypeError
+127.0.0.1 "GET /report?test=s2&key=content_fetch&value=DENIED%20TypeError HTTP/1.1" 200 -
+REPORT s2 window_open=BLOCKED
+127.0.0.1 "GET /report?test=s2&key=window_open&value=BLOCKED HTTP/1.1" 200 -
+REPORT s2 done=1
+127.0.0.1 "GET /report?test=s2&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=s2 HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /watch.html HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+REPORT w1 known_bad=REFUSED
+127.0.0.1 "GET /report?test=w1&key=known_bad&value=REFUSED HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+REPORT w1 geolocation=ALLOWED
+127.0.0.1 "GET /report?test=w1&key=geolocation&value=ALLOWED HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+REPORT w1 camera=ALLOWED
+127.0.0.1 "GET /report?test=w1&key=camera&value=ALLOWED HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+REPORT w1 microphone=ALLOWED
+127.0.0.1 "GET /report?test=w1&key=microphone&value=ALLOWED HTTP/1.1" 200 -
+REPORT w1 lan=ALLOWED
+127.0.0.1 "GET /report?test=w1&key=lan&value=ALLOWED HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+REPORT w1 webrtc=tried
+127.0.0.1 "GET /report?test=w1&key=webrtc&value=tried HTTP/1.1" 200 -
+REPORT w1 done=1
+127.0.0.1 "GET /report?test=w1&key=done&value=1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=w1 HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /clear?test=h1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=h1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=h1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=h1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=h1 HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=h1 HTTP/1.1" 200 -
+127.0.0.1 "GET /recents.html HTTP/1.1" 200 -
+127.0.0.1 "GET /report.js HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=h1 HTTP/1.1" 200 -
+127.0.0.1 code 404, message File not found
+127.0.0.1 "GET /favicon.ico HTTP/1.1" 404 -
+REPORT h1 viewport=446 446
+127.0.0.1 "GET /report?test=h1&key=viewport&value=446%20446 HTTP/1.1" 200 -
+REPORT h1 done=true
+127.0.0.1 "GET /report?test=h1&key=done&value=true HTTP/1.1" 200 -
+127.0.0.1 "GET /results?test=h1 HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -
+127.0.0.1 "GET /files/demo-file.txt HTTP/1.1" 200 -
+127.0.0.1 "GET /files/picture.png HTTP/1.1" 200 -

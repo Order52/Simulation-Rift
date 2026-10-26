@@ -17,6 +17,33 @@ Open any link, and any image or PDF, without letting it near your phone. Rift is
 
 **This week.** The home screen counts the threats blocked, dangerous files, warnings and links checked over seven days, kept as numbers only. Nothing else is kept after a session, and nothing asks for a password.
 
+<p align="center">
+  <img src="docs/images/home.png" width="23%" alt="Home: the link field and this week's counts">
+  <img src="docs/images/check.png" width="23%" alt="Check: a verdict with Rift AI's reasons and the trackers in the link">
+  <img src="docs/images/live-check.png" width="23%" alt="Check the live page: Rift AI's reading, the trackers and the sites the page reached">
+  <img src="docs/images/browser.png" width="23%" alt="The sealed browser with the live watch in its bar">
+</p>
+
+**Trackers, explained (0.10).** Check names each tracking parameter in a link (`fbclid`, `gclid`, `utm_…` and others), says who added it and what it tells them, and removes them with one tap. While a page is open, the live check names each tracking service the page reaches (Google Analytics, Meta's pixel, Hotjar's session replay …), explains what that kind of tracker records, and says how to stop it.
+
+**Rift AI reads the page too (0.10).** Besides the address model, a second model looks at what an opened page is made of: password forms that send to another site, brand names that do not match the site, urgent "your account is locked" text, hidden frames, obfuscated scripts. It warns before you type anything ([how well it does](docs/reports/page-model.md)). **Check the live page** in Check loads the link out of sight for 10 seconds in a new sealed session and reports where it went, what it asked for, its trackers, the sites it reached and Rift AI's reading of it. Plain Check never contacts the site, so the sender cannot tell the link was looked at.
+
+**Old WebViews are refused (0.10).** If the phone's Android System WebView lacks the fix for a Chromium bug known to be exploited in the wild (CISA's catalogue), Rift will not open pages in it and says which update fixes it.
+
+## Install
+
+Download `rift-<version>.apk` (arm64) from [Releases](https://github.com/Order52/Simulation-Rift/releases) and check its SHA-256 against the one in the release notes. Open it on the phone (Android 11 or newer, arm64) and allow the install. On first launch Rift installs the sealed browser it carries; Android asks you to allow that too. Installing a newer release over an older one keeps your settings.
+
+## Build from source
+
+```sh
+sh android/build.sh            # Rust libraries, bindings, debug APKs and unit tests (needs the NDK, cargo-ndk and JDK 21)
+sh android/run-tests.sh <dir>  # the device suite on an attached emulator, with evidence written to <dir>
+cargo test --workspace --locked
+```
+
+[`CLAUDE.md`](CLAUDE.md) lists every command; [`docs/architecture.md`](docs/architecture.md) §21 the conventions.
+
 > **Status: in development; not audited.** The Android debug build is tested on emulators (API 33–36) and installed on one phone (Android 12). [`STATUS.md`](STATUS.md) says what works, what is left and the limitations; [`docs/architecture.md`](docs/architecture.md) is the design; [`docs/reports/`](docs/reports/) is the evidence for each claim.
 
 ## What it is not
@@ -31,10 +58,11 @@ Open any link, and any image or PDF, without letting it near your phone. Rift is
 |---|---|
 | `docs/architecture.md` | Architecture, threat model, invariants, roadmap |
 | `docs/reports/` | Per-phase evidence: verified, unverified, and could be improved |
+| `docs/images/` | Screenshots from the API 34 emulator |
 | `poc/` | Phase 0 feasibility harnesses (not product code) |
 | `crates/` | Rust workspace (Phase 1 onward) |
 | `android/` | Android app (Phase 2 onward) |
-| `models/` | Rift AI's model file, its report and the notice for its data |
+| `models/` | Rift AI's models (address and page), their notices and data sources |
 | `tools/` | Maintainer tools: the signed-pack builder and `rift-train` (Rift AI's trainer) |
 
 ## License
