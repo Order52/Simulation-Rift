@@ -25,12 +25,12 @@ and quarantines and scans files in isolated workers, all on the device.
 </div>
 
 <p align="center">
-  <img src="docs/images/home.png" width="23%" alt="Home: the link field and this week's counts">
-  <img src="docs/images/check.png" width="23%" alt="Check: a verdict with Rift AI's reasons and the trackers in the link">
+  <img src="docs/images/home.png" width="23%" alt="Home: the link field and the session's live check">
+  <img src="docs/images/check.png" width="23%" alt="Check: a lookalike link's verdict with Rift AI's reasons">
   <img src="docs/images/live-check.png" width="23%" alt="Check the live page: Rift AI's reading, the trackers and the sites the page reached">
   <img src="docs/images/browser.png" width="23%" alt="The sealed browser with the live watch in its bar">
 </p>
-<p align="center"><sub>Home · Check · Check the live page · The sealed browser (Android 14 emulator)</sub></p>
+<p align="center"><sub>Home · Check · Check the live page · The sealed browser (Android 14 emulator, dark theme)</sub></p>
 
 > [!WARNING]
 > **Rift is in development and has not been audited.** It is tested on Android emulators (API 33–36) and one phone (Android 12). Every security claim names its boundary and the test that shows it; see [STATUS.md](STATUS.md) for what works today and its limits.
@@ -115,6 +115,10 @@ With [Shizuku](https://shizuku.rikka.app) or root, one switch hardens the browse
 
 Each change is checked after it's made and undone when you switch it off.
 
+### 🌙 Dark theme
+
+Rift and its sealed browser follow the phone's dark theme, or stay light or dark (**About → Appearance**). In dark, pages without a dark style of their own are darkened too.
+
 ### 🕊️ Keeps nothing
 
 Nothing is kept after a session, and nothing asks for a password. The home screen shows only weekly counts: threats blocked, dangerous files, warnings and links checked.
@@ -141,20 +145,10 @@ The full design, threat model and 14 invariants are in [docs/architecture.md](do
 
 ## Install
 
-### Recommended: automatic updates with Obtainium
-
-[Obtainium](https://obtainium.imranr.dev) installs apps from their GitHub releases and keeps them up to date. A new signed Rift release is published automatically each week when anything changed.
-
-1. Install Obtainium (from its [releases](https://github.com/ImranR98/Obtainium/releases) or F-Droid).
-2. In Obtainium, tap **Add App** and enter `https://github.com/Order52/Simulation-Rift`.
-3. Under **Filter APKs by regular expression**, enter `^rift-\d` (so it takes the app, not the optional browser file), then **Add** and **Install**.
-4. On first launch, Rift installs the sealed browser it carries. Android asks you to allow that. Later updates of Rift update the browser by themselves.
-
-### By hand
-
 1. Download **`rift-<version>.apk`** from the [latest release](https://github.com/Order52/Simulation-Rift/releases/latest).
 2. Check its SHA-256 against the one in the release notes.
 3. Open it on the phone (Android 11 or newer, arm64) and allow the install.
+4. On first launch, Rift installs the sealed browser it carries. Android asks you to allow that. Later updates of Rift update the browser by themselves.
 
 | File | Needed? |
 |---|---|
@@ -163,16 +157,23 @@ The full design, threat model and 14 invariants are in [docs/architecture.md](do
 
 Updates keep your settings. Every release is signed with the same certificate, SHA-256 `8b5952712e7ceda065f558e1de902e12b97027a3244181f8d0330fbc6a47ee8b`.
 
+### Updates
+
+**Rift updates itself.** Once a day it asks GitHub for its latest release. If there is a newer one, Rift downloads it, checks it against the SHA-256 published with it, and checks that it is signed with Rift's own certificate. The first time, Android asks you to confirm. After that, on Android 12 and newer, Rift installs updates by itself while you are not using it. You can turn this off under **About → Updates**.
+
+Or use [Obtainium](https://obtainium.imranr.dev). Add `https://github.com/Order52/Simulation-Rift`, with `^rift-\d` under **Filter APKs by regular expression** (so it takes the app, not the optional browser file).
+
 ### What updates itself
 
 | What | How often | How |
 |---|---|---|
 | Threat lists, filter lists, link-cleaning rules | Daily | In the app |
 | Android System WebView | As Google ships it | Play Store (Rift refuses one missing an exploited fix) |
-| The app and its browser | Weekly, when anything changed | Signed release, installed by Obtainium |
+| The app and its browser | Weekly release, when anything changed | Rift installs it itself (or Obtainium does) |
 | Exploited-WebView list | Weekly | From CISA's catalogue, merged when CI passes |
-| Rift AI (address model) | Monthly | Retrained on current feeds, merged if it passes its accuracy gate and CI |
+| Rift AI (address model) | Monthly | Retrained on current feeds plus its memory of the last 24 months' phishing pages, merged if it passes its accuracy gate and CI |
 | Rust, Gradle and Actions dependencies | Weekly | Dependabot, versions at least 7 days old, merged when CI passes |
+| Rust compiler, NDK, cargo-ndk, OSV-Scanner | Monthly | Moved to the latest release, merged when CI passes |
 
 ## Build from source
 
