@@ -65,10 +65,16 @@ sign browser/build/outputs/apk/release/browser-release-unsigned.apk "$out/browse
 sign app/build/outputs/apk/release/app-release-unsigned.apk "$out/rift-$version.apk"
 
 # The two apps must carry the same certificate, or the install would be refused.
-cert() { "$build_tools/apksigner" verify --print-certs "$1" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p'; }
+# The first signer's digest, whichever way this apksigner labels it ("Signer #1",
+# or "Signer (minSdkVersion=…, maxSdkVersion=…)" for each SDK range).
+cert() { "$build_tools/apksigner" verify --print-certs "$1" | sed -n 's/^Signer .* certificate SHA-256 digest: //p' | head -1; }
 [ "$(cert "$out/rift-$version.apk")" = "$(cert "$out/browser-signed.apk")" ] || { echo "release: Rift and its browser are signed differently" >&2; exit 1; }
 # An update signed by another key would not install over the last release.
-[ -z "${RIFT_RELEASE_CERT:-}" ] || [ "$(cert "$out/rift-$version.apk")" = "$RIFT_RELEASE_CERT" ] || { echo "release: not signed with the release certificate" >&2; exit 1; }
+[ -z "${RIFT_RELEASE_CERT:-}" ] || [ "$(cert "$out/rift-$version.apk")" = "$RIFT_RELEASE_CERT" ] || {
+  echo "release: not signed with the release certificate: found '$(cert "$out/rift-$version.apk")' ($(basename "$build_tools")), expected $RIFT_RELEASE_CERT" >&2
+  "$build_tools/apksigner" verify --print-certs "$out/rift-$version.apk" | grep -i 'certificate SHA-256' >&2
+  exit 1
+}
 "$build_tools/apksigner" verify --min-sdk-version 30 "$out/rift-$version.apk"
 # Nothing of a debug build: no debuggable flag, no test workers.
 manifest="$("$build_tools/aapt2" dump xmltree --file AndroidManifest.xml "$out/rift-$version.apk")"
