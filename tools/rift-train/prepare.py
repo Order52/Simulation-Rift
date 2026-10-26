@@ -55,8 +55,8 @@ phish = phish_2025 + phish_now
 # Not used for the shipped model since 24 Oct 2026: abuse.ch's terms
 # (s. 7.3) forbid training an AI model on its data without consent
 # (docs/reports/rift-ai.md). Kept for a local experiment that has it.
+malware_hosts = set()
 if os.path.exists(os.path.join(src, "mf-urlhaus-filter.txt")):
-    malware_hosts = set()
     for line in open(os.path.join(src, "mf-urlhaus-filter.txt"), encoding="utf-8", errors="replace"):
         line = line.strip().lower()
         if line and not line.startswith(("!", "#")):
