@@ -25,7 +25,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  NIGHTLY: nightly-2026-10-17
 
 jobs:
   campaign:
@@ -38,6 +37,9 @@ jobs:
         target: ${{ fromJSON(inputs.targets) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Pins the toolchains workflow moves (a workflow's token may not edit workflows).
+      - name: Load the toolchain pins
+        run: cat .github/toolchains.env >> "$GITHUB_ENV"
       - name: Install pinned nightly, llvm-tools and cargo-fuzz
         run: |
           rustup toolchain install "$NIGHTLY" --profile minimal --component llvm-tools-preview

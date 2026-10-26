@@ -115,18 +115,20 @@ jobs:
     permissions:
       contents: write
     env:
-      NDK_VERSION: 29.0.14206865
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           fetch-depth: 0
+      # Pins the toolchains workflow moves (a workflow's token may not edit workflows).
+      - name: Load the toolchain pins
+        run: cat .github/toolchains.env >> "$GITHUB_ENV"
       - name: Install pinned toolchain, Android targets and cargo-ndk
         run: |
           rustup show active-toolchain || rustup toolchain install
           rustup target add aarch64-linux-android x86_64-linux-android
-          cargo install cargo-ndk --version 4.1.2 --locked
+          cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked
       - name: Install the NDK
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null

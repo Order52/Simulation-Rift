@@ -78,10 +78,10 @@ jobs:
       # gradle.lockfiles) against OSV's advisories; android/scan-dependencies.sh
       # says what is left out. A pinned release, checked against the SHA-256
       # it was published with.
+      # Pins the toolchains workflow moves (a workflow's token may not edit workflows).
+      - name: Load the toolchain pins
+        run: cat .github/toolchains.env >> "$GITHUB_ENV"
       - name: Scan the Android libraries (OSV-Scanner)
-        env:
-          OSV_SCANNER_VERSION: v2.6.0
-          OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
         run: |
           curl -fsSL -o "$RUNNER_TEMP/osv-scanner" \
             "https://github.com/google/osv-scanner/releases/download/$OSV_SCANNER_VERSION/osv-scanner_linux_amd64"
@@ -116,10 +116,11 @@ jobs:
   # Findings are fixed in the crate and kept as unit tests, not as corpus files.
   fuzz:
     runs-on: ubuntu-latest
-    env:
-      NIGHTLY: nightly-2026-10-17
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Pins the toolchains workflow moves (a workflow's token may not edit workflows).
+      - name: Load the toolchain pins
+        run: cat .github/toolchains.env >> "$GITHUB_ENV"
       - name: Install pinned nightly and cargo-fuzz
         run: |
           rustup toolchain install "$NIGHTLY" --profile minimal
@@ -145,15 +146,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      NDK_VERSION: 29.0.14206865
       EVIDENCE: ${{ github.workspace }}/evidence/phase3-android-api${{ matrix.api-level }}-x86_64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Pins the toolchains workflow moves (a workflow's token may not edit workflows).
+      - name: Load the toolchain pins
+        run: cat .github/toolchains.env >> "$GITHUB_ENV"
       - name: Install pinned toolchain, Android targets and cargo-ndk
         run: |
           rustup show active-toolchain || rustup toolchain install
           rustup target add aarch64-linux-android x86_64-linux-android
-          cargo install cargo-ndk --version 4.1.2 --locked
+          cargo install cargo-ndk --version "$CARGO_NDK_VERSION" --locked
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Install the NDK
         run: |

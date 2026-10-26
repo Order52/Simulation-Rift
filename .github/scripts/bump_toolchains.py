@@ -47,13 +47,13 @@ for value, shape in ((cargo_ndk, r"\d+\.\d+\.\d+"), (osv, r"v\d+\.\d+\.\d+")):
         sys.exit(f"unexpected version {value!r}")
 
 edit("rust-toolchain.toml", r'(channel = ")([^"]+)(")', rust, "stable Rust")
-for path in (".github/workflows/ci.yml", ".github/workflows/fuzz-campaign.yml"):
-    edit(path, r"(NIGHTLY: )(nightly-\d{4}-\d{2}-\d{2})()", nightly, "fuzzing nightly")
-for path in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-    edit(path, r"(NDK_VERSION: )([\d.]+)()", ndk, "NDK")
-    edit(path, r"(cargo install cargo-ndk --version )([\d.]+)()", cargo_ndk, "cargo-ndk")
-old_osv = re.search(r"OSV_SCANNER_VERSION: (\S+)", open(".github/workflows/ci.yml").read()).group(1)
+# The workflows read the rest from this file: a workflow's token may not edit workflows.
+PINS = ".github/toolchains.env"
+edit(PINS, r"(?m)(^NIGHTLY=)(nightly-\d{4}-\d{2}-\d{2})($)", nightly, "fuzzing nightly")
+edit(PINS, r"(?m)(^NDK_VERSION=)([\d.]+)($)", ndk, "NDK")
+edit(PINS, r"(?m)(^CARGO_NDK_VERSION=)([\d.]+)($)", cargo_ndk, "cargo-ndk")
+old_osv = re.search(r"(?m)^OSV_SCANNER_VERSION=(\S+)", open(PINS).read()).group(1)
 if old_osv != osv:
     binary = get(f"https://github.com/google/osv-scanner/releases/download/{osv}/osv-scanner_linux_amd64")
-    edit(".github/workflows/ci.yml", r"(OSV_SCANNER_VERSION: )(\S+)()", osv, "OSV-Scanner")
-    edit(".github/workflows/ci.yml", r"(OSV_SCANNER_SHA256: )([0-9a-f]{64})()", hashlib.sha256(binary).hexdigest(), "OSV-Scanner SHA-256")
+    edit(PINS, r"(?m)(^OSV_SCANNER_VERSION=)(\S+)($)", osv, "OSV-Scanner")
+    edit(PINS, r"(?m)(^OSV_SCANNER_SHA256=)([0-9a-f]{64})($)", hashlib.sha256(binary).hexdigest(), "OSV-Scanner SHA-256")
