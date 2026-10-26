@@ -1,0 +1,176 @@
+name: release
+
+# Weekly signed release, with nothing to do by hand.
+#
+# On Wednesdays (or by hand), if the app's code changed since the last v*
+# tag, the next patch version is built from main and published as the
+# latest release, for Obtainium and anyone installing by hand. Only a tree
+# CI has already passed is released: if main's code (everything ci.yml's
+# push paths-ignore does not skip; keep CODE in step with it) matches a
+# commit with a successful CI run, that run counts, and nothing is re-run.
+# Otherwise this starts CI on main once and stops; when that run passes it
+# starts this workflow again (workflow_run), which then releases.
+#
+# The signing key is in the "release" environment's secrets (main only):
+# RIFT_RELEASE_KEYSTORE (the keystore, base64) and RIFT_RELEASE_PASSWORD.
+# Every release must carry the certificate in RIFT_RELEASE_CERT, so Android
+# installs it over the last one (docs/reports/key-policy.md).
+on:
+  schedule:
+    - cron: "41 6 * * 3"
+  workflow_dispatch:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  RIFT_RELEASE_CERT: 8b5952712e7ceda065f558e1de902e12b97027a3244181f8d0330fbc6a47ee8b
+
+jobs:
+  plan:
+    # From CI only when CI was started for a release (by this workflow) and passed.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      sha: ${{ steps.plan.outputs.sha }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      code: ${{ steps.plan.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - id: plan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CODE=(. ':(exclude)*.md' ':(exclude)docs' ':(exclude)poc' ':(exclude)linux'
+                ':(exclude).github/dependabot.yml'
+                ':(exclude).github/workflows/dependabot-automerge.yml'
+                ':(exclude).github/workflows/fuzz-campaign.yml'
+                ':(exclude).github/workflows/kev.yml'
+                ':(exclude).github/workflows/linux-app.yml'
+                ':(exclude).github/workflows/linux-qt-poc.yml'
+                ':(exclude).github/workflows/release.yml'
+                ':(exclude).github/workflows/retrain.yml')
+          head="$(git rev-parse HEAD)"
+          tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD)"
+          echo "release=false" >> "$GITHUB_OUTPUT"
+          if git diff --quiet "$tag" "$head" -- "${CODE[@]}"; then
+            echo "Nothing to release: the app's code is unchanged since $tag." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          tested=""
+          for sha in $(gh run list --workflow ci.yml --status success --limit 50 --json headSha -q '.[].headSha'); do
+            git cat-file -e "$sha^{commit}" 2>/dev/null || git fetch -q origin "$sha" 2>/dev/null || continue
+            if git diff --quiet "$sha" "$head" -- "${CODE[@]}"; then tested="$sha"; break; fi
+          done
+          if [ -z "$tested" ]; then
+            if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+              echo "CI passed, but main has moved on since; the next run releases it." | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              gh workflow run ci.yml --ref main
+              echo "main's code ($head) has not been through CI: started it; the release follows when it passes." | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+          IFS=. read -r major minor patch <<< "${tag#v}"
+          patch=$((patch + 1))
+          {
+            echo "release=true"
+            echo "sha=$head"
+            echo "tag=$tag"
+            echo "version=$major.$minor.$patch"
+            echo "code=$((major * 1000000 + minor * 1000 + patch))"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $major.$minor.$patch from $head (CI passed on $tested)." | tee -a "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: write
+    env:
+      NDK_VERSION: 29.0.14206865
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0
+      - name: Install pinned toolchain, Android targets and cargo-ndk
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install cargo-ndk --version 4.1.2 --locked
+      - name: Install the NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+      - name: Build (bindings, both ABIs, unit tests)
+        run: sh android/build.sh
+      - name: Build and sign the release
+        env:
+          RIFT_RELEASE_KEYSTORE: ${{ secrets.RIFT_RELEASE_KEYSTORE }}
+          RIFT_RELEASE_PASSWORD: ${{ secrets.RIFT_RELEASE_PASSWORD }}
+        run: |
+          keys="$RUNNER_TEMP/release-keys"
+          (umask 077 && mkdir "$keys")
+          printf '%s' "$RIFT_RELEASE_KEYSTORE" | base64 -d > "$keys/release.jks"
+          printf '%s\n' "$(printf '%s' "$RIFT_RELEASE_PASSWORD" | tr -d '\r\n')" > "$keys/password"
+          status=0
+          RIFT_RELEASE_KEYS="$keys" RIFT_RELEASE_REQUIRE_KEY=1 \
+            RIFT_VERSION_NAME="$VERSION" RIFT_VERSION_CODE="${{ needs.plan.outputs.code }}" \
+            sh android/release.sh || status=$?
+          rm -rf "$keys"
+          exit $status
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          SHA: ${{ needs.plan.outputs.sha }}
+        run: |
+          cd android/build/release
+          cp browser-signed.apk "rift-browser-$VERSION.apk"
+          sha256sum "rift-browser-$VERSION.apk" > "rift-browser-$VERSION.apk.sha256"
+          app="$(cut -d' ' -f1 "rift-$VERSION.apk.sha256")"
+          browser="$(cut -d' ' -f1 "rift-browser-$VERSION.apk.sha256")"
+          {
+            echo "**Rift v$VERSION for Android** (arm64, Android 11+), the weekly release. In development and not audited: see [STATUS.md](https://github.com/$GITHUB_REPOSITORY/blob/main/STATUS.md)."
+            echo
+            echo "### Changes since $TAG"
+            git log --no-merges --format='- %s' "$TAG..$SHA" -- . ':(exclude)*.md' ':(exclude)docs' | grep -v '^- docs:' || echo "- Maintenance."
+            echo
+            echo "### Install or update"
+            echo "With [Obtainium](https://obtainium.imranr.dev), updates install by themselves: see the [README](https://github.com/$GITHUB_REPOSITORY#install). By hand: download \`rift-$VERSION.apk\` and check its SHA-256."
+            echo
+            echo "| File | Needed? | SHA-256 |"
+            echo "|---|---|---|"
+            echo "| \`rift-$VERSION.apk\` | **Yes**: the app | \`$app\` |"
+            echo "| \`rift-browser-$VERSION.apk\` | **Optional**: the sealed browser on its own, only if your phone blocks Rift from installing it | \`$browser\` |"
+            echo
+            echo "Signing certificate SHA-256: \`$RIFT_RELEASE_CERT\`"
+          } > notes.md
+          gh release create "v$VERSION" --target "$SHA" --title "Rift v$VERSION (Android)" --latest --notes-file notes.md \
+            "rift-$VERSION.apk" "rift-$VERSION.apk.sha256" \
+            "rift-browser-$VERSION.apk" "rift-browser-$VERSION.apk.sha256"

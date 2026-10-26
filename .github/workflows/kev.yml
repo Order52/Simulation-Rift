@@ -1,0 +1,58 @@
+name: exploited webview bugs
+
+# Weekly: adds the Chromium bugs CISA's Known Exploited Vulnerabilities
+# catalogue gained to the WebView refusal list (KnownExploited.kt, §8.4,
+# INV-7) with tools/kev/update.py, and opens a pull request that merges
+# itself once CI passes; the next weekly release ships it. A new bug with no
+# fixed version in NVD fails this run instead of being left out.
+on:
+  schedule:
+    - cron: "23 5 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      LIST: android/browser/src/main/kotlin/org/simulationrift/browser/KnownExploited.kt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download the catalogue
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/kev.json" \
+            https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+      - name: Add new Chromium bugs
+        run: python3 -I tools/kev/update.py "$LIST" "$RUNNER_TEMP/kev.json" | tee "$RUNNER_TEMP/added.txt"
+        shell: bash
+      - name: Open a pull request that merges itself
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- "$LIST"; then
+            echo "No new exploited Chromium bugs."
+            exit 0
+          fi
+          branch="kev/$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -qm "android: refuse webviews missing fixes for newly exploited chromium bugs" -- "$LIST"
+          git push -q origin "$branch"
+          {
+            echo "CISA's catalogue added these Chromium bugs; a WebView without their fixes is now refused:"
+            echo
+            sed 's/^/- /' "$RUNNER_TEMP/added.txt"
+            echo
+            echo "Fixed versions from NVD's descriptions. Merges itself when CI passes."
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --head "$branch" --title "android: newly exploited chromium bugs ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/body.md"
+          gh pr merge --auto --squash "$branch"
+          # A push with this workflow's token starts no workflow: start CI on the branch.
+          gh workflow run ci.yml --ref "$branch"

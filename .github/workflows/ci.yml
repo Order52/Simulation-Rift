@@ -1,29 +1,29 @@
 name: ci
 
-# Changes that cannot affect a build or test (documentation, screenshots,
-# evidence, and workflows other than this one) do not start CI again.
+# Pushes that cannot affect a build or test (documentation, screenshots,
+# evidence, and workflows other than this one) do not start CI again; the
+# release workflow (release.yml) compares against this list, keep both in
+# step. Pull requests always run everything: auto-merge waits for these
+# checks. workflow_dispatch: the release and update workflows start CI on
+# commits their own token pushed, which start nothing by themselves.
 on:
   push:
     branches: [main]
     paths-ignore:
       - "**.md"
       - docs/**
-      - .github/workflows/fuzz-campaign.yml
-      - .github/workflows/linux-app.yml
-      - .github/workflows/linux-qt-poc.yml
-      - .github/workflows/retrain.yml
       - poc/**
       - linux/**
+      - .github/dependabot.yml
+      - .github/workflows/dependabot-automerge.yml
+      - .github/workflows/fuzz-campaign.yml
+      - .github/workflows/kev.yml
+      - .github/workflows/linux-app.yml
+      - .github/workflows/linux-qt-poc.yml
+      - .github/workflows/release.yml
+      - .github/workflows/retrain.yml
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - docs/**
-      - .github/workflows/fuzz-campaign.yml
-      - .github/workflows/linux-app.yml
-      - .github/workflows/linux-qt-poc.yml
-      - .github/workflows/retrain.yml
-      - poc/**
-      - linux/**
+  workflow_dispatch:
 
 # A newer push to the same branch or pull request cancels the older run.
 concurrency:

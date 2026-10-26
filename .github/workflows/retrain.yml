@@ -2,13 +2,14 @@ name: retrain rift ai
 
 # Monthly: retrains Rift AI on that day's feeds (tools/rift-train/retrain.sh)
 # and, if the new model passes the gate (tools/rift-train/gate.py) and the
-# shipped-model tests, opens a pull request with it. Nothing ships without
-# a maintainer merging it; the feeds themselves are never committed.
+# shipped-model tests, opens a pull request with it that merges itself once
+# CI passes; the next weekly release (release.yml) ships it. The feeds
+# themselves are never committed.
 #
 # Needs "Allow GitHub Actions to create and approve pull requests" in the
 # repository's Actions settings. A pull request opened with GITHUB_TOKEN
-# does not start other workflows: CI runs once a maintainer pushes to it
-# (or closes and reopens it). The GitHub sample of hosting-platform sites
+# does not start other workflows, so this one starts CI on its branch by
+# workflow_dispatch. The GitHub sample of hosting-platform sites
 # needs RIFT_SEARCH_TOKEN (a token with no permissions, for code search);
 # without it the model trains without that sample, and the PR says so.
 on:
@@ -26,6 +27,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install pinned toolchain (rust-toolchain.toml)
@@ -54,13 +56,15 @@ jobs:
           git commit -m "models: retrain rift ai on the $(date -u +%Y-%m-%d) feeds"
           git push origin "$branch"
           {
-            echo "Rift AI retrained on today's feeds by the monthly workflow; it passed the gate and \`cargo test -p rift-ffi ai::\`."
+            echo "Rift AI retrained on today's feeds by the monthly workflow; it passed the gate and \`cargo test -p rift-ffi ai::\`. Merges itself when CI passes."
             echo
             echo '```'
             cat "$RUNNER_TEMP/gate.txt"
             echo '```'
             [ -s "$RUNNER_TEMP/prepared/github-platforms.txt" ] || echo "Trained without the GitHub sample of hosting-platform sites (no RIFT_SEARCH_TOKEN)."
             echo
-            echo "Before merging: check addresses with \`cargo run --release -p rift-ffi --example ai_probe -- <addresses>\`, and update docs/reports/rift-ai.md and url-model-notice.txt (dates, counts)."
+            echo "docs/reports/rift-ai.md and url-model-notice.txt keep the figures of the last hand-checked training; the gate's figures above are this model's."
           } > "$RUNNER_TEMP/body.md"
           gh pr create --title "models: retrain rift ai ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/body.md"
+          gh pr merge --auto --squash "$branch"
+          gh workflow run ci.yml --ref "$branch"
