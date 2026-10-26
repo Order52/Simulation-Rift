@@ -114,6 +114,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.simulationrift.bridge.PageWatch
+import org.simulationrift.bridge.Rift
 import org.simulationrift.bridge.WindowGuard
 import org.simulationrift.core.EgressStats
 import org.simulationrift.core.LinkCheck
@@ -375,8 +376,18 @@ class MainActivity : ComponentActivity() {
                     is Core.State.Failed -> {
                         Text("Session cleanup failed", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
                         Text(state.message, modifier = Modifier.testTag("failure"))
-                        Text("No new session starts until cleanup succeeds.", style = MaterialTheme.typography.bodySmall)
+                        Text("No new session starts until cleanup succeeds. Check still works.", style = MaterialTheme.typography.bodySmall)
+                        if (AndroidBrowserDisposal.LAUNCH_BLOCKED in state.message) {
+                            OutlinedButton(
+                                onClick = {
+                                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${Rift.BROWSER_PACKAGE}")))
+                                },
+                                modifier = Modifier.testTag("browser-app-settings"),
+                            ) { Text("Open Rift Browser's settings") }
+                        }
                         Button(onClick = Core::retry) { Text("Retry cleanup") }
+                        // Checking a link needs no browser.
+                        AddressField(0, mayBrowse = false)
                     }
                     is Core.State.Active -> {
                         Row(verticalAlignment = Alignment.CenterVertically) {

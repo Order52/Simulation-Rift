@@ -245,24 +245,19 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
                         connected.completeExceptionally(IllegalStateException("no session interface"))
                     }
                 }
-                val bound = try {
-                    app.bindService(Intent().setComponent(Rift.SESSION_SERVICE), connection, Context.BIND_AUTO_CREATE)
-                } catch (e: SecurityException) {
-                    throw DisposalException.Failed("the browser app refused the controller: ${e.message}")
-                }
+                val bound = bind(app, connection) || wakeAndBind(app, connection)
                 if (!bound) {
-                    app.unbindService(connection)
                     val installed = try {
                         app.packageManager.getPackageInfo(Rift.BROWSER_PACKAGE, 0)
                         true
                     } catch (e: PackageManager.NameNotFoundException) {
                         false
                     }
-                    // Some phones (Huawei's app launch manager) refuse to start
-                    // an app for another one unless the user allows it.
+                    // Some phones refuse to start an app for another one, even
+                    // after its screen was opened, unless the user allows it.
                     throw DisposalException.Failed(
                         if (installed) {
-                            "the system would not start the browser app; allow Rift Browser to be launched by other apps (on Huawei: Settings, Battery, App launch)"
+                            "$LAUNCH_BLOCKED; ${launchSetting()}, then retry"
                         } else {
                             "the browser app is not installed"
                         },
@@ -275,6 +270,44 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
                     throw DisposalException.Failed("the browser's session service did not start: $e")
                 }
                 return Bound(binder, ISession.Stub.asInterface(binder), app, connection)
+            }
+
+            /** Binds; on false the connection is released. */
+            private fun bind(app: Context, connection: ServiceConnection): Boolean {
+                val bound = try {
+                    app.bindService(Intent().setComponent(Rift.SESSION_SERVICE), connection, Context.BIND_AUTO_CREATE)
+                } catch (e: SecurityException) {
+                    throw DisposalException.Failed("the browser app refused the controller: ${e.message}")
+                }
+                if (!bound) app.unbindService(connection)
+                return bound
+            }
+
+            /**
+             * The system would not start the browser app for a binding (some
+             * phones' launch managers): opens its WakeActivity, which these
+             * phones allow from the app in front, and binds again while its
+             * process starts. The wipe and the inventory are unchanged.
+             */
+            private fun wakeAndBind(app: Context, connection: ServiceConnection): Boolean {
+                try {
+                    app.startActivity(
+                        Intent().setComponent(Rift.WAKE_ACTIVITY)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION),
+                    )
+                } catch (e: RuntimeException) {
+                    // Not found (an older browser without it), refused, or blocked from the background.
+                    Log.w(TAG, "could not open the browser's wake screen: $e")
+                    return false
+                }
+                repeat(WAKE_BIND_ATTEMPTS) {
+                    Thread.sleep(WAKE_BIND_PAUSE_MS)
+                    if (bind(app, connection)) {
+                        Log.i(TAG, "bound to the browser after opening its wake screen")
+                        return true
+                    }
+                }
+                return false
             }
         }
     }
@@ -296,6 +329,21 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
     }
 
     companion object {
+        /** The start of the failure the UI offers the browser's app settings for. */
+        const val LAUNCH_BLOCKED = "the system would not start the browser app"
+
+        /** Where this phone's maker keeps the setting that lets Rift start Rift Browser. */
+        fun launchSetting(): String = when (Build.MANUFACTURER.lowercase()) {
+            "huawei", "honor" -> "on this phone, open Settings, Battery, App launch, set Rift Browser to Manage manually and allow Secondary launch"
+            "xiaomi", "redmi", "poco" -> "on this phone, turn on Autostart in Rift Browser's app settings"
+            "oppo", "realme", "oneplus" -> "on this phone, allow Auto launch and launch by other apps in Rift Browser's app settings"
+            "vivo", "iqoo" -> "on this phone, allow Autostart for Rift Browser (i Manager, App manager, Autostart)"
+            "samsung" -> "on this phone, take Rift Browser out of Sleeping and Deep sleeping apps (Settings, Battery, Background usage limits)"
+            else -> "allow Rift Browser to start in the background or be launched by other apps, in its app settings"
+        }
+
+        private const val WAKE_BIND_ATTEMPTS = 10
+        private const val WAKE_BIND_PAUSE_MS = 300L
         private const val WIPE_TIMEOUT_MS = 10_000L
         private const val CALL_TIMEOUT_MS = 10_000L
 

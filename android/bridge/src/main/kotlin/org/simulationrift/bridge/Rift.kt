@@ -20,6 +20,8 @@ object Rift {
 
     val BROWSER_ACTIVITY = ComponentName(BROWSER_PACKAGE, "$BROWSER_PACKAGE.BrowserActivity")
     val SESSION_SERVICE = ComponentName(BROWSER_PACKAGE, "$BROWSER_PACKAGE.SessionService")
+    /** Starts the browser's default process where the system will not start it for a binding. */
+    val WAKE_ACTIVITY = ComponentName(BROWSER_PACKAGE, "$BROWSER_PACKAGE.WakeActivity")
     val CORE_SERVICE = ComponentName(CONTROLLER_PACKAGE, "$CONTROLLER_PACKAGE.CoreService")
 
     /** The browser's WebView process: the one an engine escape reaches (§8.3). */

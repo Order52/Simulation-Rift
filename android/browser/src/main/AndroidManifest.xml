@@ -46,6 +46,17 @@
             android:permission="org.simulationrift.permission.RIFT"
             android:process=":web" />
 
+        <!-- Wakes the default process on phones that refuse to start an app
+             for another app's bindService (WakeActivity). No window. -->
+        <activity
+            android:name=".WakeActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:permission="org.simulationrift.permission.RIFT"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
         <!-- Inventory and system wipe for the controller (§15), in the default
              process, which never loads WebView. -->
         <service
