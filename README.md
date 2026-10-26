@@ -141,17 +141,38 @@ The full design, threat model and 14 invariants are in [docs/architecture.md](do
 
 ## Install
 
+### Recommended: automatic updates with Obtainium
+
+[Obtainium](https://obtainium.imranr.dev) installs apps from their GitHub releases and keeps them up to date. A new signed Rift release is published automatically each week when anything changed.
+
+1. Install Obtainium (from its [releases](https://github.com/ImranR98/Obtainium/releases) or F-Droid).
+2. In Obtainium, tap **Add App** and enter `https://github.com/Order52/Simulation-Rift`.
+3. Under **Filter APKs by regular expression**, enter `^rift-\d` (so it takes the app, not the optional browser file), then **Add** and **Install**.
+4. On first launch, Rift installs the sealed browser it carries. Android asks you to allow that. Later updates of Rift update the browser by themselves.
+
+### By hand
+
 1. Download **`rift-<version>.apk`** from the [latest release](https://github.com/Order52/Simulation-Rift/releases/latest).
 2. Check its SHA-256 against the one in the release notes.
 3. Open it on the phone (Android 11 or newer, arm64) and allow the install.
-4. On first launch, Rift installs the sealed browser it carries. Android asks you to allow that too.
 
 | File | Needed? |
 |---|---|
 | `rift-<version>.apk` | **Yes**: the app |
 | `rift-browser-<version>.apk` | **Optional**: the sealed browser on its own. Download it only if your phone blocks Rift from installing it (some Huawei phones do). Install it by hand, then open Rift. |
 
-Installing a newer release over an older one keeps your settings.
+Updates keep your settings. Every release is signed with the same certificate, SHA-256 `8b5952712e7ceda065f558e1de902e12b97027a3244181f8d0330fbc6a47ee8b`.
+
+### What updates itself
+
+| What | How often | How |
+|---|---|---|
+| Threat lists, filter lists, link-cleaning rules | Daily | In the app |
+| Android System WebView | As Google ships it | Play Store (Rift refuses one missing an exploited fix) |
+| The app and its browser | Weekly, when anything changed | Signed release, installed by Obtainium |
+| Exploited-WebView list | Weekly | From CISA's catalogue, merged when CI passes |
+| Rift AI (address model) | Monthly | Retrained on current feeds, merged if it passes its accuracy gate and CI |
+| Rust, Gradle and Actions dependencies | Weekly | Dependabot, versions at least 7 days old, merged when CI passes |
 
 ## Build from source
 

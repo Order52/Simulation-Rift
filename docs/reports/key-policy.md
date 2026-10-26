@@ -88,6 +88,15 @@ What to do when a key is lost or may be compromised. "Rotate" means the procedur
 
 **Retired keys and devices that never updated.** A device that has verified the new root ignores the retired keys (tested). A device that has not fetched since the rotation still trusts the old root. An attacker who holds the old keys **and** controls that device's view of the update server can keep the new root from it. App updates that embed the newest root close this for every device that updates the app.
 
+## The APK signing key
+
+Separate from the intelligence keys above: one RSA 4096 key signs both apps (`android/release.sh`), certificate SHA-256 `8b5952712e7ceda065f558e1de902e12b97027a3244181f8d0330fbc6a47ee8b`. Since 26 Oct 2026 the owner chose fully automatic weekly releases, so the key is also held by GitHub:
+
+- **Where.** The keystore (base64) and its password are secrets of the repository's `release` environment, which only `main` may deploy from (branch protection on). Only `.github/workflows/release.yml`'s build job reads them; it writes them to a mode 700 directory on the runner and deletes it after signing. Pull requests, Dependabot and forks cannot read them. The original stays offline with the owner.
+- **Guards.** `release.sh` refuses to make a key in CI (`RIFT_RELEASE_REQUIRE_KEY`) and refuses a build not signed with the certificate above (`RIFT_RELEASE_CERT`). A release is built only from a tree CI has passed.
+- **The risk this takes.** Anyone who controls the owner's GitHub account, or can change `release.yml` on `main`, can sign an update that installs over Rift by itself (through Obtainium). The account needs two-factor authentication with a passkey or security key. A per-holder, offline signing ceremony like the one above would remove this risk and the automation with it.
+- **If the account or the key is compromised.** Delete the two secrets and the `release` environment, delete any release you did not make, and tell users through the repository. A leaked APK key cannot be revoked: users would have to uninstall and install an app signed with a new key.
+
 ## What is not covered
 
 - **No production keys exist.** Nothing here is a ceremony that was performed. The tests use keys made for each test.

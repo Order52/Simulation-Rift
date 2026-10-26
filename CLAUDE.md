@@ -28,6 +28,8 @@ sh android/release.sh          # signed arm64 release APK (key kept outside the 
 cd android && ./gradlew :app:testDebugUnitTest --tests '*IntelImportTest'   # one JVM unit test
 ```
 
+Releases are automatic (`.github/workflows/release.yml`, weekly, from a tree CI passed; version from the last tag, signing key in the `release` environment); `release.sh` by hand still works. Dependabot, `kev.yml` and `retrain.yml` open pull requests that merge themselves when the required CI checks pass.
+
 `build.sh` must run before Gradle on a fresh checkout: the Kotlin bindings (`app/build/generated-rift`) and the demo threat database (`app/build/generated-intel`) are generated there, not checked in. `run-tests.sh` starts the fixture web server (`android/fixtures/server.py`, pages in `fixtures/web/`), installs all APKs, runs `SecurityTest` by instrumentation, then host-driven tests that need `adb root` (a debuggable emulator image). `RIFT_HOST_ONLY=1` skips the instrumented tests; `RIFT_FAULT_ONLY=1` runs only the fault rounds. To run one instrumented test after installing: `adb shell am instrument -w -e class org.simulationrift.app.SecurityTest#<method> org.simulationrift.app.test/androidx.test.runner.AndroidJUnitRunner`. Instrumented test names carry the §23 test ID (`s01_…`, `n1_…`). x86_64 emulators (CI: API 33, 34) can't run on Apple Silicon.
 
 ## Architecture
