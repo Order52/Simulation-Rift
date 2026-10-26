@@ -9,7 +9,10 @@ month.
 - The AUC is at most 0.005 lower.
 - The share of never-seen Phishing.Database pages at High is at most 3
   points lower.
-- Scoring stays within §16's budget: p50 under 5 µs on the training machine.
+- Scoring stays within §16's budget: p50 under 5 µs on the training machine,
+  or, when the shipped model was measured on the same machine ("champion"),
+  at most a quarter slower than it (CI's machines are slower than the one
+  the budget was set on, and slower for the shipped model too).
 
 When the new report also measured the shipped model on the same test sites
 ("champion", rift-train --champion), the two are compared like for like,
@@ -48,8 +51,13 @@ for name, ref in references:
     if caught_new is None or (caught_ref is not None and caught_new < caught_ref - 0.03):
         problems.append(f"never-seen Phishing.Database pages at High: {caught_new}, against the {name} {caught_ref:.2%}")
 auc_old = old["auc_trained_sources_address_view"]
-if new["scoring_microseconds_on_this_machine"]["p50"] >= 5:
-    problems.append(f"scoring p50 {new['scoring_microseconds_on_this_machine']['p50']} µs")
+p50 = new["scoring_microseconds_on_this_machine"]["p50"]
+champion_p50 = new.get("champion", {}).get("scoring_microseconds_on_this_machine", {}).get("p50")
+if champion_p50 is not None:
+    if p50 > champion_p50 * 1.25:
+        problems.append(f"scoring p50 {p50} µs, against the shipped model's {champion_p50} µs on this machine")
+elif p50 >= 5:
+    problems.append(f"scoring p50 {p50} µs")
 
 champion = new.get("champion")
 if champion:
