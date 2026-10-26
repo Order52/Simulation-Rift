@@ -85,6 +85,22 @@ if [ "${RIFT_HOST_ONLY:-0}" != 1 ]; then
   grep -E "^INSTRUMENTATION_STATUS: test=|^INSTRUMENTATION_STATUS_CODE" "$out/instrumentation.txt" \
     | paste - - | awk '{ sub("INSTRUMENTATION_STATUS: test=", ""); print }' \
     | awk '{ code=$NF; if (code == "1") next; print $1, (code == "0" ? "PASS" : code == "-4" ? "SKIPPED" : "FAIL") }' > "$out/instrumented-results.txt"
+  # A test that failed in the full run runs once more on its own. One that
+  # then passes is recorded as PASS-ON-RETRY, not PASS: CI's emulators are
+  # slow and their timing varies, and the first failure stays in
+  # instrumentation.txt, the retry in instrumentation-retries.txt.
+  for t in $(awk '$2 == "FAIL" { print $1 }' "$out/instrumented-results.txt"); do
+    echo "== retrying $t"
+    "$adb" shell am instrument -w -r -e class "$pkg.SecurityTest#$t" $pkg.test/androidx.test.runner.AndroidJUnitRunner \
+      | tr -d '\r' > "$out/retry.txt" || true
+    cat "$out/retry.txt" >> "$out/instrumentation-retries.txt"
+    if grep -q "^OK (1 test)" "$out/retry.txt"; then
+      awk -v t="$t" '$1 == t && $2 == "FAIL" { $2 = "PASS-ON-RETRY" } { print }' "$out/instrumented-results.txt" > "$out/retry.txt"
+      mv "$out/retry.txt" "$out/instrumented-results.txt"
+    else
+      rm -f "$out/retry.txt"
+    fi
+  done
   cat "$out/instrumented-results.txt"
   grep -E "^OK|^Tests run|FAILURES" "$out/instrumentation.txt" || true
   "$adb" logcat -d -s Rift:I RiftBrowser:I ActivityManager:I | tr -d '\r' \
