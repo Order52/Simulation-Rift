@@ -1,0 +1,28 @@
+<!-- Rift's launcher icon (android/bridge/src/main/res/drawable/rift_icon_*.xml) as SVG, for the README. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1E1450"/>
+      <stop offset="1" stop-color="#5B3FD9"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="25" y1="17" x2="83" y2="91" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCD3FF"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="54" y1="17" x2="54" y2="91" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7DF9E4"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <clipPath id="clip">
+      <path d="M54,17L83,27V51C83,70 70.5,84 54,91C37.5,84 25,70 25,51V27Z"/>
+    </clipPath>
+  </defs>
+  <rect width="108" height="108" rx="24" fill="url(#bg)"/>
+  <g transform="translate(54 54) scale(0.7) translate(-54 -54)">
+    <path d="M54,17L83,27V51C83,70 70.5,84 54,91C37.5,84 25,70 25,51V27Z" fill="url(#shield)"/>
+    <g clip-path="url(#clip)" fill="none" stroke-linejoin="miter">
+      <path d="M57,15L48,40L60,52L50,93" stroke="#2A1C70" stroke-width="9"/>
+      <path d="M57,15L48,40L60,52L50,93" stroke="url(#glow)" stroke-width="3.5"/>
+    </g>
+  </g>
+</svg>
