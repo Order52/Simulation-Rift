@@ -32,7 +32,7 @@ Open any link, and any image or PDF, without letting it near your phone. Rift is
 
 ## Install
 
-Download `rift-<version>.apk` (arm64) from [Releases](https://github.com/Order52/Simulation-Rift/releases) and check its SHA-256 against the one in the release notes. Open it on the phone (Android 11 or newer, arm64) and allow the install. On first launch Rift installs the sealed browser it carries; Android asks you to allow that too. Installing a newer release over an older one keeps your settings.
+Download `rift-<version>.apk` (arm64) from [Releases](https://github.com/Order52/Simulation-Rift/releases) and check its SHA-256 against the one in the release notes. Open it on the phone (Android 11 or newer, arm64) and allow the install. On first launch Rift installs the sealed browser it carries; Android asks you to allow that too. The release also offers that browser on its own, `rift-browser-<version>.apk`, which is **optional**: download it only if your phone blocks Rift from installing it (some Huawei phones do), install it by hand, then open Rift. Installing a newer release over an older one keeps your settings.
 
 ## Build from source
 
