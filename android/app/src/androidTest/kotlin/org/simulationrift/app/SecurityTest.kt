@@ -443,7 +443,7 @@ class SecurityTest {
         try {
             // The tools are below the verdict: on a small screen, below the fold.
             scrollHomeTo(By.res("home-address"), "address field").text = wrapped
-            (awaitFresh { device.findObject(By.res("check").enabled(true)) } ?: throw AssertionError("check button")).click()
+            scrollHomeTo(By.res("check").enabled(true), "check button").click()
             assertNotNull(awaitFresh { device.findObject(By.res("check-title")) })
             val unwrapped = scrollHomeTo(By.res("tools-clean-unwrapped"), "unwrapped address")
             assertEquals("https://news.example/story?utm_source=x&id=4", unwrapped.text)
@@ -457,7 +457,7 @@ class SecurityTest {
 
             // Quick fixes: plain HTTP and a query.
             scrollHomeTo(By.res("home-address"), "address field").text = "http://example.org/a?x=1"
-            (awaitFresh { device.findObject(By.res("check").enabled(true)) } ?: throw AssertionError("check button")).click()
+            scrollHomeTo(By.res("check").enabled(true), "check button").click()
             assertNotNull(awaitFresh { device.findObject(By.res("check-title")) })
             scrollHomeTo(By.res("tools-https"), "use https")
             scrollHomeTo(By.res("tools-no-query"), "remove the query").click()
