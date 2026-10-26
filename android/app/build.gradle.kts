@@ -118,7 +118,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     // The controller never depends on WebView (§8.4): only the browser app does.
     implementation(project(":bridge"))
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     // UniFFI's Kotlin bindings call the Rust library through JNA.
     implementation("net.java.dev.jna:jna:5.19.1@aar")
     // Extra isolation (§8.9), off unless the user turns it on: Shizuku or Sui
@@ -128,5 +128,5 @@ dependencies {
 
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
 }
