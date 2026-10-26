@@ -647,6 +647,8 @@ class SecurityTest {
      */
     @Test
     fun v5_threatListsAndHistory() {
+        // Run on its own (run-tests.sh's retry), the home screen may still be starting.
+        activeGeneration()
         ThreatLists.install("hagezi-tif", "listed-dangerous.example\ndocs.google.com\n")
         ThreatLists.install("stevenblack", "0.0.0.0 ads.listed.example\n")
         awaitCondition("the lists are loaded", UI_TIMEOUT_MS) {
@@ -662,8 +664,9 @@ class SecurityTest {
             scrollHomeTo(By.res("home-address"), "address field").text = "https://login.listed-dangerous.example/verify"
             (awaitFresh { device.findObject(By.res("check").enabled(true)) } ?: throw AssertionError("check button")).click()
             assertEquals("Listed as dangerous", awaitFresh { device.findObject(By.res("check-title")) }?.text)
-            // Only read, so where it is on screen does not matter; scrolled to only when it is not there.
-            val named = awaitFresh { device.findObject(By.res("check-lists")) } ?: scrollHomeTo(By.res("check-lists"), "the lists line")
+            // The summary at the top of the verdict names the list: no scrolling (on CI's API 33 the
+            // column sometimes did not move, and the lists line below stayed off screen).
+            val named = awaitFresh { device.findObject(By.res("check-summary")) } ?: throw AssertionError("the verdict's summary")
             assertTrue(named.text, named.text.contains("HaGeZi Threat Intelligence Feeds"))
             screenshot("v5-listed")
             assertTrue("nothing kept while off", CheckHistory.state.value.entries.isEmpty())
@@ -1350,7 +1353,12 @@ class SecurityTest {
         try {
             ContentFilter.setEnabled(true)
             ContentFilter.setCustom("! test rules\n/ads/banner.js\nlocalhost##.ad-banner\n###sign-in-popup\n")
-            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) { ContentFilter.state.value.ready && ContentFilter.active() }
+            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) {
+                // Ready alone may still describe the rules before these (a retry run on its own blocked 2 of 100).
+                ContentFilter.state.value.ready && ContentFilter.active() &&
+                    ContentFilter.blocks("https://ads0.example/x.js", "https://news.example/", "script") &&
+                    ContentFilter.blocks("https://ads99.example/x.js", "https://news.example/", "script")
+            }
             val blockedBefore = ContentFilter.state.value.blocked
             val on = visit("f1", "/filters.html")
             assertEquals("the ad script", "BLOCKED", on.getString("ad_script"))
@@ -1501,10 +1509,11 @@ class SecurityTest {
             assertEquals("the generated ad hosts are blocked", 100, blocked)
             // Android runs every debuggable app with CheckJNI, which makes each crossing of the JNA
             // bridge cost hundreds of µs on an emulator. A check crosses about five times (the call
-            // and one buffer per string), so there it may cost at most eight empty calls.
+            // and one buffer per string), so there it may cost at most eight empty calls, or less
+            // than a release build's limit (an empty call can be so quick that eight are less).
             val debuggable = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
             if (debuggable) {
-                assertTrue("a check took $each us on average, an empty call $empty us", each <= 8 * maxOf(empty, 1))
+                assertTrue("a check took $each us on average, an empty call $empty us", each < 1000 || each <= 8 * maxOf(empty, 1))
             } else {
                 assertTrue("a check took $each us on average", each < 1000)
             }
