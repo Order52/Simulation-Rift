@@ -5,7 +5,9 @@
 //! combination may be called. There is no "safe" status: the best an object
 //! can get is "not flagged" by the named checks, with their coverage.
 //!
-//! Verdicts are cached under `(object SHA-256, engine, pack digest, policy)`.
+//! Verdicts are cached under `(object SHA-256, engine, pack digest, policy,
+//! type mismatch)`: the last because the same bytes under another name can
+//! need a type finding.
 //! Changed bytes are a new object (S11), and a new pack or engine is a new
 //! key (S22), so an old conclusion is never presented as current. It stays
 //! available as history.
@@ -24,6 +26,9 @@ pub struct CacheKey {
     /// `None` when no verified pack was installed.
     pub pack: Option<PackDigest>,
     pub policy: u32,
+    /// The name's part of the verdict: the same bytes under a name that
+    /// claims another type need their own (internal review, Oct 2026).
+    pub type_mismatch: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -223,6 +228,7 @@ pub fn assess(evidence: &Evidence<'_>) -> Verdict {
             engine: evidence.engine.to_owned(),
             pack: evidence.pack.map(|p| p.digest),
             policy: POLICY_VERSION,
+            type_mismatch: evidence.type_mismatch.clone(),
         },
         snapshot: evidence.pack.map(|p| p.metadata.snapshot.clone()),
         demo: evidence.pack.is_some_and(|p| p.metadata.demo),
@@ -239,6 +245,12 @@ pub fn type_mismatch(display_name: &str, content: &[u8]) -> Option<(String, Stri
         "a Windows executable"
     } else if content.starts_with(b"\x7fELF") {
         "a Linux or Android executable"
+    } else if content.starts_with(b"dex\n") {
+        "Android app code"
+    } else if content.starts_with(b"PK\x03\x04")
+        && content.windows(19).any(|w| w == b"AndroidManifest.xml")
+    {
+        "an Android app"
     } else if [
         b"\xfe\xed\xfa\xce",
         b"\xfe\xed\xfa\xcf",
@@ -285,9 +297,15 @@ impl VerdictCache {
         self.entries.get(key)
     }
 
-    /// Stores a finished verdict. Pending ones are not conclusions and are not kept.
+    /// Stores a finished verdict. Pending ones are not conclusions, and
+    /// ones a worker failure or timeout left short may pass on a rescan
+    /// (§12.1), so neither is kept.
     pub fn insert(&mut self, verdict: Verdict) {
-        if verdict.status == Status::Pending {
+        let transient = verdict
+            .gaps
+            .iter()
+            .any(|(_, gap)| matches!(gap, Gap::Timeout | Gap::Worker(_)));
+        if verdict.status == Status::Pending || transient {
             return;
         }
         let key = verdict.key.clone();
@@ -434,6 +452,18 @@ mod tests {
     }
 
     #[test]
+    fn the_same_bytes_under_a_misleading_name_are_not_served_from_the_cache() {
+        let pack = pack();
+        let mut cache = VerdictCache::new(16);
+        cache.insert(assess(&evidence(OTHER, Some(&pack), clean())));
+        let mut renamed = evidence(OTHER, Some(&pack), clean());
+        renamed.type_mismatch = Some(("pdf".into(), "a Windows executable".into()));
+        let renamed = assess(&renamed);
+        assert!(cache.current(&renamed.key).is_none());
+        assert!(renamed.findings.iter().any(|f| f.id == "type-mismatch"));
+    }
+
+    #[test]
     fn s11_changed_bytes_do_not_reuse_a_verdict() {
         let pack = pack();
         let mut cache = VerdictCache::new(16);
@@ -480,6 +510,21 @@ mod tests {
         assert!(type_mismatch("photo.jpg", b"\x7fELF\x02").is_some());
         assert!(type_mismatch("notes.txt", b"\xcf\xfa\xed\xfe").is_some());
         assert_eq!(type_mismatch("setup.exe", b"MZ"), None);
+        assert!(type_mismatch("invoice.pdf", b"dex\n035\0").is_some());
+        assert!(
+            type_mismatch(
+                "photo.jpg",
+                b"PK\x03\x04\x14\0\0\0\x08\0AndroidManifest.xml"
+            )
+            .is_some()
+        );
+        assert_eq!(
+            type_mismatch(
+                "report.docx",
+                b"PK\x03\x04\x14\0\0\0\x08\0[Content_Types].xml"
+            ),
+            None
+        );
         assert_eq!(type_mismatch("invoice.pdf", b"%PDF-1.7"), None);
         assert_eq!(type_mismatch("no-extension", b"MZ"), None);
     }
@@ -490,6 +535,12 @@ mod tests {
         let mut cache = VerdictCache::new(2);
         cache.insert(assess(&evidence(OTHER, Some(&pack), RuleScan::Pending)));
         assert!(cache.is_empty());
+        cache.insert(assess(&evidence(
+            OTHER,
+            Some(&pack),
+            RuleScan::Failed(Gap::Timeout),
+        )));
+        assert!(cache.is_empty(), "a timed-out scan may pass on a rescan");
         for object in [[3; 32], [4; 32], [5; 32]] {
             cache.insert(assess(&evidence(object, Some(&pack), clean())));
         }

@@ -96,12 +96,12 @@ impl Sessions {
             .current(generation)
             .ok_or(EgressFailure::NoActiveSession)?;
         if extras.egress.is_none() {
-            let started = Egress::start(
-                policy(&extras.local_hosts),
-                screen(intel, ai, Arc::clone(&extras.inspected)),
-            )
-            .map_err(|e| EgressFailure::Start {
-                detail: e.to_string(),
+            let screen = screen(intel, ai, Arc::clone(&extras.inspected));
+            extras.screen.clone_from(&screen);
+            let started = Egress::start(policy(&extras.local_hosts), screen).map_err(|e| {
+                EgressFailure::Start {
+                    detail: e.to_string(),
+                }
             })?;
             extras.egress = Some(Proxy::Loopback(started));
         }

@@ -195,6 +195,8 @@ impl CheckedTransport {
                 connect_timeout: Duration::from_secs(20),
                 response_timeout: Duration::from_secs(30),
                 total_timeout: Duration::from_secs(5 * 60),
+                // Signed metadata decides what is accepted, not the database it delivers.
+                screen: None,
             },
         }
     }

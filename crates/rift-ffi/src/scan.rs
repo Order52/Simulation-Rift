@@ -598,6 +598,7 @@ impl Sessions {
             engine: SCAN_ENGINE.to_owned(),
             pack: Some(pack.digest),
             policy: verdicts::POLICY_VERSION,
+            type_mismatch: type_mismatch.clone(),
         };
         if let Some(verdict) = self.cached(generation, &key)? {
             return Ok(ScanStart::Done {

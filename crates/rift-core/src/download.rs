@@ -30,9 +30,11 @@ use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver
 use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 use url::Url;
 
+use crate::egress::Screen;
 use crate::seal::SealError;
 use crate::store::{ObjectStore, StoredObject};
 use crate::transfer::{DestinationError, check_destination, display_name};
+use crate::urlcanon;
 
 const CHUNK: usize = 64 * 1024;
 const MAX_CONTENT_TYPE_CHARS: usize = 100;
@@ -50,7 +52,7 @@ pub struct DownloadRequest<'a> {
     pub engine_disposition: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DownloadPolicy {
     /// Host names the user allowed, for this session, to resolve to local or
     /// private addresses (INV-13's explicit exception). Compared exactly,
@@ -61,6 +63,9 @@ pub struct DownloadPolicy {
     pub connect_timeout: Duration,
     pub response_timeout: Duration,
     pub total_timeout: Duration,
+    /// The threat database's view, as the proxy uses it: a hop whose address
+    /// it lists is not fetched (internal review, Oct 2026).
+    pub screen: Option<Arc<dyn Screen>>,
 }
 
 impl Default for DownloadPolicy {
@@ -72,6 +77,7 @@ impl Default for DownloadPolicy {
             connect_timeout: Duration::from_secs(20),
             response_timeout: Duration::from_secs(30),
             total_timeout: Duration::from_secs(15 * 60),
+            screen: None,
         }
     }
 }
@@ -103,6 +109,8 @@ pub enum DownloadError {
     TooManyRedirects(usize),
     #[error("a redirect had no valid destination")]
     BadRedirect,
+    #[error("the address is listed as malicious ({0})")]
+    Listed(String),
     /// For example 405 when a POST-generated download is fetched again with
     /// GET (PoC A3): such downloads cannot be captured safely.
     #[error("the server answered HTTP {0} when Rift fetched the file")]
@@ -242,6 +250,13 @@ fn follow(
     for redirects in 0..=policy.max_redirects {
         if cancel.load(Ordering::SeqCst) {
             return Err(DownloadError::Cancelled);
+        }
+        if let Some(screen) = &policy.screen {
+            let canonical = urlcanon::canonicalize(url.as_str().as_bytes())
+                .map_err(|_| DownloadError::InvalidUrl)?;
+            if let Some(listed) = screen.listed(&canonical) {
+                return Err(DownloadError::Listed(listed));
+            }
         }
         let response = headers(agent.get(url.as_str()), &url)
             .call()
@@ -948,6 +963,39 @@ mod tests {
             Some("plain.bin")
         );
         assert_eq!(filename_from_disposition("inline"), None);
+    }
+
+    /// Lists every address whose path is `/file`.
+    #[derive(Debug)]
+    struct ListsFile;
+
+    impl Screen for ListsFile {
+        fn listed(&self, url: &urlcanon::CanonicalUrl) -> Option<String> {
+            (url.path() == "/file").then(|| "localhost/file".to_owned())
+        }
+    }
+
+    #[test]
+    fn a_hop_the_database_lists_is_not_fetched() {
+        let server = Server::start(routes);
+        let mut screened = policy(&["localhost"]);
+        screened.screen = Some(Arc::new(ListsFile));
+        let no = AtomicBool::new(false);
+        for path in ["/file", "/to-file"] {
+            assert!(
+                matches!(
+                    fetch(
+                        &server.url("localhost", path),
+                        &screened,
+                        "rift-test",
+                        1024,
+                        &no
+                    ),
+                    Err(DownloadError::Listed(_))
+                ),
+                "{path}"
+            );
+        }
     }
 
     #[test]

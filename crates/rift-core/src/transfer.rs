@@ -21,7 +21,11 @@ pub enum DestinationError {
 pub fn check_destination(addr: IpAddr) -> Result<(), DestinationError> {
     let public = match addr {
         IpAddr::V4(v4) => is_public_v4(v4),
-        IpAddr::V6(v6) => match v6.to_ipv4_mapped().or_else(|| nat64_well_known(v6)) {
+        IpAddr::V6(v6) => match v6
+            .to_ipv4_mapped()
+            .or_else(|| nat64_well_known(v6))
+            .or_else(|| six_to_four(v6))
+        {
             Some(carried) => is_public_v4(carried),
             None => is_public_v6(v6),
         },
@@ -48,6 +52,17 @@ fn nat64_well_known(ip: Ipv6Addr) -> Option<Ipv4Addr> {
     Some(Ipv4Addr::new(w, x, y, z))
 }
 
+/// The IPv4 address in a 6to4 address (`2002:wwxx:yyzz::/48`), which a
+/// 6to4 relay sends on to: judged by it, like the forms above.
+fn six_to_four(ip: Ipv6Addr) -> Option<Ipv4Addr> {
+    let [first, ..] = ip.segments();
+    if first != 0x2002 {
+        return None;
+    }
+    let [_, _, w, x, y, z, ..] = ip.octets();
+    Some(Ipv4Addr::new(w, x, y, z))
+}
+
 fn is_public_v4(ip: Ipv4Addr) -> bool {
     let [a, b, ..] = ip.octets();
     !(ip.is_unspecified()
@@ -65,8 +80,12 @@ fn is_public_v4(ip: Ipv4Addr) -> bool {
 }
 
 fn is_public_v6(ip: Ipv6Addr) -> bool {
-    let first = ip.segments()[0];
+    let [first, second, third, fourth, fifth, ..] = ip.segments();
     !(ip.is_unspecified()
+        || [first, second, third, fourth, fifth] == [0, 0, 0, 0, 0] // IPv4-compatible ::/96 (and ::/80)
+        || [first, second, third, fourth, fifth] == [0, 0, 0, 0, 0xffff] // SIIT ::ffff:0:0/96
+        || [first, second, third, fourth] == [0x0100, 0, 0, 0] // discard 100::/64
+        || (first == 0x2001 && second == 0) // Teredo 2001::/32
         || ip.is_loopback()
         || ip.is_multicast()
         || (first & 0xfe00) == 0xfc00 // unique local fc00::/7
@@ -86,6 +105,9 @@ const MAX_KEPT_EXTENSION_CHARS: usize = 16;
 pub fn display_name(supplied: &str) -> String {
     let last = supplied.rsplit(['/', '\\']).next().unwrap_or_default();
     let cleaned: String = last.chars().filter(|&c| !is_hidden_or_control(c)).collect();
+    // Runs of spaces could push the real extension out of sight in a
+    // wrapped, shortened line (internal review, Oct 2026).
+    let cleaned = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
     let trimmed = cleaned.trim_matches(|c: char| c.is_whitespace() || c == '.');
     if trimmed.is_empty() {
         "download".to_owned()
@@ -203,6 +225,12 @@ mod tests {
     use crate::seal::{SealKey, open};
 
     #[test]
+    fn runs_of_spaces_cannot_hide_the_extension() {
+        let padded = format!("photo.jpg{}.apk", " ".repeat(90));
+        assert_eq!(display_name(&padded), "photo.jpg .apk");
+    }
+
+    #[test]
     fn non_public_destinations_are_refused() {
         for blocked in [
             "127.0.0.1",
@@ -230,6 +258,12 @@ mod tests {
             "64:ff9b::a9fe:a9fe",   // of 169.254.169.254
             "64:ff9b:1::6814:179a", // RFC 8215 local-use prefix
             "2001:db8::1",
+            "::7f00:1",            // IPv4-compatible 127.0.0.1
+            "::ffff:0:c0a8:101",   // SIIT 192.168.1.1
+            "2002:c0a8:101::1",    // 6to4 of 192.168.1.1
+            "2002:7f00:1::",       // 6to4 of 127.0.0.1
+            "100::1",              // discard
+            "2001:0:4136:e378::1", // Teredo
         ] {
             let addr: IpAddr = blocked.parse().unwrap();
             assert!(
@@ -243,6 +277,7 @@ mod tests {
             "2606:4700:4700::1111",
             "::ffff:8.8.8.8",
             "64:ff9b::6814:179a", // DNS64's answer for 104.20.23.154
+            "2002:808:808::1",    // 6to4 of 8.8.8.8
         ] {
             let addr: IpAddr = allowed.parse().unwrap();
             assert!(

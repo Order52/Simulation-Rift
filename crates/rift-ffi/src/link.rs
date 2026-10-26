@@ -10,6 +10,7 @@ use std::time::Duration;
 use rift_core::clean::{self, Rules};
 use rift_core::download::{self, DownloadPolicy, TraceEnd};
 use rift_core::text::escape_for_display;
+use rift_core::trackers;
 
 use crate::{Intel, LinkCheck, Navigation, Navigator};
 
@@ -80,6 +81,58 @@ impl LinkCleaner {
             tracker_only: cleaned.tracker_only,
         }
     }
+}
+
+/// A tracking parameter found in a link (§10.14).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TrackingParam {
+    /// The parameter's name, escaped for display.
+    pub name: String,
+    pub who: String,
+    pub what: String,
+}
+
+/// The tracking parameters Rift knows in `address`'s query, explained.
+#[uniffi::export]
+pub fn link_tracking(address: String) -> Vec<TrackingParam> {
+    trackers::link_params(&address)
+        .into_iter()
+        .map(|(name, p)| TrackingParam {
+            name,
+            who: p.who.to_owned(),
+            what: p.what.to_owned(),
+        })
+        .collect()
+}
+
+/// `address` without the tracking parameters [`link_tracking`] names; None
+/// if it has none or is not a web address.
+#[uniffi::export]
+pub fn link_without_tracking(address: String) -> Option<String> {
+    trackers::link_without_tracking(&address)
+}
+
+/// A tracker a page used (§10.14), with what it does.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TrackerInfo {
+    pub name: String,
+    pub company: String,
+    /// "Analytics", "Advertising", "Session recording" or "Social network".
+    pub kind: String,
+    pub explanation: String,
+}
+
+/// The tracker Rift knows `host` (and `path`, for the few that need it) to
+/// be, if any.
+#[uniffi::export]
+pub fn tracker_for(host: String, path: String) -> Option<TrackerInfo> {
+    let tracker = trackers::tracker_for_url(&host, &path)?;
+    Some(TrackerInfo {
+        name: tracker.name.to_owned(),
+        company: tracker.company.to_owned(),
+        kind: tracker.kind.label().to_owned(),
+        explanation: tracker.kind.explain().to_owned(),
+    })
 }
 
 /// `address` without its query and fragment; None if it is not a web address.
@@ -201,6 +254,35 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
+
+    #[test]
+    fn trackers_in_a_link_are_explained_and_removed() {
+        let link = "https://shop.example/item?id=7&utm_source=news&fbclid=IwAR0x&gclid=Cj0K";
+        let names: Vec<String> = link_tracking(link.into())
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(names, vec!["utm_source", "fbclid", "gclid"]);
+        assert!(
+            link_tracking(link.into())
+                .iter()
+                .all(|p| !p.who.is_empty() && !p.what.is_empty())
+        );
+        assert_eq!(
+            link_without_tracking(link.into()).as_deref(),
+            Some("https://shop.example/item?id=7")
+        );
+        assert_eq!(
+            link_without_tracking("https://shop.example/item?id=7".into()),
+            None
+        );
+        let ga = tracker_for("region1.google-analytics.com".into(), String::new()).unwrap();
+        assert_eq!(
+            (ga.company.as_str(), ga.kind.as_str()),
+            ("Google", "Analytics")
+        );
+        assert!(tracker_for("example.com".into(), String::new()).is_none());
+    }
 
     const RULES: &str = r#"{"providers":{
         "globalRules":{"urlPattern":".*","rules":["(?:%3F)?utm(?:_[a-z_]*)?","evil.*"]},

@@ -41,7 +41,7 @@ use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream, T
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
@@ -55,6 +55,8 @@ pub const MAX_HEAD_BYTES: usize = 16 * 1024;
 const MAX_DENIALS: usize = 64;
 /// Distinct destinations kept in [`Egress::contacted`]; later ones are counted only.
 const MAX_CONTACTED: usize = 64;
+/// Connections that may wait for their head without the token (see [`Pending`]).
+const MAX_PENDING: usize = 64;
 const MAX_HOST_CHARS: usize = 253;
 const MAX_HEADERS: usize = 100;
 const THREAD_STACK: usize = 256 * 1024;
@@ -199,6 +201,8 @@ struct Shared {
     screen: Option<Arc<dyn Screen>>,
     stopped: AtomicBool,
     live: Mutex<HashMap<u64, TcpStream>>,
+    /// Connections that have not shown the token yet, oldest first.
+    pending: Mutex<VecDeque<(u64, TcpStream)>>,
     next_id: AtomicU64,
     denials: Mutex<VecDeque<Denial>>,
     /// Refusals recorded so far (the last [`Denial::seq`]); written under `denials`.
@@ -374,6 +378,7 @@ impl Shared {
             screen,
             stopped: AtomicBool::new(false),
             live: Mutex::new(HashMap::new()),
+            pending: Mutex::new(VecDeque::new()),
             next_id: AtomicU64::new(0),
             denials: Mutex::new(VecDeque::new()),
             recorded: AtomicU64::new(0),
@@ -476,6 +481,36 @@ impl Drop for Tracked<'_> {
     }
 }
 
+/// A connection that has not shown the token yet. At most [`MAX_PENDING`]
+/// are kept: a new one closes the oldest, so another app's slow or silent
+/// connections cannot keep the browser's out (the browser sends its head at
+/// once).
+struct Pending<'a> {
+    shared: &'a Shared,
+    id: u64,
+}
+
+impl<'a> Pending<'a> {
+    fn new(shared: &'a Shared, stream: &TcpStream) -> Option<Self> {
+        let clone = stream.try_clone().ok()?;
+        let id = shared.next_id.fetch_add(1, Ordering::Relaxed);
+        let mut pending = lock(&shared.pending);
+        while pending.len() >= MAX_PENDING {
+            if let Some((_, oldest)) = pending.pop_front() {
+                let _closed = oldest.shutdown(Shutdown::Both);
+            }
+        }
+        pending.push_back((id, clone));
+        Some(Self { shared, id })
+    }
+}
+
+impl Drop for Pending<'_> {
+    fn drop(&mut self) {
+        lock(&self.shared.pending).retain(|(id, _)| *id != self.id);
+    }
+}
+
 fn serve(shared: &Shared, mut client: TcpStream) {
     let policy = shared
         .policy
@@ -496,10 +531,11 @@ fn serve(shared: &Shared, mut client: TcpStream) {
         }
         return;
     }
-    if client.set_read_timeout(Some(policy.head_timeout)).is_err() {
+    let Some(pending) = Pending::new(shared, &client) else {
         return;
-    }
-    let (head, leftover) = match read_head(&mut client) {
+    };
+    let deadline = Instant::now().checked_add(policy.head_timeout);
+    let (head, leftover) = match read_head(&mut client, Vec::new(), deadline) {
         Ok(read) => read,
         Err(HeadReadError::TooLarge) => {
             let _sent = respond(
@@ -530,6 +566,14 @@ fn serve(shared: &Shared, mut client: TcpStream) {
         let _sent = client.write_all(challenge.as_bytes());
         return;
     }
+    drop(pending);
+    let body = match (&request.form, body_length(&request)) {
+        (Form::Absolute { .. }, Err((status, reason, text))) => {
+            let _sent = respond(&mut client, status, reason, text);
+            return;
+        }
+        (_, length) => length.unwrap_or(0),
+    };
     // Before resolving, so a listed name is not even looked up.
     match shared.screen.as_deref().map(|s| screen(s, &request)) {
         Some(Err(refusal)) => {
@@ -559,19 +603,60 @@ fn serve(shared: &Shared, mut client: TcpStream) {
             contacted.push(key);
         }
     }
-    let opening = match &request.form {
+    match &request.form {
         Form::Connect => {
             if client
                 .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-                .is_err()
+                .is_ok()
             {
-                return;
+                tunnel(client, upstream, leftover, policy.idle_timeout);
             }
-            Vec::new()
         }
-        Form::Absolute { origin_form } => forwarded_head(&request, origin_form),
+        Form::Absolute { origin_form } => {
+            let opening = forwarded_head(&request, origin_form);
+            forward_one(
+                client,
+                upstream,
+                opening,
+                leftover,
+                body,
+                policy.idle_timeout,
+            );
+        }
+    }
+}
+
+/// The length of a plain-HTTP request's body: its Content-Length, or 0.
+/// A body of any other framing (chunked) is refused, since only this
+/// request's own bytes may go on (see [`forward_one`]).
+fn body_length(request: &Request) -> Result<u64, (u16, &'static str, &'static str)> {
+    if request
+        .headers
+        .iter()
+        .any(|(name, _)| name == "transfer-encoding")
+    {
+        return Err((
+            411,
+            "Length Required",
+            "Rift's proxy needs a Content-Length.",
+        ));
+    }
+    let mut lengths = request
+        .headers
+        .iter()
+        .filter(|(name, _)| name == "content-length")
+        .map(|(_, value)| value.trim());
+    let Some(first) = lengths.next() else {
+        return Ok(0);
     };
-    tunnel(client, upstream, opening, leftover, policy.idle_timeout);
+    let bad = (400, "Bad Request", "The Content-Length is not valid.");
+    if lengths.any(|other| other != first)
+        || first.is_empty()
+        || !first.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err(bad);
+    }
+    first.parse().map_err(|_| bad)
 }
 
 fn authorized(auth: &TokenAuth, request: &Request) -> bool {
@@ -707,13 +792,7 @@ fn forwarded_head(request: &Request, origin_form: &str) -> Vec<u8> {
     head.into_bytes()
 }
 
-fn tunnel(
-    client: TcpStream,
-    upstream: TcpStream,
-    opening: Vec<u8>,
-    leftover: Vec<u8>,
-    idle: Duration,
-) {
+fn tunnel(client: TcpStream, upstream: TcpStream, leftover: Vec<u8>, idle: Duration) {
     let configured = [&client, &upstream]
         .iter()
         .all(|s| s.set_read_timeout(Some(idle)).is_ok() && s.set_write_timeout(Some(idle)).is_ok());
@@ -728,9 +807,7 @@ fn tunnel(
         .name("rift-egress-up".into())
         .stack_size(THREAD_STACK)
         .spawn(move || {
-            if upstream_write.write_all(&opening).is_ok()
-                && upstream_write.write_all(&leftover).is_ok()
-            {
+            if upstream_write.write_all(&leftover).is_ok() {
                 copy(&mut client_read, &mut upstream_write);
             }
             let _closed = upstream_write.shutdown(Shutdown::Write);
@@ -745,6 +822,106 @@ fn tunnel(
     if let Ok(handle) = started {
         let _joined = handle.join();
     }
+}
+
+/// Plain HTTP: one request per connection. Only this request's head and
+/// `body` bytes go to the server, and every head of its answer says
+/// `Connection: close`, so the browser sends no later request, with the
+/// proxy token and another site's cookies, down a connection to this
+/// request's server.
+fn forward_one(
+    client: TcpStream,
+    upstream: TcpStream,
+    opening: Vec<u8>,
+    mut leftover: Vec<u8>,
+    body: u64,
+    idle: Duration,
+) {
+    let configured = [&client, &upstream]
+        .iter()
+        .all(|s| s.set_read_timeout(Some(idle)).is_ok() && s.set_write_timeout(Some(idle)).is_ok());
+    if !configured {
+        return;
+    }
+    leftover.truncate(usize::try_from(body).unwrap_or(usize::MAX));
+    let rest = body.saturating_sub(leftover.len() as u64);
+    let (Ok(mut client_read), Ok(mut upstream_write)) = (client.try_clone(), upstream.try_clone())
+    else {
+        return;
+    };
+    let started = thread::Builder::new()
+        .name("rift-egress-up".into())
+        .stack_size(THREAD_STACK)
+        .spawn(move || {
+            if upstream_write.write_all(&opening).is_ok()
+                && upstream_write.write_all(&leftover).is_ok()
+            {
+                let _copied = io::copy(&mut (&mut client_read).take(rest), &mut upstream_write);
+            }
+        });
+    let mut upstream_read = upstream;
+    let mut client_write = client;
+    if started.is_ok() {
+        answer(&mut upstream_read, &mut client_write);
+    }
+    let _closed = client_write.shutdown(Shutdown::Both);
+    let _closed = upstream_read.shutdown(Shutdown::Both);
+    if let Ok(handle) = started {
+        let _joined = handle.join();
+    }
+}
+
+/// Passes on the server's answer with `Connection: close` in each head
+/// (interim 1xx heads included), then its body until the server closes.
+fn answer(upstream: &mut TcpStream, client: &mut TcpStream) {
+    let mut buffered = Vec::new();
+    loop {
+        let (head, leftover) = match read_head(upstream, buffered, None) {
+            Ok(read) => read,
+            Err(_) => {
+                let _sent = respond(
+                    client,
+                    502,
+                    "Bad Gateway",
+                    "The site's answer could not be read.",
+                );
+                return;
+            }
+        };
+        let interim = head.starts_with(b"HTTP/1.1 1") && !head.starts_with(b"HTTP/1.1 101");
+        if client.write_all(&closing_head(&head)).is_err() {
+            return;
+        }
+        if !interim {
+            if client.write_all(&leftover).is_ok() {
+                copy(upstream, client);
+            }
+            return;
+        }
+        buffered = leftover;
+    }
+}
+
+/// `head` without its connection headers, ending with `Connection: close`.
+fn closing_head(head: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(head.len().saturating_add(64));
+    for (i, line) in head.split(|&b| b == b'\n').enumerate() {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let name = line.split(|&b| b == b':').next().unwrap_or_default();
+        let name = String::from_utf8_lossy(name).trim().to_ascii_lowercase();
+        if i > 0
+            && matches!(
+                name.as_str(),
+                "connection" | "keep-alive" | "proxy-connection"
+            )
+        {
+            continue;
+        }
+        out.extend_from_slice(line);
+        out.extend_from_slice(b"\r\n");
+    }
+    out.extend_from_slice(b"Connection: close\r\nProxy-Connection: close\r\n\r\n");
+    out
 }
 
 /// Copies until end of stream, an error or the idle timeout.
@@ -776,10 +953,15 @@ enum HeadReadError {
     Io,
 }
 
-/// Reads up to the end of the head; returns the head (without the final
-/// blank line) and any bytes read past it (the start of a body or tunnel).
-fn read_head(stream: &mut TcpStream) -> Result<(Vec<u8>, Vec<u8>), HeadReadError> {
-    let mut buf = Vec::with_capacity(1024);
+/// Reads up to the end of the head, after the bytes already in `buf`;
+/// returns the head (without the final blank line) and any bytes read past
+/// it (the start of a body or tunnel). With a `deadline`, the whole head
+/// must arrive by then, however slowly it is sent.
+fn read_head(
+    stream: &mut TcpStream,
+    mut buf: Vec<u8>,
+    deadline: Option<Instant>,
+) -> Result<(Vec<u8>, Vec<u8>), HeadReadError> {
     let mut chunk = [0u8; 1024];
     loop {
         if let Some(end) = find_head_end(&buf) {
@@ -792,6 +974,15 @@ fn read_head(stream: &mut TcpStream) -> Result<(Vec<u8>, Vec<u8>), HeadReadError
         }
         if buf.len() > MAX_HEAD_BYTES {
             return Err(HeadReadError::TooLarge);
+        }
+        if let Some(deadline) = deadline {
+            let left = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|left| !left.is_zero())
+                .ok_or(HeadReadError::Io)?;
+            stream
+                .set_read_timeout(Some(left))
+                .map_err(|_| HeadReadError::Io)?;
         }
         let n = stream.read(&mut chunk).map_err(|_| HeadReadError::Io)?;
         if n == 0 {
@@ -1143,6 +1334,141 @@ mod tests {
         assert!(head.contains("accept: */*\r\n"), "{head}");
         assert!(head.contains("Connection: close\r\n"), "{head}");
         assert!(!head.to_ascii_lowercase().contains("proxy-"), "{head}");
+    }
+
+    /// A server that records everything it receives on one connection and
+    /// answers keep-alive, as a hostile site would.
+    fn keep_alive_upstream() -> (u16, std::sync::mpsc::Receiver<Vec<u8>>) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let mut got = Vec::new();
+            let mut buf = vec![0u8; 4096];
+            let mut answered = false;
+            while let Ok(n) = s.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                got.extend_from_slice(&buf[..n]);
+                if !answered {
+                    answered = true;
+                    s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\nKeep-Alive: timeout=60\r\n\r\nok")
+                        .unwrap();
+                }
+            }
+            tx.send(got).unwrap();
+        });
+        (port, rx)
+    }
+
+    /// Finding (internal review, Oct 2026): a second request on a
+    /// plain-HTTP connection went to the first request's server raw, with
+    /// the proxy token and another site's cookies.
+    #[test]
+    fn plain_http_carries_one_request_and_its_body_only() {
+        let p = proxy(&["localhost"]);
+        let (port, rx) = keep_alive_upstream();
+        let first = format!(
+            "POST http://localhost:{port}/form HTTP/1.1\r\nHost: localhost:{port}\r\n{}Content-Length: 3\r\n\r\nabc",
+            auth(&p)
+        );
+        let second = format!(
+            "GET http://192.168.1.1/admin HTTP/1.1\r\nHost: 192.168.1.1\r\n{}Cookie: other=site\r\n\r\n",
+            auth(&p)
+        );
+        let mut s = TcpStream::connect(("127.0.0.1", p.port())).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        s.write_all(first.as_bytes()).unwrap();
+        s.write_all(second.as_bytes()).unwrap();
+        let mut answer = Vec::new();
+        let _read = s.read_to_end(&mut answer);
+        let answer = String::from_utf8_lossy(&answer).to_ascii_lowercase();
+        assert!(answer.starts_with("http/1.1 200 ok\r\n"), "{answer}");
+        assert!(answer.contains("\r\nconnection: close\r\n"), "{answer}");
+        assert!(
+            answer.contains("\r\nproxy-connection: close\r\n"),
+            "{answer}"
+        );
+        assert!(!answer.contains("keep-alive"), "{answer}");
+        assert!(answer.ends_with("\r\n\r\nok"), "{answer}");
+        let got = String::from_utf8_lossy(&rx.recv_timeout(Duration::from_secs(10)).unwrap())
+            .into_owned();
+        assert!(got.starts_with("POST /form HTTP/1.1\r\n"), "{got}");
+        assert!(got.ends_with("\r\n\r\nabc"), "{got}");
+        assert!(
+            !got.contains("192.168.1.1") && !got.contains(p.token()) && !got.contains("other=site"),
+            "{got}"
+        );
+    }
+
+    #[test]
+    fn plain_http_bodies_of_unknown_length_are_refused() {
+        let p = proxy(&["localhost"]);
+        let (port, _rx) = upstream();
+        for framing in [
+            "Transfer-Encoding: chunked\r\n",
+            "Content-Length: 3\r\nContent-Length: 4\r\n",
+            "Content-Length: -1\r\n",
+        ] {
+            let (line, _) = ask(
+                &p,
+                &format!(
+                    "POST http://localhost:{port}/ HTTP/1.1\r\n{}{framing}\r\n",
+                    auth(&p)
+                ),
+            );
+            assert!(
+                line == "HTTP/1.1 411 Length Required" || line == "HTTP/1.1 400 Bad Request",
+                "{framing}: {line}"
+            );
+        }
+    }
+
+    /// Finding (internal review, Oct 2026): the head timeout was per read,
+    /// so a byte every few seconds held a slot for ever.
+    #[test]
+    fn a_head_sent_slowly_is_cut_off_at_the_head_timeout() {
+        let p = proxy(&[]);
+        let mut s = TcpStream::connect(("127.0.0.1", p.port())).unwrap();
+        let started = Instant::now();
+        let mut closed = false;
+        for _ in 0..20 {
+            if s.write_all(b"G").is_err() {
+                closed = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(500));
+        }
+        let mut rest = Vec::new();
+        closed = closed || s.read_to_end(&mut rest).is_ok();
+        assert!(closed);
+        assert!(
+            started.elapsed() < Duration::from_secs(9),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    /// Finding (internal review, Oct 2026): connections without the token
+    /// could take every slot, so the browser got only 503s.
+    #[test]
+    fn connections_without_the_token_cannot_keep_the_browser_out() {
+        let p = proxy(&["localhost"]);
+        let idle: Vec<TcpStream> = (0..MAX_PENDING * 3)
+            .map(|_| TcpStream::connect(("127.0.0.1", p.port())).unwrap())
+            .collect();
+        thread::sleep(Duration::from_millis(300));
+        let (port, rx) = upstream();
+        let (line, _) = ask(
+            &p,
+            &format!("GET http://localhost:{port}/ HTTP/1.1\r\n{}\r\n", auth(&p)),
+        );
+        assert_eq!(line, "HTTP/1.1 200 OK");
+        assert!(rx.recv_timeout(Duration::from_secs(5)).is_ok());
+        drop(idle);
     }
 
     #[test]

@@ -159,16 +159,18 @@ pub struct PageFact {
 
 #[uniffi::export]
 impl Navigator {
-    /// What a page at `url` asks for, and whether it names itself after a
-    /// protected brand on another site. The facts come from the page and
-    /// are bounded here; nothing is returned for an address that does not
-    /// canonicalize.
+    /// What a page at `url` asks for, whether it names itself after a
+    /// protected brand on another site, and what Rift AI's page model reads
+    /// in `counts` (rift_core::pagemodel::PageCounts as JSON; §16.1). The
+    /// facts come from the page and are bounded here; nothing is returned
+    /// for an address that does not canonicalize.
     pub fn assess_page(
         &self,
         url: String,
         names: String,
         password: bool,
         card: bool,
+        counts: String,
     ) -> Vec<PageFact> {
         let Ok(canonical) = rift_core::urlcanon::canonicalize(url.as_bytes()) else {
             return Vec::new();
@@ -178,15 +180,39 @@ impl Navigator {
             password,
             card,
         };
-        rift_core::page::assess(&canonical, &facts, &self.heuristics.protected_domains)
-            .iter()
-            .map(|flag| PageFact {
-                code: flag.code().to_owned(),
-                text: flag.explain(canonical.host()),
-                warn: flag.severity() == rift_core::heuristics::Severity::Warn,
-            })
-            .collect()
+        let mut found: Vec<PageFact> =
+            rift_core::page::assess(&canonical, &facts, &self.heuristics.protected_domains)
+                .iter()
+                .map(|flag| PageFact {
+                    code: flag.code().to_owned(),
+                    text: flag.explain(canonical.host()),
+                    warn: flag.severity() == rift_core::heuristics::Severity::Warn,
+                })
+                .collect();
+        if let (Some(model), Some(counts)) = (
+            page_model(),
+            rift_core::pagemodel::PageCounts::from_report(&counts),
+        ) {
+            let score = model.score(canonical.host(), &counts);
+            if score.level != rift_core::pagemodel::PageLevel::Low {
+                found.push(PageFact {
+                    code: "page-ai".to_owned(),
+                    text: score.explain(canonical.host()),
+                    warn: score.level == rift_core::pagemodel::PageLevel::High,
+                });
+            }
+        }
+        found
     }
+}
+
+/// The shipped page model, read once; None (no page scores) if it is damaged.
+fn page_model() -> Option<&'static rift_core::pagemodel::PageModel> {
+    static MODEL: std::sync::OnceLock<Option<rift_core::pagemodel::PageModel>> =
+        std::sync::OnceLock::new();
+    MODEL
+        .get_or_init(|| rift_core::pagemodel::PageModel::shipped().ok())
+        .as_ref()
 }
 
 fn fact(code: &str, text: String) -> Fact {
@@ -371,6 +397,9 @@ struct SessionExtras {
     verdicts: Vec<(String, Verdict)>,
     /// The browser's only way to the network; dropping it closes every tunnel.
     egress: Option<egress::Proxy>,
+    /// The proxy's threat-database screen, which the core's own download
+    /// fetches go through too.
+    screen: Option<Arc<dyn rift_core::egress::Screen>>,
 }
 
 impl SessionExtras {
@@ -386,6 +415,7 @@ impl SessionExtras {
             cache: rift_core::scan::VerdictCache::new(1024),
             verdicts: Vec::new(),
             egress: None,
+            screen: None,
         }
     }
 }
@@ -823,6 +853,7 @@ impl Sessions {
             let policy = DownloadPolicy {
                 local_hosts: extras.local_hosts.clone(),
                 max_bytes: room.min(DownloadPolicy::default().max_bytes),
+                screen: extras.screen.clone(),
                 ..DownloadPolicy::default()
             };
             if policy.max_bytes == 0 {
@@ -1698,6 +1729,7 @@ mod tests {
             "PayPal".into(),
             true,
             false,
+            String::new(),
         );
         let codes: Vec<(&str, bool)> = found.iter().map(|f| (f.code.as_str(), f.warn)).collect();
         assert_eq!(
@@ -1706,9 +1738,41 @@ mod tests {
         );
         assert!(
             navigator
-                .assess_page("not a url\u{0}".repeat(5000), "PayPal".into(), true, false)
+                .assess_page(
+                    "not a url\u{0}".repeat(5000),
+                    "PayPal".into(),
+                    true,
+                    false,
+                    String::new()
+                )
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn rift_ai_reads_a_phishing_kit_page_and_says_why() {
+        let navigator = Navigator::new(Vec::new(), Vec::new());
+        let kit = r#"{"pw":1,"fm":1,"fx":1,"fphp":1,"hi":3,"a":4,"an":4,"r":6,"rx":5,"fv":1,"sc":2,"sx":1,"ob":2,"hb":4000,"el":60,
+            "title":"PayPal: Log in to your account","text":"Your account has been limited. Verify your identity within 24 hours. Email Password Log In"}"#;
+        let found = navigator.assess_page(
+            "https://paypa1-secure.example/".into(),
+            String::new(),
+            true,
+            false,
+            kit.into(),
+        );
+        let ai = found.iter().find(|f| f.code == "page-ai").unwrap();
+        assert!(ai.warn, "{}", ai.text);
+        assert!(ai.text.contains("resembling phishing"), "{}", ai.text);
+        // Malformed counts are ignored, not guessed at.
+        let none = navigator.assess_page(
+            "https://paypa1-secure.example/".into(),
+            String::new(),
+            true,
+            false,
+            "{".into(),
+        );
+        assert!(none.iter().all(|f| f.code != "page-ai"));
     }
 
     #[test]

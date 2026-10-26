@@ -1,0 +1,40 @@
+# Rift AI page model (docs/architecture.md §16.1), written by tools/rift-train page.
+# Data: Phishing Websites Dataset, Ariyadasa, Fernando and Fernando, Mendeley Data 2021, CC BY 4.0
+# (doi:10.17632/n96ncsr5g4.1). 80000 pages; split by site 80/10/10; l2 0.01.
+# test (sites never seen): 8674 pages, AUC 0.9500; High: 54.2% of phishing, 0.23% of legitimate; Elevated or High: 68.8% of phishing, 4.50% of legitimate
+bias -0.32309294
+high 0.8743645
+elevated 0.7252053
+feature has_password 0.94354177 0.10185507
+feature passwords_log 0.36535084 0.08713709
+feature forms_log -0.33909726 0.72030646
+feature form_other_site_ratio 0.55888 0.036245536
+feature form_nowhere 1.0044994 0.05974406
+feature form_mailto 0 0
+feature form_php 1.6268047 0.11871931
+feature password_to_other_site 0.8944431 0.0053072763
+feature hidden_inputs_log 0.044246245 0.7606796
+feature links_log -0.42553124 3.9817526
+feature no_links 0.1045287 0.09329894
+feature link_other_site_ratio 2.2669084 0.14284983
+feature link_nowhere_ratio 2.8878033 0.07472406
+feature resource_other_site_ratio 0.00935446 0.30733323
+feature icon_other_site 0.67515767 0.16799761
+feature frames_log 0.00008559891 0.122782
+feature frame_hidden 0.44042596 0.027900402
+feature scripts_log -0.5482572 2.6500378
+feature script_other_site_ratio 0.19062799 0.15852314
+feature obfuscation_log 0.085827924 0.28236806
+feature meta_refresh 0.7768015 0.008779326
+feature context_menu_blocked 1.1463125 0.0045632655
+feature html_log 0.17772293 10.968431
+feature elements_log -0.07163067 5.9619336
+feature copyright -0.22979978 0.6313923
+feature title_empty 0.6240594 0.02636278
+feature site_in_title -1.5278299 0.3693517
+feature site_in_text -1.100559 0.46790835
+feature brand_elsewhere 0.39223912 0.2927434
+feature brands_elsewhere_log 0.1260727 0.28410444
+feature credential_words_log 0.21339881 0.46204805
+feature urgency_words_log 0.15800509 0.055753287
+feature text_log -0.17671263 6.9101205

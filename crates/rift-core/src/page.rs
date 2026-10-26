@@ -120,7 +120,7 @@ fn brand_of(domain: &str) -> &str {
 }
 
 /// Whether `word` (three letters or more) is a whole word of `text`.
-fn names_word(text: &str, word: &str) -> bool {
+pub(crate) fn names_word(text: &str, word: &str) -> bool {
     if word.chars().count() < 3 {
         return false;
     }

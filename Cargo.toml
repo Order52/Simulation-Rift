@@ -27,7 +27,11 @@ indexing_slicing = "warn"
 arithmetic_side_effects = "warn"
 
 [profile.release]
-lto = "thin"
+# Size over the last few percent of speed: on arm64 the two Android libraries
+# measured 20.8 MB at opt-level 3 with thin LTO, 18.3 MB at "s" with fat LTO
+# (and 16.7 MB at "z", whose slower loops were not worth it for scanning).
+opt-level = "s"
+lto = "fat"
 codegen-units = 1
 # The symbol table is most of the Android library (23 MB -> 14 MB for arm64);
 # exported JNI symbols live in .dynsym and are kept.

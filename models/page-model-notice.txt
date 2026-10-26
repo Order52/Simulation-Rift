@@ -1,0 +1,16 @@
+Rift AI's page model (page-model.txt)
+=====================================
+
+The model is numbers learned from the public data below
+(docs/reports/page-model.md says how). It contains no page of the data.
+
+Phishing Websites Dataset
+  Ariyadasa, Subhash; Fernando, Shantha; Fernando, Subha (2021),
+  "Phishing Websites Dataset", Mendeley Data, V1, doi:10.17632/n96ncsr5g4.1
+  https://data.mendeley.com/datasets/n96ncsr5g4/1
+  Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0):
+  https://creativecommons.org/licenses/by/4.0/
+  80,000 saved pages (50,000 legitimate, 30,000 phishing from PhishTank,
+  OpenPhish and PhishRepo, collected December 2020 to October 2021). Rift
+  counts features in them (tools/rift-train/src/bin/page.rs) and keeps only
+  the learned weights; nothing was changed in the data itself.
