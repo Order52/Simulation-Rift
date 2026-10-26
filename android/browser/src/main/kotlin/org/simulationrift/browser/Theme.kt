@@ -13,6 +13,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import org.simulationrift.bridge.Appearance
 
 // The controller has the same file (org.simulationrift.app.Theme.kt):
 // the two apps share no Compose code, and their screens must look alike.
@@ -111,10 +112,10 @@ private val DarkBrand = darkColorScheme(
     outlineVariant = Color(0xFF47464F),
 )
 
-/** Light or dark with the system; the wallpaper's colours where Android offers them (API 31+). */
+/** Light or dark as the user chose in Rift (the session grant's appearance); the wallpaper's colours where Android offers them (API 31+). */
 @Composable
-fun RiftTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun RiftTheme(appearance: Appearance = Appearance.SYSTEM, content: @Composable () -> Unit) {
+    val dark = isDark(appearance)
     val colors = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
@@ -126,4 +127,11 @@ fun RiftTheme(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalStatusColors provides if (dark) DarkStatus else LightStatus) {
         MaterialTheme(colorScheme = colors, content = content)
     }
+}
+
+@Composable
+fun isDark(appearance: Appearance): Boolean = when (appearance) {
+    Appearance.SYSTEM -> isSystemInDarkTheme()
+    Appearance.LIGHT -> false
+    Appearance.DARK -> true
 }

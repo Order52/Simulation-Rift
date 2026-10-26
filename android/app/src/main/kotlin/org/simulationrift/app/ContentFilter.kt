@@ -209,6 +209,8 @@ object ContentFilter {
      * the first download is still the user's tap. Called at start and every [CHECK_MS].
      */
     private fun refreshIfStale() {
+        // Rift's own updates have their own switch (§8.11).
+        SelfUpdate.refreshIfStale()
         val now = _state.value
         if (!now.autoUpdate) return
         // Check's link-cleaning rules follow the same switch, filters on or off.

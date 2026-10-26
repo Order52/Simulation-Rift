@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -29,7 +34,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import org.simulationrift.bridge.Appearance
 import org.simulationrift.bridge.Rift
+import java.text.DateFormat
+import java.util.Date
 import org.simulationrift.core.IntelStatus
 
 /** The About tab: who made Rift, what it does and does not do, and which versions are running. */
@@ -48,6 +56,10 @@ internal fun AboutTab(onLicences: () -> Unit) {
                 Text("Open any link. Keep nothing.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+
+        AppearanceCard()
+
+        UpdatesCard()
 
         AboutCard("Made by") {
             Text("Ali Alakber and Teeba Nazar", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("about-authors"))
@@ -79,10 +91,77 @@ internal fun AboutTab(onLicences: () -> Unit) {
                 },
             )
             Detail("Filter lists", if (!filters.enabled) "off" else "${filters.lists.values.count { it.on && it.downloaded }} downloaded")
-            Detail("Sends data by itself", "never: updates run only when you ask")
+            Detail("Sends data by itself", "only to fetch updates: Rift's own, and the lists you turned on")
         }
 
         OutlinedButton(onClick = onLicences, modifier = Modifier.fillMaxWidth().testTag("notices-open")) { Text("Open-source licences") }
+    }
+}
+
+@Composable
+private fun AppearanceCard() {
+    val context = LocalContext.current
+    val appearance by AppearanceChoice.state.collectAsState()
+    AboutCard("Appearance") {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("appearance")) {
+            val choices = listOf(Appearance.SYSTEM to "System", Appearance.LIGHT to "Light", Appearance.DARK to "Dark")
+            choices.forEachIndexed { i, (choice, label) ->
+                SegmentedButton(
+                    selected = appearance == choice,
+                    onClick = { AppearanceChoice.set(context, choice) },
+                    shape = SegmentedButtonDefaults.itemShape(i, choices.size),
+                    modifier = Modifier.testTag("appearance-${choice.name.lowercase()}"),
+                ) { Text(label) }
+            }
+        }
+        Text(
+            "For Rift and its sealed browser. In dark, pages without a dark style of their own are darkened too.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun UpdatesCard() {
+    val update by SelfUpdate.state.collectAsState()
+    AboutCard("Updates") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Update Rift by itself", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Once a day Rift asks GitHub for its latest release, and installs it only if it is signed with Rift's own key. " +
+                        "The first time, Android asks you; after that Rift updates while you are not using it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(
+                checked = update != SelfUpdate.State.Off && update != SelfUpdate.State.DebugBuild,
+                onCheckedChange = { SelfUpdate.setEnabled(it) },
+                enabled = update != SelfUpdate.State.DebugBuild,
+                modifier = Modifier.testTag("self-update-switch"),
+            )
+        }
+        val status = when (val u = update) {
+            SelfUpdate.State.Off -> "Off: updates only by hand, from the Releases page."
+            SelfUpdate.State.DebugBuild -> "A test build: it is updated with the build tools, not from releases."
+            SelfUpdate.State.Idle -> "Checks within a day."
+            SelfUpdate.State.Checking -> "Checking…"
+            is SelfUpdate.State.UpToDate -> "Up to date (checked ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(u.checkedAt))})."
+            is SelfUpdate.State.Downloading -> "Downloading Rift ${u.version}…"
+            is SelfUpdate.State.Ready -> "Rift ${u.version} is ready." + (u.problem?.let { " Not installed: $it." } ?: "")
+            SelfUpdate.State.Installing -> "Installing…"
+            is SelfUpdate.State.Failed -> "Could not update: ${u.reason}."
+        }
+        Text(status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("self-update-status"))
+        when (update) {
+            is SelfUpdate.State.Ready -> Button(onClick = SelfUpdate::install, modifier = Modifier.fillMaxWidth().testTag("self-update-install")) { Text("Install now") }
+            is SelfUpdate.State.UpToDate, is SelfUpdate.State.Failed, SelfUpdate.State.Idle ->
+                OutlinedButton(onClick = SelfUpdate::checkNow, modifier = Modifier.fillMaxWidth().testTag("self-update-check")) { Text("Check now") }
+            else -> Unit
+        }
     }
 }
 

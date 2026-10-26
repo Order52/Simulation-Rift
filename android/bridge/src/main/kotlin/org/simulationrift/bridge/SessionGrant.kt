@@ -14,10 +14,18 @@ sealed interface SessionGrant {
      * `outdatedWebView` lets a debug build browse in a WebView that lacks
      * fixes for exploited bugs, for testing on emulator images that cannot
      * update it; a release build never sends it, and a release browser
-     * ignores it (§8.4).
+     * ignores it (§8.4). `appearance` is the user's light or dark choice,
+     * for the browser's bar and its pages.
      */
-    data class Granted(val proxyPort: Int, val proxyToken: String, val proxyRealm: String, val mode: NetworkMode, val outdatedWebView: Boolean = false) : SessionGrant {
-        override fun toString() = "Granted(port=$proxyPort, realm=$proxyRealm, mode=$mode, outdatedWebView=$outdatedWebView)"
+    data class Granted(
+        val proxyPort: Int,
+        val proxyToken: String,
+        val proxyRealm: String,
+        val mode: NetworkMode,
+        val outdatedWebView: Boolean = false,
+        val appearance: Appearance = Appearance.SYSTEM,
+    ) : SessionGrant {
+        override fun toString() = "Granted(port=$proxyPort, realm=$proxyRealm, mode=$mode, outdatedWebView=$outdatedWebView, appearance=$appearance)"
     }
 
     /** `reason` is already safe to show. */
@@ -31,6 +39,7 @@ sealed interface SessionGrant {
                 putString(REALM, g.proxyRealm)
                 putString(MODE, g.mode.name)
                 putBoolean(OUTDATED, g.outdatedWebView)
+                putString(APPEARANCE, g.appearance.name)
             }
             is Refused -> putString(REFUSED, g.reason)
         }
@@ -43,6 +52,7 @@ sealed interface SessionGrant {
         private const val MODE = "mode"
         private const val REFUSED = "refused"
         private const val OUTDATED = "outdated"
+        private const val APPEARANCE = "appearance"
 
         /** Anything that does not decode is a refusal: never browse without the lock's terms. */
         fun fromBundle(bundle: Bundle?): SessionGrant {
@@ -55,10 +65,15 @@ sealed interface SessionGrant {
             if (port !in 1..65535 || token.isNullOrEmpty() || realm.isNullOrEmpty() || mode == null) {
                 return Refused("The protection core sent an invalid session grant.")
             }
-            return Granted(port, token, realm, mode, bundle.getBoolean(OUTDATED, false))
+            // An unknown appearance is the system's: it changes only colours.
+            val appearance = Appearance.entries.firstOrNull { it.name == bundle.getString(APPEARANCE) } ?: Appearance.SYSTEM
+            return Granted(port, token, realm, mode, bundle.getBoolean(OUTDATED, false), appearance)
         }
     }
 }
+
+/** Light or dark: with the system, or always one of them. */
+enum class Appearance { SYSTEM, LIGHT, DARK }
 
 /** How the browser's network is bounded in a session (§8.8). */
 enum class NetworkMode {

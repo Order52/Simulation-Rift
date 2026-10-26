@@ -314,10 +314,12 @@ object Core {
             disposal = AndroidBrowserDisposal(app)
             WeeklyStats.open(app)
             Hardening.init(app)
+            SelfUpdate.init(app)
             ContentFilter.init(app)
             LinkCleaning.init(app)
             ThreatLists.init(app)
             CheckHistory.init(app)
+            AppearanceChoice.init(app)
             // The user's network lock choice, before the first session starts.
             NetworkLock.init(app)
             updating.execute {
@@ -658,7 +660,7 @@ object Core {
         _network.value = null
         Log.i(TAG, "browser registered for generation $generation, network $mode")
         val debuggable = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        return SessionGrant.Granted(endpoint.port.toInt(), endpoint.token, endpoint.realm, mode, debuggable && allowOutdatedWebView)
+        return SessionGrant.Granted(endpoint.port.toInt(), endpoint.token, endpoint.realm, mode, debuggable && allowOutdatedWebView, AppearanceChoice.state.value)
     }
 
     fun reportSandbox(generation: Long, report: SandboxReport) {
@@ -1205,6 +1207,9 @@ object Core {
 
     /** The browser registered for disposal, detached so no further calls reach it. */
     internal fun detachBrowser(): IBrowser? = browser?.binder.also { browser = null }
+
+    /** Whether a browser window is attached to the session: no update installs then. */
+    internal fun browsing(): Boolean = browser != null
 
     private fun fact(f: CoreFact) = Fact(f.code, f.text)
 }

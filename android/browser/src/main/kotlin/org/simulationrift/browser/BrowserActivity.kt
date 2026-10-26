@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ApplicationInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.http.SslError
@@ -19,6 +20,7 @@ import android.os.SystemClock
 import android.os.RemoteException
 import android.util.Log
 import android.util.SparseArray
+import android.view.ContextThemeWrapper
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewStructure
@@ -100,6 +102,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import org.simulationrift.bridge.Appearance
 import org.simulationrift.bridge.Fact
 import org.simulationrift.bridge.IBrowser
 import org.simulationrift.bridge.ICore
@@ -133,6 +136,7 @@ class BrowserActivity : ComponentActivity() {
     private var generation = 0L
     private var core: ICore? = null
     private var grant: SessionGrant.Granted? = null
+    private var appearance by mutableStateOf(Appearance.SYSTEM)
     private var lockWatch: ConnectivityManager.NetworkCallback? = null
     private var webView: WebView? = null
     private var bound = false
@@ -229,7 +233,7 @@ class BrowserActivity : ComponentActivity() {
         }
         testOpen = intent.getBooleanExtra(Rift.EXTRA_TEST_OPEN, false)
         if (testOpen) cover = Cover.Testing
-        setContent { RiftTheme { NoPersonalizedLearning { BrowserScreen() } } }
+        setContent { RiftTheme(appearance) { NoPersonalizedLearning { BrowserScreen() } } }
         bound = bindService(Intent().setComponent(Rift.CORE_SERVICE), connection, Context.BIND_AUTO_CREATE)
         if (!bound) screen = Screen.Ended("The protection core is unavailable.")
     }
@@ -266,6 +270,7 @@ class BrowserActivity : ComponentActivity() {
             is SessionGrant.Granted -> {
                 core = connected
                 grant = answer
+                appearance = answer.appearance
                 startEngine(connected, answer)
             }
         }
@@ -529,7 +534,28 @@ class BrowserActivity : ComponentActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun createWebView(): WebView = PrivateWebView(this).apply {
+    /**
+     * Light or dark as chosen in Rift. Pages see it as `prefers-color-scheme`
+     * through the view's own night mode, so the activity is never recreated;
+     * in dark, pages without a dark style are darkened by the engine.
+     */
+    private fun themedContext(): Context {
+        val dark = when (appearance) {
+            Appearance.SYSTEM -> return this
+            Appearance.LIGHT -> Configuration.UI_MODE_NIGHT_NO
+            Appearance.DARK -> Configuration.UI_MODE_NIGHT_YES
+        }
+        val config = Configuration().apply { uiMode = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or dark }
+        return ContextThemeWrapper(this, org.simulationrift.bridge.R.style.Theme_Rift).apply { applyOverrideConfiguration(config) }
+    }
+
+    private fun darkPages(): Boolean = when (appearance) {
+        Appearance.SYSTEM -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        Appearance.LIGHT -> false
+        Appearance.DARK -> true
+    }
+
+    private fun createWebView(): WebView = PrivateWebView(themedContext()).apply {
         // Without layout parameters AndroidView gives the view WRAP_CONTENT,
         // and in that mode WebView lays pages out at zero height: every
         // viewport unit (100vh) was 0 px, so pages sized by them collapsed
@@ -573,6 +599,10 @@ class BrowserActivity : ComponentActivity() {
         // API, which keeps it outside the browser app's data, past the wipe.
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ATTRIBUTION_REGISTRATION_BEHAVIOR)) {
             WebSettingsCompat.setAttributionRegistrationBehavior(settings, WebSettingsCompat.ATTRIBUTION_BEHAVIOR_DISABLED)
+        }
+        // Dark mode for pages that have no dark style of their own.
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, darkPages())
         }
         // A device policy could otherwise let sign-in links open another app,
         // past the core's block on automatic external-app links (§10.3).
