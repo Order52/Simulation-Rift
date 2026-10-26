@@ -4,7 +4,7 @@
 //! ```text
 //! rift-train [--bits N] [--epochs N] [--l2 X] [--seed N] --out <model.bin> --report <report.json>
 //!            --suffixes <psl-ascii.txt> [--popular <hosts-file>:<n>]
-//!            [--platforms <suffixes-file>]
+//!            [--platforms <suffixes-file>] [--champion <model.bin>]
 //!            --source <name>:<malicious|benign>:<urls|hosts>:<file>[:eval] ...
 //! ```
 //!
@@ -131,6 +131,7 @@ fn run() -> Result<(), String> {
     let mut sources = Vec::new();
     let mut popular_spec = None;
     let mut suffixes_path = None;
+    let mut champion_path = None;
     let mut platforms = HashSet::new();
     // Factors per feature (0: a linear model), factor table bits, factor L2.
     let mut factors = (0usize, 16u32, 0f32);
@@ -146,6 +147,7 @@ fn run() -> Result<(), String> {
             "--report" => report = Some(value()?),
             "--source" => sources.push(parse_source(&value()?)?),
             "--popular" => popular_spec = Some(value()?),
+            "--champion" => champion_path = Some(value()?),
             "--factors" => {
                 let v = value()?;
                 let parts: Vec<&str> = v.split(',').collect();
@@ -306,6 +308,23 @@ fn run() -> Result<(), String> {
     std::fs::write(&out, &bytes).map_err(|e| format!("{out}: {e}"))?;
 
     let mut summary = evaluate(&model, &examples, &sources);
+    // The shipped model on this run's test sites: the gate compares the two
+    // on the same data. The split is by site and fixed (split_of), so the
+    // shipped model never trained on these sites either.
+    if let Some(path) = &champion_path {
+        // One this build cannot read (an older feature schema) is reported, not measured.
+        match std::fs::read(path)
+            .map_err(|e| e.to_string())
+            .and_then(|b| UrlModel::parse(&b).map_err(|e| e.to_string()))
+        {
+            Ok(champion) => {
+                let mut measured = evaluate(&champion, &examples, &sources);
+                measured["sha256"] = json!(champion.digest_hex());
+                summary["champion"] = measured;
+            }
+            Err(e) => eprintln!("--champion {path}: not measured: {e}"),
+        }
+    }
     summary["selection"] = json!({
         "by": "validation recall at a 0.1% false-positive rate (benign validation pages pooled), ties to lower validation loss",
         "max_epochs": epochs,

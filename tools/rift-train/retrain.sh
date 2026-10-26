@@ -69,9 +69,11 @@ fi
 
 github=""
 [ -s "$P/github-platforms.txt" ] && github="--source github-platforms:benign:urls:$P/github-platforms.txt"
+# The shipped model, measured on this run's test sites for the gate.
+cp models/url-model.bin "$D/champion.bin"
 # shellcheck disable=SC2086 # $github and $memory are one option or none
-cargo run --quiet --locked --release -p rift-train -- --bits 19 --epochs 3 --factors 4,16,0.1 \
-  --out models/url-model.bin --report models/url-model.json \
+cargo run --quiet --locked --release -p rift-train --bin rift-train -- --bits 19 --epochs 3 --factors 4,16,0.1 \
+  --out models/url-model.bin --report models/url-model.json --champion "$D/champion.bin" \
   --suffixes "$P/psl-ascii.txt" --popular "$P/tranco-hosts.txt:10000" --platforms $T/platforms.txt \
   --source "phishdb:malicious:urls:$P/phishing-db.txt" --source "phishdb-2026:malicious:urls:$P/phishing-db-now.txt" \
   --source "phiusiil-phish:malicious:urls:$P/phiusiil-phishing.txt" --source "commoncrawl:benign:urls:$P/commoncrawl.txt" \

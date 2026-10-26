@@ -11,6 +11,16 @@ month.
   points lower.
 - Scoring stays within §16's budget: p50 under 5 µs on the training machine.
 
+When the new report also measured the shipped model on the same test sites
+("champion", rift-train --champion), the two are compared like for like,
+with tighter limits: the AUC at most 0.002 lower, the never-seen
+Phishing.Database pages at High at most 1 point lower, and no benign source
+more than 0.05 points higher at High.
+
+The data is checked too: a source whose test sites fell below half of the
+shipped report's (a feed that failed or shrank) refuses the model, which
+would otherwise learn from a lopsided month.
+
 usage: python3 -I gate.py <shipped.json> <new.json> [<baseline.json>]   (prints a summary; exit 1 if refused)
 """
 import json, sys
@@ -41,7 +51,31 @@ auc_old = old["auc_trained_sources_address_view"]
 if new["scoring_microseconds_on_this_machine"]["p50"] >= 5:
     problems.append(f"scoring p50 {new['scoring_microseconds_on_this_machine']['p50']} µs")
 
-print(f"AUC {auc_old:.4f} -> {auc_new:.4f}")
+champion = new.get("champion")
+if champion:
+    auc_champion = champion["auc_trained_sources_address_view"]
+    if auc_new < auc_champion - 0.002:
+        problems.append(f"AUC {auc_new:.4f}, against the shipped model's {auc_champion:.4f} on the same sites")
+    caught_champion = high(champion, "phishdb")
+    if caught_champion is not None and (caught_new is None or caught_new < caught_champion - 0.01):
+        problems.append(f"never-seen Phishing.Database pages at High: {caught_new}, against the shipped model's {caught_champion:.2%} on the same sites")
+    for row in new["test"]:
+        if row["label"] == "benign" and row["view"] == "address":
+            before = high(champion, row["source"])
+            if before is not None and row["high_rate"] > before + 0.0005:
+                problems.append(f"{row['source']}: {row['high_rate']:.2%} of ordinary pages at High, against the shipped model's {before:.2%} on the same sites")
+
+
+def sizes(report):
+    return {row["source"]: row["n"] for row in report["test"] if row["view"] == "address"}
+
+
+for source, n in sizes(old).items():
+    now = sizes(new).get(source)
+    if now is not None and now < n / 2:
+        problems.append(f"{source}: {now} test sites, against {n} last time (a feed failed or shrank)")
+
+print(f"AUC {auc_old:.4f} -> {auc_new:.4f}" + (f" (shipped model on the same sites: {champion['auc_trained_sources_address_view']:.4f})" if champion else ""))
 for source in [r["source"] for r in new["test"] if r["view"] == "address"]:
     before, after = high(old, source), high(new, source)
     print(f"  {source:<18} High {'-' if before is None else f'{before:.2%}':>7} -> {after:.2%}")
