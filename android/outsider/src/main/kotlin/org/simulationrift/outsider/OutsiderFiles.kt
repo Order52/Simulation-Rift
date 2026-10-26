@@ -36,7 +36,7 @@ class OutsiderFiles : ContentProvider() {
     }
 
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor =
-        MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)).apply { addRow(arrayOf(NAME, picture().length())) }
+        MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)).apply { addRow(arrayOf<Any>(NAME, picture().length())) }
 
     override fun getType(uri: Uri) = "image/png"
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
