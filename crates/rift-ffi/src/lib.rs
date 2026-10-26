@@ -19,6 +19,8 @@ use rift_protocol::{Envelope, PROTOCOL_VERSION, Request, Response};
 uniffi::setup_scaffolding!();
 
 mod ai;
+mod appupdate;
+pub use appupdate::{AppRelease, AppUpdateFailure, download_app_release, newer_app_release};
 mod egress;
 mod filters;
 pub use filters::{ContentFilters, FilterFetchFailure, Hiding, fetch_filter_list};
