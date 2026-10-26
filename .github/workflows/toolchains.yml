@@ -1,0 +1,55 @@
+name: toolchains
+
+# Monthly: moves the toolchains Dependabot does not see (stable Rust, the
+# fuzzing nightly, the NDK, cargo-ndk, OSV-Scanner) to their latest
+# releases with .github/scripts/bump_toolchains.py, and opens a pull request
+# that merges itself once CI passes. If a new compiler's lints fail CI, the
+# pull request stays open and the toolchains stay where they were.
+on:
+  schedule:
+    - cron: "29 4 8 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Move the pins
+        shell: bash
+        run: |
+          ndk="$("$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --list 2>/dev/null \
+            | grep -oE '^ *ndk;[0-9]+\.[0-9]+\.[0-9]+ ' | grep -oE '[0-9.]+' | sort -V | tail -1)"
+          python3 -I .github/scripts/bump_toolchains.py "$ndk" | tee "$RUNNER_TEMP/changes.txt"
+      - name: Open a pull request that merges itself
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet; then
+            echo "Every toolchain is current."
+            exit 0
+          fi
+          branch="toolchains/$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -qam "ci: move the toolchains to their latest releases"
+          git push -q origin "$branch"
+          {
+            echo "The monthly toolchain bump:"
+            echo
+            sed 's/^/- /' "$RUNNER_TEMP/changes.txt"
+            echo
+            echo "Merges itself when CI passes."
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --head "$branch" --title "ci: toolchains ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/body.md"
+          gh pr merge --auto --squash "$branch"
+          # A push with this workflow's token starts no workflow: start CI on the branch.
+          gh workflow run ci.yml --ref "$branch"

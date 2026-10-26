@@ -9,7 +9,14 @@ name: retrain rift ai
 # Needs "Allow GitHub Actions to create and approve pull requests" in the
 # repository's Actions settings. A pull request opened with GITHUB_TOKEN
 # does not start other workflows, so this one starts CI on its branch by
-# workflow_dispatch. The GitHub sample of hosting-platform sites
+# workflow_dispatch.
+#
+# Rift AI keeps what it learned: the phishing pages of every month (up to
+# 24 months back, tools/rift-train/memory.py) are kept as this workflow's
+# "rift-ai-memory" artifact, which each run takes from the last one and
+# hands on, whether or not its model passes the gate. Artifacts last 90
+# days: after three months with no successful run the memory starts again
+# from that month's feeds. The GitHub sample of hosting-platform sites
 # needs RIFT_SEARCH_TOKEN (a token with no permissions, for code search);
 # without it the model trains without that sample, and the PR says so.
 on:
@@ -35,10 +42,33 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Keep the shipped model's report
         run: cp models/url-model.json "$RUNNER_TEMP/shipped.json"
-      - name: Retrain on today's feeds
+      - name: Take the memory the last run left
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/memory"
+          # The newest earlier run that left one (a run whose model failed the gate still did).
+          for run in $(gh run list --workflow retrain.yml --limit 12 --json databaseId -q '.[].databaseId'); do
+            [ "$run" = "$GITHUB_RUN_ID" ] && continue
+            if gh run download "$run" --name rift-ai-memory --dir "$RUNNER_TEMP/memory" 2>/dev/null; then
+              echo "Memory from run $run: $(wc -l < "$RUNNER_TEMP/memory/memory.tsv") pages." | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          echo "No memory from an earlier run: it starts with this month's feeds." | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Retrain on today's feeds and the memory
         env:
           GH_TOKEN: ${{ secrets.RIFT_SEARCH_TOKEN }}
-        run: sh tools/rift-train/retrain.sh "$RUNNER_TEMP/feeds" "$RUNNER_TEMP/prepared"
+          RIFT_AI_MEMORY: ${{ runner.temp }}/memory/memory.tsv
+        shell: bash  # pipefail, as for the gate
+        run: sh tools/rift-train/retrain.sh "$RUNNER_TEMP/feeds" "$RUNNER_TEMP/prepared" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Hand the memory on
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rift-ai-memory
+          path: ${{ runner.temp }}/memory/memory.tsv
+          retention-days: 90
+          if-no-files-found: error
       - name: Gate
         shell: bash  # pipefail: a failed gate must fail the step, not be hidden by tee
         run: python3 -I tools/rift-train/gate.py "$RUNNER_TEMP/shipped.json" models/url-model.json | tee "$RUNNER_TEMP/gate.txt"
@@ -56,7 +86,7 @@ jobs:
           git commit -m "models: retrain rift ai on the $(date -u +%Y-%m-%d) feeds"
           git push origin "$branch"
           {
-            echo "Rift AI retrained on today's feeds by the monthly workflow; it passed the gate and \`cargo test -p rift-ffi ai::\`. Merges itself when CI passes."
+            echo "Rift AI retrained on today's feeds and its memory of earlier months by the monthly workflow; it passed the gate and \`cargo test -p rift-ffi ai::\`. Merges itself when CI passes."
             echo
             echo '```'
             cat "$RUNNER_TEMP/gate.txt"

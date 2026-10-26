@@ -10,6 +10,10 @@
 # The GitHub sample of hosting-platform sites (gh_platforms.py, ~30 min)
 # needs a signed-in gh; without one the last sample in <download-dir> is
 # used if there is one, and the model trains without it otherwise.
+#
+# With RIFT_AI_MEMORY set, the phishing pages of earlier months are kept
+# (memory.py): the memory at that path, if there is one, gains this month's
+# pages and is written back there, and the model also trains on it.
 set -eu
 D="$1"; P="$2"
 T=tools/rift-train
@@ -55,15 +59,23 @@ if gh auth status >/dev/null 2>&1; then
 fi
 python3 -I $T/prepare.py "$D" "$P"
 
+memory=""
+if [ -n "${RIFT_AI_MEMORY:-}" ]; then
+  previous=-
+  [ -s "$RIFT_AI_MEMORY" ] && { cp "$RIFT_AI_MEMORY" "$D/memory-before.tsv"; previous="$D/memory-before.tsv"; }
+  python3 -I $T/memory.py "$(date -u +%Y-%m)" "$previous" "$RIFT_AI_MEMORY" "$P/memory.txt" "$P/phishing-db.txt" "$P/phishing-db-now.txt"
+  memory="--source memory:malicious:urls:$P/memory.txt"
+fi
+
 github=""
 [ -s "$P/github-platforms.txt" ] && github="--source github-platforms:benign:urls:$P/github-platforms.txt"
-# shellcheck disable=SC2086 # $github is one option or none
+# shellcheck disable=SC2086 # $github and $memory are one option or none
 cargo run --quiet --locked --release -p rift-train -- --bits 19 --epochs 3 --factors 4,16,0.1 \
   --out models/url-model.bin --report models/url-model.json \
   --suffixes "$P/psl-ascii.txt" --popular "$P/tranco-hosts.txt:10000" --platforms $T/platforms.txt \
   --source "phishdb:malicious:urls:$P/phishing-db.txt" --source "phishdb-2026:malicious:urls:$P/phishing-db-now.txt" \
   --source "phiusiil-phish:malicious:urls:$P/phiusiil-phishing.txt" --source "commoncrawl:benign:urls:$P/commoncrawl.txt" \
   --source "popular:benign:urls:$P/commoncrawl-popular.txt" --source "platforms:benign:urls:$P/commoncrawl-platforms.txt" \
-  $github \
+  $github $memory \
   --source "tranco:benign:hosts:$P/tranco-hosts.txt" --source "phiusiil-legit:benign:urls:$P/phiusiil-legit.txt" \
   > /dev/null

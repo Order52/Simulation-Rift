@@ -62,6 +62,7 @@ jobs:
         run: |
           CODE=(. ':(exclude)*.md' ':(exclude)docs' ':(exclude)poc' ':(exclude)linux'
                 ':(exclude).github/dependabot.yml'
+                ':(exclude).github/scripts/bump_toolchains.py'
                 ':(exclude).github/scripts/kev_update.py'
                 ':(exclude).github/workflows/dependabot-automerge.yml'
                 ':(exclude).github/workflows/fuzz-campaign.yml'
@@ -69,7 +70,8 @@ jobs:
                 ':(exclude).github/workflows/linux-app.yml'
                 ':(exclude).github/workflows/linux-qt-poc.yml'
                 ':(exclude).github/workflows/release.yml'
-                ':(exclude).github/workflows/retrain.yml')
+                ':(exclude).github/workflows/retrain.yml'
+                ':(exclude).github/workflows/toolchains.yml')
           head="$(git rev-parse HEAD)"
           tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD)"
           echo "release=false" >> "$GITHUB_OUTPUT"
