@@ -10,6 +10,7 @@ import org.simulationrift.core.PageFact
 import org.simulationrift.core.ScanStatus
 import org.simulationrift.core.Verdict
 import org.simulationrift.core.displaySafe
+import org.simulationrift.core.trackerFor
 
 /**
  * The live page watch of one session (§10.5). Every event comes from a
@@ -34,6 +35,7 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
     private var lastDenial = 0L
     private var lastRemark = 0L
     private val lockSeen = HashSet<String>()
+    private val trackersSeen = HashSet<String>()
 
     /**
      * `counted` is what the weekly summary counts the event as: by default
@@ -181,6 +183,16 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
             record(Level.WARNING, "ai-request", remark.destination, "Part of a page connected to ${remark.destination}. ${remark.text}", Tally.WARNED)
             lastRemark = remark.seq.toLong()
         }
+        // Trackers the proxy let through: the core's own record, not the page's (§10.14).
+        for (destination in stats.contacted) {
+            val host = destination.substringBeforeLast(':').removePrefix("[").removeSuffix("]")
+            if (!trackersSeen.add(host)) continue
+            val tracker = trackerFor(host, "") ?: continue
+            val stop = if (ContentFilter.active()) "Your content filter lists did not block it; add EasyPrivacy in the Filters tab."
+                else "To block it, turn on content filters with EasyPrivacy in the Filters tab."
+            record(Level.NOTE, "tracker", tracker.name,
+                "${tracker.name} (${tracker.kind.lowercase()}, ${tracker.company}) is tracking visitors of this page. ${tracker.explanation} $stop")
+        }
         val recent = stats.recent
         val fresh = recent.filter { it.seq.toLong() > lastDenial }
         if (fresh.isEmpty()) return
@@ -201,6 +213,14 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
                 else -> {}
             }
         }
+    }
+
+    /** A request the content filters blocked; named if it is a tracker Rift knows. */
+    fun filtered(url: String) {
+        val uri = android.net.Uri.parse(url)
+        val tracker = trackerFor(uri.host ?: return, uri.path ?: "") ?: return
+        record(Level.NOTE, "tracker-blocked", tracker.name,
+            "Rift's content filters blocked ${tracker.name} (${tracker.kind.lowercase()}, ${tracker.company}). ${tracker.explanation}")
     }
 
     /** New destinations the network lock dropped in this session ([NetworkLock.newSession]). */

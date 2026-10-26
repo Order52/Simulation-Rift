@@ -11,9 +11,13 @@ sealed interface SessionGrant {
      * The egress proxy of this session and the isolation it runs under.
      * `proxyToken` is a secret: it is used only to answer the proxy's own
      * challenge (host [Rift.PROXY_HOST], realm `proxyRealm`).
+     * `outdatedWebView` lets a debug build browse in a WebView that lacks
+     * fixes for exploited bugs, for testing on emulator images that cannot
+     * update it; a release build never sends it, and a release browser
+     * ignores it (§8.4).
      */
-    data class Granted(val proxyPort: Int, val proxyToken: String, val proxyRealm: String, val mode: NetworkMode) : SessionGrant {
-        override fun toString() = "Granted(port=$proxyPort, realm=$proxyRealm, mode=$mode)"
+    data class Granted(val proxyPort: Int, val proxyToken: String, val proxyRealm: String, val mode: NetworkMode, val outdatedWebView: Boolean = false) : SessionGrant {
+        override fun toString() = "Granted(port=$proxyPort, realm=$proxyRealm, mode=$mode, outdatedWebView=$outdatedWebView)"
     }
 
     /** `reason` is already safe to show. */
@@ -26,6 +30,7 @@ sealed interface SessionGrant {
                 putString(TOKEN, g.proxyToken)
                 putString(REALM, g.proxyRealm)
                 putString(MODE, g.mode.name)
+                putBoolean(OUTDATED, g.outdatedWebView)
             }
             is Refused -> putString(REFUSED, g.reason)
         }
@@ -37,6 +42,7 @@ sealed interface SessionGrant {
         private const val REALM = "realm"
         private const val MODE = "mode"
         private const val REFUSED = "refused"
+        private const val OUTDATED = "outdated"
 
         /** Anything that does not decode is a refusal: never browse without the lock's terms. */
         fun fromBundle(bundle: Bundle?): SessionGrant {
@@ -49,7 +55,7 @@ sealed interface SessionGrant {
             if (port !in 1..65535 || token.isNullOrEmpty() || realm.isNullOrEmpty() || mode == null) {
                 return Refused("The protection core sent an invalid session grant.")
             }
-            return Granted(port, token, realm, mode)
+            return Granted(port, token, realm, mode, bundle.getBoolean(OUTDATED, false))
         }
     }
 }

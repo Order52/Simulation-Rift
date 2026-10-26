@@ -78,9 +78,10 @@ interface ICore {
      * What a loaded page asks for and calls itself (§10.5), read by a script
      * in it: `names` is its title, site name and first heading. The page can
      * change what the script reads, so the core only adds warnings from it,
-     * and bounds every part.
+     * and bounds every part. `counts` is what the page is made of, as JSON
+     * (rift_core::pagemodel::PageCounts), for Rift AI's page model (§16.1).
      */
-    oneway void reportPage(long generation, String url, String names, boolean password, boolean card);
+    oneway void reportPage(long generation, String url, String names, boolean password, boolean card, String counts);
 
     /** The test-open report for this session (§10.11), encoded by TestReport; empty for any other. */
     Bundle testOpenReport(long generation);

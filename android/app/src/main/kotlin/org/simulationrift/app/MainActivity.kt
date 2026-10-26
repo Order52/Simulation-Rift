@@ -609,14 +609,15 @@ class MainActivity : ComponentActivity() {
                     }
                     // Not for a listed link: the core would block it unseen.
                     if (onTestOpen != null && verdict.openable && verdict.title != "Known malicious") {
-                        OutlinedButton(onClick = onTestOpen, modifier = Modifier.testTag("check-test-open")) { Text("Test-open") }
+                        FilledTonalButton(onClick = onTestOpen, modifier = Modifier.testTag("check-test-open")) { Text("Check the live page") }
                     }
                     TextButton(onClick = onClose, modifier = Modifier.testTag("check-close")) { Text("Clear") }
                 }
                 if (onTestOpen != null && verdict.openable && verdict.title != "Known malicious") {
                     Text(
-                        "Test-open runs the page out of sight for 10 seconds in a new sealed session, then reports where it went, " +
-                            "what it asked for and which sites it reached, before you see it.",
+                        "The check above did not contact the site, so the site cannot tell its link was looked at. " +
+                            "Check the live page loads it out of sight for 10 seconds in a new sealed session, then reports where it went, " +
+                            "what it asked for, which trackers and sites it reached and what Rift AI reads in the page, before you see it.",
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -1370,5 +1371,5 @@ internal fun format(n: Int): String = NumberFormat.getIntegerInstance().format(n
 
 /** The notice assets, in the order shown. */
 private val NOTICE_FILES = listOf(
-    "notices/android-libraries.txt", "notices/rust-crates.txt", "url-model-notice.txt", "notices/apache-2.0.txt",
+    "notices/android-libraries.txt", "notices/rust-crates.txt", "url-model-notice.txt", "page-model-notice.txt", "notices/apache-2.0.txt",
 )

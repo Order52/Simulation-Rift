@@ -93,7 +93,9 @@ class CoreService : Service() {
 
         override fun blockRequest(generation: Long, url: String, page: String, kind: String): Boolean {
             checkCallerFast()
-            return Core.isBrowser(generation) && ContentFilter.blocks(url, page, kind)
+            val blocked = Core.isBrowser(generation) && ContentFilter.blocks(url, page, kind)
+            if (blocked) Core.filtered(generation, url)
+            return blocked
         }
 
         override fun hidingFor(generation: Long, url: String): Bundle {
@@ -111,9 +113,9 @@ class CoreService : Service() {
             return Core.pageWatch(generation)?.toBundle() ?: Bundle()
         }
 
-        override fun reportPage(generation: Long, url: String, names: String, password: Boolean, card: Boolean) {
+        override fun reportPage(generation: Long, url: String, names: String, password: Boolean, card: Boolean, counts: String) {
             checkCaller()
-            Core.reportPage(generation, url, names, password, card)
+            Core.reportPage(generation, url, names, password, card, counts)
         }
 
         override fun testOpenReport(generation: Long): Bundle {

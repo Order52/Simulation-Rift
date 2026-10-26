@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -168,6 +169,13 @@ object Core {
     @Volatile private var database: Intel? = null
     /** Counted down once the first attempt to open [database] is over, whatever its outcome. */
     private val intelOpened = CountDownLatch(1)
+
+    /**
+     * Debug builds only: browse even in a WebView that lacks fixes for
+     * exploited bugs, because no emulator image here has a current one.
+     * s15b turns it off to see the refusal. Release builds ignore it.
+     */
+    @Volatile internal var allowOutdatedWebView: Boolean = true
 
     /** The worker component for the scan after each download; tests substitute misbehaving ones. */
     @Volatile internal var scanWorker: Class<out Service> = PreviewService::class.java
@@ -432,18 +440,31 @@ object Core {
         }
         val sites = stats?.contacted.orEmpty()
         val refused = stats?.recent.orEmpty().map { "${it.destination}: ${it.reason}" }
+        val (tracking, rest) = watch.events.partition { it.code == "tracker" || it.code == "tracker-blocked" }
+        val (ai, seen) = rest.partition { it.code == "page-ai" }
         return TestReport(watch.level, summary, listOfNotNull(
             TestReport.Section("Where it went", hops.ifEmpty { listOf("It did not load a page.") }),
-            TestReport.Section("What Rift saw", watch.events.map { (if (it.count > 1) "×${it.count} " else "") + it.text }.ifEmpty { listOf("Nothing.") }),
+            TestReport.Section("Rift AI's reading of the page", ai.map { it.text }.ifEmpty {
+                listOf("Nothing it recognises as phishing. It compares the page with known phishing pages; that is not proof either way.")
+            }),
+            TestReport.Section("What Rift saw", seen.map { (if (it.count > 1) "×${it.count} " else "") + it.text }.ifEmpty { listOf("Nothing.") }),
+            TestReport.Section("Trackers (${tracking.size})", tracking.map { it.text }.ifEmpty { listOf("None that Rift knows by name.") }),
             TestReport.Section("Sites it reached (${sites.size})", sites.ifEmpty { listOf("None.") }),
             refused.takeIf { it.isNotEmpty() }?.let { TestReport.Section("Refused by Rift's proxy (${it.size})", it) },
         ))
     }
 
-    /** What a page asks for and calls itself, from the browser (ICore.reportPage). */
-    fun reportPage(generation: Long, url: String, names: String, password: Boolean, card: Boolean) {
+    /** A request of the current browser's that the content filters blocked (for the watch's tracker notes). */
+    fun filtered(generation: Long, url: String) {
         if (browser?.generation != generation) return
-        val facts = navigator.assessPage(url.take(MAX_ORIGIN_CHARS), names.take(MAX_PAGE_NAMES), password, card)
+        watcher(generation)?.filtered(url.take(MAX_ORIGIN_CHARS))
+    }
+
+    /** What a page asks for and calls itself, from the browser (ICore.reportPage). */
+    fun reportPage(generation: Long, url: String, names: String, password: Boolean, card: Boolean, counts: String) {
+        if (browser?.generation != generation) return
+        // Over the bound, the core reads no counts at all (rift_core::pagemodel::MAX_REPORT_BYTES).
+        val facts = navigator.assessPage(url.take(MAX_ORIGIN_CHARS), names.take(MAX_PAGE_NAMES), password, card, counts.take(MAX_PAGE_COUNTS))
         watcher(generation)?.page(url.take(MAX_ORIGIN_CHARS), facts)
     }
 
@@ -636,7 +657,8 @@ object Core {
         browser = RegisteredBrowser(generation, binder, mode)
         _network.value = null
         Log.i(TAG, "browser registered for generation $generation, network $mode")
-        return SessionGrant.Granted(endpoint.port.toInt(), endpoint.token, endpoint.realm, mode)
+        val debuggable = (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        return SessionGrant.Granted(endpoint.port.toInt(), endpoint.token, endpoint.realm, mode, debuggable && allowOutdatedWebView)
     }
 
     fun reportSandbox(generation: Long, report: SandboxReport) {
@@ -749,7 +771,12 @@ object Core {
 
     private fun receive(opened: Sessions, generation: Long, uri: Uri): QuarantinedFile {
         require(uri.scheme == "content") { "Rift takes files only as content from another app, not ${displaySafe(uri.scheme ?: "a bare path")}" }
-        val owner = uri.authority?.let { app.packageManager.resolveContentProvider(it, 0)?.packageName }
+        // A user prefix ("0@authority") resolves to no provider here but is
+        // stripped by the resolver, which would then open Rift's own; so the
+        // provider must resolve, as another app's.
+        val authority = uri.authority?.takeIf { '@' !in it }
+        val owner = authority?.let { app.packageManager.resolveContentProvider(it, 0)?.packageName }
+        require(owner != null) { "Rift takes files only from an app's own provider" }
         require(owner != app.packageName && owner != Rift.BROWSER_PACKAGE) { "Rift does not take files from itself" }
         val resolver = app.contentResolver
         val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -1171,6 +1198,7 @@ object Core {
 
     private const val MAX_ORIGIN_CHARS = 2_048
     private const val MAX_PAGE_NAMES = 512
+    private const val MAX_PAGE_COUNTS = 8 * 1024
     private const val MAX_HOPS = 20
     private const val MAX_HOP_CHARS = 200
     private const val MAX_DECOY_DETAIL_CHARS = 200

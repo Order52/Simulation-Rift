@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.http.SslError
@@ -276,7 +277,9 @@ class BrowserActivity : ComponentActivity() {
             WebView.setDataDirectorySuffix("s$generation")
             processGeneration = generation
         }
-        val report = WebViewSandbox.evaluate(WebViewSandbox.facts(this))
+        // A release browser never browses in an outdated WebView, whatever the grant says.
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        val report = WebViewSandbox.evaluate(WebViewSandbox.facts(this), allowOutdated = debuggable && granted.outdatedWebView)
         try {
             connected.reportSandbox(generation, report.verified, report.detail)
         } catch (e: RemoteException) {
@@ -443,7 +446,8 @@ class BrowserActivity : ComponentActivity() {
             val connected = core ?: return@evaluateJavascript
             watchReader.execute {
                 try {
-                    connected.reportPage(generation, url, facts.optString("n").take(MAX_FACT_NAMES), facts.optBoolean("p"), facts.optBoolean("c"))
+                    val counts = facts.optJSONObject("k")?.toString().orEmpty()
+                    connected.reportPage(generation, url, facts.optString("n").take(MAX_FACT_NAMES), facts.optBoolean("p"), facts.optBoolean("c"), counts)
                 } catch (e: RemoteException) {
                     exitProcess("core unreachable")
                 }
@@ -1225,8 +1229,36 @@ class BrowserActivity : ComponentActivity() {
         private const val MAX_NAMES_REPLY_CHARS = 300_000
         private const val MAX_GENERIC_CSS_CHARS = 250_000
         private const val TEST_OPEN_MS = 10_000L
-        private const val MAX_FACTS_REPLY_CHARS = 4_096
+        private const val MAX_FACTS_REPLY_CHARS = 24_576
         private const val MAX_FACT_NAMES = 512
+
+        /**
+         * What the page is made of, for Rift AI's page model (§16.1): counts,
+         * the title and the start of the visible text. Each count is defined
+         * in rift_core::pagemodel::PageCounts; tools/rift-train counts the same
+         * in saved pages. "Another site" is site_key's rule, written again here.
+         */
+        private const val PAGE_COUNTS = """(function(){
+var all=function(s){return document.querySelectorAll(s)};
+var key=function(h){h=(h||'').toLowerCase().replace(/\.$/,'');var l=h.split('.'),n=l.length,k=(n>=3&&l[n-1].length==2&&l[n-2].length<=3)?3:2;return l.slice(Math.max(0,n-k)).join('.')};
+var me=key(location.hostname);
+var other=function(v){if(!v)return false;try{var u=new URL(v,location.href);return(u.protocol=='http:'||u.protocol=='https:')&&key(u.hostname)!=me}catch(e){return false}};
+var nowhere=function(v){v=(v||'').trim().toLowerCase();return v==''||v.charAt(0)=='#'||v.indexOf('javascript:')==0||v=='about:blank'};
+var k={pw:all('input[type=password]').length,fm:0,fx:0,fnull:0,fmail:0,fphp:0,hi:all('input[type=hidden]').length,a:0,ax:0,an:0,r:0,rx:0,fv:0,ifr:0,ih:0,sc:0,sx:0,ob:0,
+mr:document.querySelector('meta[http-equiv=refresh i]')?1:0,rc:document.querySelector('[oncontextmenu]')?1:0,hb:0,el:document.getElementsByTagName('*').length,cp:0};
+all('form').forEach(function(f){k.fm++;var v=f.getAttribute('action');if(v===null)return;if(nowhere(v)){k.fnull++;return}v=v.trim().toLowerCase();
+if(v.indexOf('mailto:')==0)k.fmail++;else if(other(v))k.fx++;if(/\.php([?#]|$)/.test(v))k.fphp++});
+all('a[href]').forEach(function(a){k.a++;var v=a.getAttribute('href');if(nowhere(v))k.an++;else if(other(v))k.ax++});
+all('img[src],script[src],iframe[src],link[href]').forEach(function(e){k.r++;if(other(e.getAttribute(e.tagName=='LINK'?'href':'src')))k.rx++});
+all('link[rel~=icon i]').forEach(function(e){if(other(e.getAttribute('href')))k.fv=1});
+all('iframe,frame').forEach(function(f){k.ifr++;var st=f.getAttribute('style')||'';
+if(f.getAttribute('width')=='0'||f.getAttribute('height')=='0'||f.hasAttribute('hidden')||/display:\s*none|visibility:\s*hidden/i.test(st))k.ih++});
+all('script').forEach(function(s){k.sc++;var v=s.getAttribute('src');if(v!==null){if(other(v))k.sx++;return}var t=(s.textContent||'').slice(0,200000);
+k.ob+=(t.match(/eval\(|atob\(|unescape\(|fromCharCode|document\.write\(/g)||[]).length;if(/event\.button ?== ?2/.test(t))k.rc=1});
+k.ob=Math.min(k.ob,100000);k.hb=Math.min(document.documentElement.outerHTML.length,10000000);
+var text=((document.body&&document.body.innerText)||'').replace(/\s+/g,' ');
+k.cp=/[©®™]/.test(text)?1:0;k.title=(document.title||'').slice(0,256);k.text=text.trim().slice(0,2000);
+return k})()"""
 
         /** What the page calls itself (title, site name, first heading) and whether it asks for a password or a card. */
         private const val PAGE_FACTS_SCRIPT = "(function(){var q=function(s){return document.querySelector(s)};" +
@@ -1234,7 +1266,8 @@ class BrowserActivity : ComponentActivity() {
             "var n=[document.title,m&&m.content,h&&h.textContent].filter(Boolean).join(' \u00b7 ').replace(/\\s+/g,' ').slice(0,512);" +
             "var c=!!q('input[autocomplete^=\"cc-\"]')||Array.prototype.some.call(document.querySelectorAll('input'),function(i){" +
             "return /card.?num|cc.?num|cvv|cvc|csc/i.test((i.name||'')+' '+(i.id||'')+' '+(i.placeholder||''))});" +
-            "return JSON.stringify({n:n,p:!!q('input[type=password]'),c:c})})()"
+            "return JSON.stringify({n:n,p:!!q('input[type=password]'),c:c,k:" + PAGE_COUNTS + "})})()"
+
 
         /** The class names and ids in the page, as JSON; the only thing read back from it. */
         private const val PAGE_NAMES_SCRIPT = "(function(){var c={},i={},nc=0,ni=0;" +

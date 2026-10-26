@@ -50,8 +50,11 @@ import org.simulationrift.core.LinkTrace
 import org.simulationrift.core.Navigation
 import org.simulationrift.core.TraceHop
 import org.simulationrift.core.TraceOutcome
+import org.simulationrift.core.TrackingParam
+import org.simulationrift.core.linkTracking
 import org.simulationrift.core.linkWithHttps
 import org.simulationrift.core.linkWithoutQuery
+import org.simulationrift.core.linkWithoutTracking
 
 /*
  * What Check offers beyond its verdict (§10.10), on the home screen and in
@@ -143,6 +146,9 @@ private fun Cleaning(address: String, onAddress: (String) -> Unit) {
     val cleaned = remember(address, rules.updated) { LinkCleaning.clean(address) }
     val filters by ContentFilter.state.collectAsState()
     val listed = remember(address, filters.ready) { ContentFilter.listsAddress(address) }
+    // Rift's own short list, explained; it works without the ClearURLs rules (§10.14).
+    val tracking = remember(address) { linkTracking(address) }
+    TrackingExplained(tracking)
     if (listed) {
         Text(
             "Your content filters list this server as an ad or tracker server (EasyPrivacy and the other lists).",
@@ -152,6 +158,10 @@ private fun Cleaning(address: String, onAddress: (String) -> Unit) {
         )
     }
     if (cleaned == null) {
+        val withoutTracking = remember(address) { linkWithoutTracking(address) }
+        withoutTracking?.let {
+            OutlinedButton(onClick = { onAddress(it) }, modifier = Modifier.testTag("tools-tracking-remove")) { Text("Remove the tracking") }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (rules.busy) "Downloading the ClearURLs rules…"
@@ -182,9 +192,10 @@ private fun Cleaning(address: String, onAddress: (String) -> Unit) {
             Text(cleaned.unwrapped.last(), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
                 maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("tools-clean-unwrapped"))
         }
-        if (cleaned.removed.isNotEmpty()) {
+        val unexplained = cleaned.removed.filter { name -> tracking.none { it.name.equals(name, ignoreCase = true) } }
+        if (unexplained.isNotEmpty()) {
             Text(
-                "Trackers in it: ${cleaned.removed.joinToString(", ")}",
+                (if (tracking.isEmpty()) "Trackers in it: " else "Other trackers in it (ClearURLs): ") + unexplained.joinToString(", "),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.testTag("tools-clean-removed"),
             )
@@ -193,6 +204,23 @@ private fun Cleaning(address: String, onAddress: (String) -> Unit) {
             OutlinedButton(onClick = { onAddress(cleaned.address) }, modifier = Modifier.testTag("tools-clean-use")) {
                 Text(if (cleaned.unwrapped.isNotEmpty()) "Check where it takes you" else "Use the clean link")
             }
+        }
+    }
+}
+
+/** Each tracking parameter Rift knows in the link: who adds it and what it lets them know. */
+@Composable
+private fun TrackingExplained(tracking: List<TrackingParam>) {
+    if (tracking.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.testTag("tools-tracking")) {
+        Text(
+            if (tracking.size == 1) "This link carries a tracker. Remove it before you open or share the link:"
+            else "This link carries ${tracking.size} trackers. Remove them before you open or share the link:",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        for (param in tracking) {
+            Text("${param.name} (${param.who}): ${param.what}", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
@@ -25,6 +26,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.simulationrift.core.AiLevel
@@ -189,8 +191,14 @@ private fun AiMeter(ai: AiView?) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Rift AI", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text("${ai.score}/100 · $label", style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("check-ai-score"))
+            // On a narrow screen the score wraps, never the name.
+            Text("Rift AI", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, softWrap = false, modifier = Modifier.padding(end = 8.dp))
+            Text(
+                "${ai.score}/100 · $label",
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f).testTag("check-ai-score"),
+            )
         }
         val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
         Canvas(Modifier.fillMaxWidth().height(8.dp).semantics { contentDescription = "Rift AI risk ${ai.score} of 100" }) {

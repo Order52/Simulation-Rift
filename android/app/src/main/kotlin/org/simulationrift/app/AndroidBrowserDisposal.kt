@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.os.RemoteException
 import android.util.Log
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicReference
@@ -58,10 +59,13 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
     /** Best effort: asks the browser window to finish, so Android does not restore it. */
     private fun endBrowserWindow() {
         try {
-            Core.detachBrowser()?.shutdown()
+            Core.detachBrowser()?.let { browser -> answered("shutdown") { browser.shutdown() } }
         } catch (e: RemoteException) {
             // Already dead or dying; the wipe decides.
             Log.i(TAG, "browser did not answer shutdown: $e")
+        } catch (e: DisposalException) {
+            // Hung; the wipe kills it.
+            Log.w(TAG, "${e.message}")
         }
     }
 
@@ -116,7 +120,7 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
                 // With extra isolation (§8.9) the system clears the browser
                 // app at Rift's request, whether or not the browser would ask.
                 Hardening.clearBrowser()?.takeIf { ok -> ok } ?: try {
-                    it.bound.session.wipe()
+                    answered("wipe") { it.bound.session.wipe() }
                 } catch (e: RemoteException) {
                     Log.w(TAG, "the browser died before it asked for the wipe: $e")
                     null
@@ -140,7 +144,7 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
         val (pid, files) = retrying("fresh browser instance") {
             val fresh = Bound.connect(context)
             try {
-                fresh.session.pid() to fresh.session.inventory()
+                answered("pid") { fresh.session.pid() } to answered("inventory") { fresh.session.inventory() }
             } catch (e: RemoteException) {
                 throw DisposalException.Failed("the fresh browser instance did not answer: $e")
             } finally {
@@ -154,6 +158,23 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
         Log.i(TAG, "browser wiped: pid $oldPid -> $pid, no files")
     }
 
+    /**
+     * A call into the browser app, bounded: an instance that does not answer
+     * (escaped code could hold its Binder thread) fails the reset visibly
+     * instead of holding it, and the session with it, for ever. A failed
+     * call throws as before, as RemoteException.
+     */
+    private fun <T> answered(what: String, call: () -> T): T {
+        val future = CompletableFuture.supplyAsync({ call() }, calls)
+        return try {
+            future.get(CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            throw DisposalException.Failed("the browser app did not answer $what in ${CALL_TIMEOUT_MS / 1000} s")
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw (e.cause as? RemoteException) ?: (e.cause ?: e)
+        }
+    }
+
     /** A running browser instance to wipe: its binding, its pid, and a future completed when it dies. */
     private data class Running(val bound: Bound, val pid: Int, val died: CompletableFuture<Unit>) : AutoCloseable {
         override fun close() = bound.close()
@@ -162,7 +183,7 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
     private fun instanceToWipe(): Running = retrying("browser instance to wipe") {
         val bound = Bound.connect(context)
         try {
-            val pid = bound.session.pid()
+            val pid = answered("pid") { bound.session.pid() }
             val died = CompletableFuture<Unit>()
             bound.binder.linkToDeath({ died.complete(Unit) }, 0)
             Running(bound, pid, died)
@@ -276,6 +297,10 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
 
     companion object {
         private const val WIPE_TIMEOUT_MS = 10_000L
+        private const val CALL_TIMEOUT_MS = 10_000L
+
+        /** A thread per call into the browser, so one that never answers holds only its own. */
+        private val calls = Executors.newCachedThreadPool { Thread(it, "rift-disposal-call").apply { isDaemon = true } }
 
         /**
          * The first clears after an install took 9.2 s and over 10 s to be

@@ -568,6 +568,32 @@ class SecurityTest {
      * itself: the report lists the hops, the look-alike check's warning,
      * the site reached, and the download, which is not fetched.
      */
+    /**
+     * n10: Rift AI's page model (§16.1) reads a page shaped like a phishing
+     * kit (a password form posting to another site's PHP script, links that
+     * go nowhere, a brand that is not the site, urgent text) and warns about
+     * it in the watch and in the test-open report. The counts come from the
+     * browser's script, so this tests that script, the bridge and the model.
+     */
+    @Test
+    fun n10_riftAiReadsAPhishingKitPage() {
+        visit("s1", "/s1.html")
+        val first = activeGeneration()
+        Core.testOpen(fixture("/kit.html"))
+        allowFixtureHost()
+        val second = activeGenerationAfter(first)
+        assertNotNull("the report", awaitFresh(PAGE_TIMEOUT_MS) { device.findObject(By.res("test-report-summary")) })
+        screenshot("n10-report")
+        val ai = Core.pageWatch(second)?.events?.firstOrNull { it.code == "page-ai" } ?: throw AssertionError("no page-ai event: ${Core.pageWatch(second)?.events?.map { it.code }}")
+        assertEquals(PageWatch.Level.WARNING, ai.level)
+        assertTrue(ai.text, "resembling phishing" in ai.text && !ai.text.contains("safe", ignoreCase = true))
+        val reading = Core.testOpenReport(second)?.sections?.first { it.title == "Rift AI's reading of the page" }?.items.orEmpty()
+        assertTrue("reading: $reading", reading.any { "resembling phishing" in it })
+        (swipeUntil(By.res("test-show")) ?: throw AssertionError("show the page")).let { settled(By.res("test-show"))?.click() ?: it.click() }
+        assertNotNull("the page is shown", awaitFresh { Unit.takeIf { device.findObject(By.res("test-open")) == null } })
+        report("n10", ai.text)
+    }
+
     @Test
     fun n9_testOpenReportsWhatALinkDidBeforeItIsShown() {
         // A session a page has used: the test-open must start a new one.
@@ -928,6 +954,32 @@ class SecurityTest {
         val decision = Core.decide(generation, "https://example.org/")
         assertEquals("sandbox-unavailable", (decision as NavigationDecision.Block).reason.code)
         assertFalse(decision.inspectAnyway)
+    }
+
+    @Test
+    fun s15b_aWebViewMissingExploitedFixesRefusesBrowsing() {
+        // Without the debug allowance, as in a release build: on this
+        // emulator's WebView (older than every fix in KnownExploited) the
+        // browser must refuse and say why.
+        Core.allowOutdatedWebView = false
+        try {
+            val generation = resetAndAwait(activeGeneration())
+            val earlier = Core.sandbox.value
+            Core.openWindow(context, generation, null)
+            val deadline = SystemClock.elapsedRealtime() + ENGINE_START_TIMEOUT_MS
+            while (Core.sandbox.value === earlier && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50)
+            val sandbox = Core.sandbox.value ?: throw AssertionError("no sandbox report from :browser")
+            assumeTrue("this WebView has every listed fix: ${sandbox.detail}", sandbox.detail.contains("exploited in the wild"))
+            assertFalse(sandbox.detail, sandbox.verified)
+            assertNotNull(device.wait(Until.findObject(By.res("protection").text("Browsing refused on this device")), UI_TIMEOUT_MS))
+            assertNotNull(device.findObject(By.textContains("exploited in the wild")))
+            val decision = Core.decide(generation, "https://example.org/")
+            assertEquals("sandbox-unavailable", (decision as NavigationDecision.Block).reason.code)
+            report("s15b", sandbox.detail)
+        } finally {
+            Core.allowOutdatedWebView = true
+            resetAndAwait(activeGeneration())
+        }
     }
 
     // ---- S12: reset destroys session state (INV-8) -------------------------------
@@ -1722,6 +1774,8 @@ class SecurityTest {
         // Rift AI's data: the Public Suffix List's MPL-2.0 notice, Phishing.Database's MIT one.
         val model = context.assets.open("url-model-notice.txt").bufferedReader().use { it.readText() }
         assertTrue(model.contains("Mozilla Public License") && model.contains("Copyright (c) 2018-2025 Mitchell Krog"))
+        val page = context.assets.open("page-model-notice.txt").bufferedReader().use { it.readText() }
+        assertTrue(page.contains("CC BY 4.0") && page.contains("doi:10.17632/n96ncsr5g4.1"))
         val browser = context.createPackageContext(Rift.BROWSER_PACKAGE, 0).assets
         // The browser app's own list: its web engine library, and no JNA (it loads no Rust).
         val browserLibraries = browser.open("notices/android-libraries.txt").bufferedReader().use { it.readText() }
