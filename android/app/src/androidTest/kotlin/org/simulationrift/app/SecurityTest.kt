@@ -1353,12 +1353,7 @@ class SecurityTest {
         try {
             ContentFilter.setEnabled(true)
             ContentFilter.setCustom("! test rules\n/ads/banner.js\nlocalhost##.ad-banner\n###sign-in-popup\n")
-            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) {
-                // Ready alone may still describe the rules before these (a retry run on its own blocked 2 of 100).
-                ContentFilter.state.value.ready && ContentFilter.active() &&
-                    ContentFilter.blocks("https://ads0.example/x.js", "https://news.example/", "script") &&
-                    ContentFilter.blocks("https://ads99.example/x.js", "https://news.example/", "script")
-            }
+            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) { ContentFilter.state.value.ready && ContentFilter.active() }
             val blockedBefore = ContentFilter.state.value.blocked
             val on = visit("f1", "/filters.html")
             assertEquals("the ad script", "BLOCKED", on.getString("ad_script"))
@@ -1488,7 +1483,12 @@ class SecurityTest {
             val rules = (0..500).joinToString("\n") { "||ads$it.example^\n/banner$it/*\n##.ad-$it" } + "\n"
             ContentFilter.setEnabled(true)
             ContentFilter.setCustom(rules)
-            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) { ContentFilter.state.value.ready && ContentFilter.active() }
+            awaitCondition("the rules are loaded", SESSION_TIMEOUT_MS) {
+                // Ready alone may still describe the rules before these (a retry run on its own blocked 2 of 100).
+                ContentFilter.state.value.ready && ContentFilter.active() &&
+                    ContentFilter.blocks("https://ads0.example/x.js", "https://news.example/", "script") &&
+                    ContentFilter.blocks("https://ads99.example/x.js", "https://news.example/", "script")
+            }
             val urls = (0 until 400).map { "https://cdn$it.example.com/a/b/c$it.js?x=$it" } + (0 until 100).map { "https://ads$it.example/x.js" }
             for (url in urls) ContentFilter.blocks(url, "https://news.example/", "script")
             // The quickest of five rounds, for both: a pause of the emulator (CI's API 33 once
