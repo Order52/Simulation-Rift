@@ -575,6 +575,27 @@ class SecurityTest {
      * browser's script, so this tests that script, the bridge and the model.
      */
     @Test
+    fun n11_aNewerReleaseIsOfferedWhenRiftOpens() {
+        openHome()
+        try {
+            SelfUpdate.offerForTest("99.0.0")
+            assertNotNull("the dialog", device.wait(Until.findObject(By.text("Rift 99.0.0 is available")), UI_TIMEOUT_MS))
+            // One tap to update (or, without Android's permission, one to allow it).
+            assertNotNull("its update button", device.findObject(By.res("update-dialog-update")) ?: device.findObject(By.res("update-dialog-permission")))
+            device.findObject(By.res("update-dialog-later")).click()
+            assertTrue("Later closes it", device.wait(Until.gone(By.res("update-dialog")), UI_TIMEOUT_MS))
+            // Still offered under About, with the switch for the check at launch.
+            device.findObject(By.text("About")).click()
+            val install = swipeUntil(By.res("self-update-install"))
+            assertNotNull("About's Update now", install)
+            assertNotNull("the launch switch", swipeUntil(By.res("self-update-launch-switch")))
+        } finally {
+            SelfUpdate.offerForTest(null)
+            device.wait(Until.findObject(By.text("Home")), UI_TIMEOUT_MS)?.click()
+        }
+    }
+
+    @Test
     fun n10_riftAiReadsAPhishingKitPage() {
         visit("s1", "/s1.html")
         val first = activeGeneration()

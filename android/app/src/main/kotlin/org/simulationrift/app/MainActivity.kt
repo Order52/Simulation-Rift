@@ -158,6 +158,8 @@ class MainActivity : ComponentActivity() {
         // Not when Android recreates the activity (after a crash or a kill):
         // a link handed over before then is not opened again without the user.
         if (savedInstanceState == null) receive(intent)
+        // Opened, not recreated: is there a newer Rift? (§8.11; a dialog if so)
+        if (savedInstanceState == null) SelfUpdate.checkAtLaunch()
         // No overlays, autofill, non-tool accessibility services or recents snapshot.
         WindowGuard.apply(this)
         setContent { RiftTheme { NoPersonalizedLearning { Home() } } }
@@ -171,6 +173,8 @@ class MainActivity : ComponentActivity() {
         }
         // The week may have moved on while Rift was in the background.
         WeeklyStats.refresh()
+        // Back from Android's "install unknown apps" setting, for an update.
+        SelfUpdate.resumed()
     }
 
     private fun turnOnLock() {
@@ -212,6 +216,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun Home() {
+        UpdateDialog()
         val state by Core.state.collectAsState()
         val lock by NetworkLock.state.collectAsState()
         val reduced by Core.reduced.collectAsState()

@@ -125,44 +125,61 @@ private fun AppearanceCard() {
 @Composable
 private fun UpdatesCard() {
     val update by SelfUpdate.state.collectAsState()
+    val automatic by SelfUpdate.automatic.collectAsState()
+    val atLaunch by SelfUpdate.atLaunch.collectAsState()
+    val test = update == SelfUpdate.State.DebugBuild
     AboutCard("Updates") {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Update Rift by itself", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "Once a day Rift asks GitHub for its latest release, and installs it only if it is signed with Rift's own key. " +
-                        "The first time, Android asks you; after that Rift updates while you are not using it.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Switch(
-                checked = update != SelfUpdate.State.Off && update != SelfUpdate.State.DebugBuild,
-                onCheckedChange = { SelfUpdate.setEnabled(it) },
-                enabled = update != SelfUpdate.State.DebugBuild,
-                modifier = Modifier.testTag("self-update-switch"),
-            )
-        }
-        val status = when (val u = update) {
-            SelfUpdate.State.Off -> "Off: updates only by hand, from the Releases page."
-            SelfUpdate.State.DebugBuild -> "A test build: it is updated with the build tools, not from releases."
-            SelfUpdate.State.Idle -> "Checks within a day."
-            SelfUpdate.State.Checking -> "Checking…"
-            is SelfUpdate.State.UpToDate -> "Up to date (checked ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(u.checkedAt))})."
-            is SelfUpdate.State.Downloading -> "Downloading Rift ${u.version}…"
-            is SelfUpdate.State.Ready -> "Rift ${u.version} is ready." + (u.problem?.let { " Not installed: $it." } ?: "")
-            SelfUpdate.State.Installing -> "Installing…"
-            is SelfUpdate.State.Failed -> "Could not update: ${u.reason}."
-        }
-        Text(status, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("self-update-status"))
+        UpdateSwitch(
+            "Check when Rift opens",
+            "Each time you open Rift it asks GitHub for its latest release, and offers it in a dialog if there is a newer one.",
+            checked = atLaunch && !test,
+            enabled = !test,
+            tag = "self-update-launch-switch",
+            onChange = SelfUpdate::setAtLaunch,
+        )
+        UpdateSwitch(
+            "Update Rift by itself",
+            "Once a day Rift asks GitHub for its latest release, and installs it only if it is signed with Rift's own key. " +
+                "The first time, Android asks you; after that Rift updates while you are not using it.",
+            checked = automatic && !test,
+            enabled = !test,
+            tag = "self-update-switch",
+            onChange = SelfUpdate::setEnabled,
+        )
+        Text(updateStatus(update, automatic), style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("self-update-status"))
         when (update) {
-            is SelfUpdate.State.Ready -> Button(onClick = SelfUpdate::install, modifier = Modifier.fillMaxWidth().testTag("self-update-install")) { Text("Install now") }
+            is SelfUpdate.State.Available, is SelfUpdate.State.Ready ->
+                Button(onClick = SelfUpdate::install, modifier = Modifier.fillMaxWidth().testTag("self-update-install")) { Text("Update now") }
             is SelfUpdate.State.UpToDate, is SelfUpdate.State.Failed, SelfUpdate.State.Idle ->
-                OutlinedButton(onClick = SelfUpdate::checkNow, modifier = Modifier.fillMaxWidth().testTag("self-update-check")) { Text("Check now") }
+                OutlinedButton(onClick = SelfUpdate::checkNow, modifier = Modifier.fillMaxWidth().testTag("self-update-check")) { Text("Check for updates") }
             else -> Unit
         }
     }
+}
+
+@Composable
+private fun UpdateSwitch(title: String, detail: String, checked: Boolean, enabled: Boolean, tag: String, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled, modifier = Modifier.testTag(tag))
+    }
+}
+
+/** One line on where updating stands (About, and the update dialog). */
+fun updateStatus(update: SelfUpdate.State, automatic: Boolean): String = when (update) {
+    SelfUpdate.State.DebugBuild -> "A test build: it is updated with the build tools, not from releases."
+    SelfUpdate.State.Idle -> if (automatic) "Checks within a day." else "Checks only when you ask, or when Rift opens if that is on."
+    SelfUpdate.State.Checking -> "Checking…"
+    is SelfUpdate.State.UpToDate -> "Up to date (checked ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(update.checkedAt))})."
+    is SelfUpdate.State.Available -> "Rift ${update.release.version} is available."
+    is SelfUpdate.State.Downloading -> "Downloading Rift ${update.version}…"
+    is SelfUpdate.State.Ready -> "Rift ${update.version} is ready." + (update.problem?.let { " Not installed: $it." } ?: "")
+    SelfUpdate.State.Installing -> "Installing…"
+    is SelfUpdate.State.Failed -> "Could not update: ${update.reason}."
 }
 
 @Composable

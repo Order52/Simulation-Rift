@@ -10,6 +10,7 @@ import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -32,17 +33,23 @@ import org.simulationrift.core.newerAppRelease
  * Install). Once Rift has installed itself, Android lets it install later
  * updates without asking (API 31+), and Rift does so by itself, but only
  * while none of its screens is in front and no browser window is open.
+ *
+ * With "Check when Rift opens" on (the default), each launch also asks, and
+ * a newer release is offered in a dialog: one tap downloads, checks and
+ * installs it. A check the user started (at launch or with Check now)
+ * downloads nothing until the user taps Update, so it costs one small
+ * request on a metered network; it works whether or not the daily one is on.
  */
 object SelfUpdate {
 
     sealed interface State {
-        data object Off : State
-
         /** A debug build: it updates with the build tools, never from releases. */
         data object DebugBuild : State
         data object Idle : State
         data object Checking : State
         data class UpToDate(val checkedAt: Long) : State
+        /** A newer release, not downloaded yet. */
+        data class Available(val release: AppRelease) : State
         data class Downloading(val version: String) : State
         /** Downloaded and checked; `problem`: why the last install did not happen. */
         data class Ready(val version: String, val problem: String? = null) : State
@@ -52,6 +59,7 @@ object SelfUpdate {
 
     private const val TAG = "RiftUpdate"
     private const val OFF_FILE = "self-update-off"
+    private const val LAUNCH_OFF_FILE = "self-update-launch-off"
     private const val CHECKED_FILE = "self-update-checked"
     private const val APK = "update/rift.apk"
     private const val ACTION_RESULT = "org.simulationrift.app.SELF_UPDATED"
@@ -59,6 +67,18 @@ object SelfUpdate {
 
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state
+
+    /** Daily checks, and installing by itself. */
+    private val _automatic = MutableStateFlow(true)
+    val automatic: StateFlow<Boolean> = _automatic
+
+    /** A check at each launch, with a dialog if there is a newer release. */
+    private val _atLaunch = MutableStateFlow(true)
+    val atLaunch: StateFlow<Boolean> = _atLaunch
+
+    /** Whether the update dialog is open: offered at launch, then followed through after Update. */
+    private val _dialog = MutableStateFlow(false)
+    val dialog: StateFlow<Boolean> = _dialog
     private val work = Executors.newSingleThreadExecutor { Thread(it, "rift-self-update") }
     private lateinit var app: Context
 
@@ -66,46 +86,74 @@ object SelfUpdate {
         app = context.applicationContext
         File(app.cacheDir, APK).delete()
         val debuggable = (app.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        _state.value = when {
-            debuggable -> State.DebugBuild
-            File(app.filesDir, OFF_FILE).exists() -> State.Off
-            else -> State.Idle
-        }
+        _state.value = if (debuggable) State.DebugBuild else State.Idle
+        _automatic.value = !File(app.filesDir, OFF_FILE).exists()
+        _atLaunch.value = !File(app.filesDir, LAUNCH_OFF_FILE).exists()
     }
 
     fun setEnabled(on: Boolean) {
         if (_state.value == State.DebugBuild) return
         val file = File(app.filesDir, OFF_FILE)
+        _automatic.value = on
         if (on) {
             file.delete()
-            _state.value = State.Idle
-            checkNow()
+            refreshIfStale()
         } else {
             file.createNewFile()
-            File(app.cacheDir, APK).delete()
-            _state.value = State.Off
         }
+    }
+
+    fun setAtLaunch(on: Boolean) {
+        if (_state.value == State.DebugBuild) return
+        val file = File(app.filesDir, LAUNCH_OFF_FILE)
+        _atLaunch.value = on
+        if (on) file.delete() else file.createNewFile()
     }
 
     /** Daily, from the content filters' timer and at start. */
     fun refreshIfStale() {
-        if (!::app.isInitialized || _state.value == State.Off || _state.value == State.DebugBuild) return
+        if (!::app.isInitialized || !_automatic.value || _state.value == State.DebugBuild) return
         when (val now = _state.value) {
             is State.Ready -> if (now.problem == null) installQuietlyIfAllowed()
             is State.Checking, is State.Downloading, State.Installing -> return
             else -> {
-                if (now is State.Failed || System.currentTimeMillis() - lastChecked() > STALE_MS) checkNow()
+                if (now is State.Failed || System.currentTimeMillis() - lastChecked() > STALE_MS) start(download = true)
             }
         }
     }
 
-    fun checkNow() {
-        if (_state.value == State.Off || _state.value == State.DebugBuild) return
-        _state.value = State.Checking
-        work.execute(::check)
+    /** Rift was opened (not recreated): asks, and opens the dialog if there is a newer release. */
+    fun checkAtLaunch() {
+        if (!::app.isInitialized || !_atLaunch.value || _state.value == State.DebugBuild) return
+        when (_state.value) {
+            is State.Available, is State.Ready -> _dialog.value = true
+            // The daily check got there first: the dialog opens when it ends.
+            is State.Checking, is State.Downloading -> launching = true
+            State.Installing -> return
+            else -> {
+                launching = true
+                start(download = false)
+            }
+        }
     }
 
-    private fun check() {
+    /** The user tapped Check now. */
+    fun checkNow() = start(download = false)
+
+    /** The user closed the dialog. */
+    fun dismiss() {
+        _dialog.value = false
+    }
+
+    @Volatile private var launching = false
+
+    private fun start(download: Boolean) {
+        if (_state.value == State.DebugBuild) return
+        _state.value = State.Checking
+        work.execute { check(download) }
+    }
+
+    private fun check(download: Boolean) {
         val installed = installedVersion() ?: return fail("Rift's own version could not be read")
         try {
             val release: AppRelease? = newerAppRelease(installed)
@@ -114,33 +162,70 @@ object SelfUpdate {
                 _state.value = State.UpToDate(System.currentTimeMillis())
                 return
             }
-            _state.value = State.Downloading(release.version)
-            val apk = File(app.cacheDir, APK).apply { parentFile?.mkdirs() }
-            downloadAppRelease(release, apk.path)
-            verify(apk)?.let { apk.delete(); return fail(it) }
-            Log.i(TAG, "update ${release.version} downloaded and verified")
-            _state.value = State.Ready(release.version)
-            installQuietlyIfAllowed()
+            if (download) fetchAndVerify(release) else _state.value = State.Available(release)
+            if (launching) _dialog.value = true
         } catch (e: AppUpdateFailure) {
             fail(e.message ?: "the update check failed")
         } catch (e: IOException) {
             fail("the update check failed: ${e.message}")
+        } finally {
+            launching = false
         }
+    }
+
+    /** Downloads [release] and checks it; installs by itself if allowed. */
+    private fun fetchAndVerify(release: AppRelease) {
+        _state.value = State.Downloading(release.version)
+        val apk = File(app.cacheDir, APK).apply { parentFile?.mkdirs() }
+        downloadAppRelease(release, apk.path)
+        verify(apk)?.let { apk.delete(); return fail(it) }
+        Log.i(TAG, "update ${release.version} downloaded and verified")
+        _state.value = State.Ready(release.version)
+        installQuietlyIfAllowed()
     }
 
     private var readyVersion: String? = null
 
-    /** The user tapped Install. */
+    /** The user tapped Update or Install: downloads it first if needed, then installs. */
     fun install() {
-        val ready = _state.value as? State.Ready ?: return
-        readyVersion = ready.version
-        _state.value = State.Installing
-        work.execute(::installNow)
+        when (val now = _state.value) {
+            is State.Available -> {
+                readyVersion = now.release.version
+                _state.value = State.Downloading(now.release.version)
+                work.execute {
+                    try {
+                        fetchAndVerify(now.release)
+                        if (_state.value is State.Ready) {
+                            _state.value = State.Installing
+                            installNow()
+                        }
+                    } catch (e: AppUpdateFailure) {
+                        fail(e.message ?: "the download failed")
+                    } catch (e: IOException) {
+                        fail("the download failed: ${e.message}")
+                    }
+                }
+            }
+            is State.Ready -> {
+                readyVersion = now.version
+                _state.value = State.Installing
+                work.execute(::installNow)
+            }
+            else -> Unit
+        }
+    }
+
+    /** Whether Android lets Rift install apps ("Install unknown apps"); read again on each return to Rift. */
+    private val _mayInstall = MutableStateFlow(true)
+    val mayInstall: StateFlow<Boolean> = _mayInstall
+
+    fun resumed() {
+        if (::app.isInitialized) _mayInstall.value = app.packageManager.canRequestPackageInstalls()
     }
 
     /** Without asking, only where Android allows it and nothing of Rift is in use. */
     private fun installQuietlyIfAllowed() {
-        if (_state.value !is State.Ready || !canInstallQuietly() || Core.browsing() || inFront()) return
+        if (!_automatic.value || _state.value !is State.Ready || !canInstallQuietly() || Core.browsing() || inFront()) return
         Log.i(TAG, "installing the update by itself")
         install()
     }
@@ -211,6 +296,16 @@ object SelfUpdate {
             certs.map { MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).toList() }.toSet()
         }
         return if (digests(mine) == digests(theirs)) null else "the update is not signed with Rift's key"
+    }
+
+    /**
+     * Tests only (N11): a debug build never checks, so the dialog is shown
+     * for a made-up release; null puts the debug state back.
+     */
+    @VisibleForTesting
+    internal fun offerForTest(version: String?) {
+        _state.value = if (version == null) State.DebugBuild else State.Available(AppRelease(version))
+        _dialog.value = version != null
     }
 
     private var listening = false

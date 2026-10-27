@@ -4,6 +4,8 @@
 
 ## What changed
 
+- **Updates at launch (§8.11, 27 October 2026):** with *Check when Rift opens* on (the default), each launch asks GitHub for the latest release and a newer one is offered in a dialog: *Update* downloads it, checks it (published SHA-256, package, version, Rift's key, as before) and installs it. *Check for updates* in About works whatever the switches, and neither it nor the launch check downloads before the user taps Update.
+
 1. **Rift updates itself** (§8.11). Once a day, with the switch on (the default):
    - The core reads GitHub's answer for the latest release (`rift-core::appupdate`). It accepts only a final `vX.Y.Z` release that is newer than the installed version, with assets at exactly the release workflow's addresses.
    - It downloads the APK from addresses it derives from the version, and keeps the APK only if it has the published SHA-256.
@@ -30,6 +32,8 @@
    - **Check keeps working** while cleanup has failed: the address field and Check stay on the card, and only Open in Rift waits for a clean session. Check needs no browser.
 
 ## Verified
+
+- **Updates at launch:** N11 passes on the API 34 emulator (the dialog for a made-up release, its update button, Later, About's Update now and the launch switch); the About card with both switches seen in a debug build. JVM unit tests pass.
 
 - **Learned brands (§10.3, 27 October 2026):** the shipped list (34 hand-picked, 75 learned) parses whole (`heuristics` test); the gate (`rift-train brands`) on 556,204 ordinary and 59,523 live phishing addresses: brand warnings 0.079% → 0.079% and 1.9% → 2.4%; on the API 34 emulator n2 and v1 pass with it, and n9 alone (run straight after v1 it once failed to find the cover; `run-tests.sh` retries a test on its own).
 - **Test-open names redirect tracking and app attempts (§10.11, 27 October 2026):** on the API 34 emulator n9 test-opens a link whose redirect carries `utm_source` and `fbclid`; the report lists both under *Tracking in the addresses it went through*, with the hops, sites and warnings as before.
@@ -59,6 +63,8 @@
 - **The toolchain bump** with stubbed answers, on a copy of the files: every pin moved, and a second run changed nothing.
 
 ## Unverified
+
+- **The launch check against GitHub, and a one-tap update end to end:** only a release build checks, and none with this change has been installed over an older one yet. The first will be v0.11.4 updating to the release after it.
 
 - **No self-update from a real release has run.** The first release with this code (0.11.0) can only update itself to the release after it. Not tested on a device:
   - the confirmation the first time;
