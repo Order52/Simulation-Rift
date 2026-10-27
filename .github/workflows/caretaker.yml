@@ -76,11 +76,16 @@ jobs:
       - name: Rebase bot pull requests that failed on an older main
         run: |
           gh pr list --state open --json number,author,statusCheckRollup \
-            --jq '.[] | select(.author.is_bot) | select([.statusCheckRollup[] | .conclusion] | index("FAILURE")) | "\(.number)"' |
-          while read -r number; do
+            --jq '.[] | select(.author.is_bot) | select([.statusCheckRollup[] | .conclusion] | index("FAILURE")) | "\(.number) \(.author.login)"' |
+          while read -r number author; do
+            # Dependabot stops rebasing a pull request someone else pushed
+            # to, so it is asked to recreate its own instead.
+            if [ "$author" = "app/dependabot" ]; then
+              gh pr comment "$number" --body "@dependabot recreate"
+              echo "Asked Dependabot to recreate #$number." >> "$GITHUB_STEP_SUMMARY"
             # Fails, and nothing more happens, when the branch is already on main.
             # The new CI run is held; the next approve run lets it go.
-            if gh pr update-branch "$number" --rebase; then
+            elif gh pr update-branch "$number" --rebase; then
               echo "Rebased #$number." >> "$GITHUB_STEP_SUMMARY"
             fi
           done
