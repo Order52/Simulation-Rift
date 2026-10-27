@@ -78,6 +78,8 @@ pub struct LinkCheck {
     /// the order loaded. Empty without lists, and on the most visited sites,
     /// which lists name whole by mistake (`docs.google.com`).
     pub listed: Vec<String>,
+    /// What the link would do in another app, if it leaves the web (§10.15).
+    pub app_link: Option<crate::AppLinkView>,
     /// How long the whole check took, in microseconds.
     pub micros: u64,
 }
@@ -146,6 +148,7 @@ impl Navigator {
     /// anything, and with Rift AI's score whatever its level.
     pub fn check(&self, url: String, intel: Option<Arc<Intel>>, now_unix: u64) -> LinkCheck {
         let started = Instant::now();
+        let url_text = url.clone();
         // Nothing is loaded, so the engine's sandbox is not in question.
         let pack = intel.as_ref().and_then(|intel| intel.pack());
         let navigation = self.decide(url.clone(), true, intel, now_unix);
@@ -161,6 +164,7 @@ impl Navigator {
             navigation,
             ai,
             listed,
+            app_link: crate::explain_app_link(url_text),
             micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
         }
     }

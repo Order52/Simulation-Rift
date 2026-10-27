@@ -19,6 +19,8 @@ use rift_protocol::{Envelope, PROTOCOL_VERSION, Request, Response};
 uniffi::setup_scaffolding!();
 
 mod ai;
+mod applink;
+pub use applink::{AppLinkRisk, AppLinkView, explain_app_link};
 mod appupdate;
 pub use appupdate::{AppRelease, AppUpdateFailure, download_app_release, newer_app_release};
 mod egress;

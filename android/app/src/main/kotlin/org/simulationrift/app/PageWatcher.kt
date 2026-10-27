@@ -5,11 +5,13 @@ import org.simulationrift.bridge.Fact
 import org.simulationrift.bridge.NavigationDecision
 import org.simulationrift.bridge.PageWatch
 import org.simulationrift.bridge.PageWatch.Level
+import org.simulationrift.core.AppLinkRisk
 import org.simulationrift.core.EgressStats
 import org.simulationrift.core.PageFact
 import org.simulationrift.core.ScanStatus
 import org.simulationrift.core.Verdict
 import org.simulationrift.core.displaySafe
+import org.simulationrift.core.explainAppLink
 import org.simulationrift.core.trackerFor
 
 /**
@@ -70,8 +72,14 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
             is NavigationDecision.Block -> when (decision.reason.code) {
                 "known-malicious" -> record(Level.DANGER, "known-malicious-address", host,
                     "Blocked $host: the threat database lists this address as malicious.")
-                "scheme-not-allowed" -> record(Level.WARNING, "app-link", decision.displayUrl.take(MAX_SUBJECT),
-                    "A page tried to open another app. ${decision.reason.text}")
+                "scheme-not-allowed" -> {
+                    // Which app, and what the link asked it to do (§10.15).
+                    val link = explainAppLink(url)
+                    val level = if (link?.risk == AppLinkRisk.DANGER) Level.DANGER else Level.WARNING
+                    val what = link?.let { " ${it.does}" + it.details.joinToString("") { d -> " $d" } }.orEmpty()
+                    record(level, "app-link", decision.displayUrl.take(MAX_SUBJECT),
+                        "A page tried to open ${link?.app ?: "another app"}.$what ${decision.reason.text}")
+                }
                 // The rest are about the device or the session, not the page.
                 else -> {}
             }

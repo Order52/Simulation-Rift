@@ -359,6 +359,9 @@ class SecurityTest {
                 "https://shop.local-hardware.de/kontakt" to "No known threats found",
                 "http://rift-demo.invalid/known-bad" to "Known malicious",
                 "javascript:alert(1)" to "Rift won't open this",
+                // Links to other apps say which app and what they ask of it (§10.15).
+                "upi://pay?pa=prize@okbank&pn=Prize&am=4999" to "Dangerous app link",
+                "whatsapp://send?phone=15551234567&text=hi" to "Opens WhatsApp",
             )) {
                 val field = device.wait(Until.findObject(By.res("home-address")), UI_TIMEOUT_MS) ?: throw AssertionError("home address field")
                 field.text = url

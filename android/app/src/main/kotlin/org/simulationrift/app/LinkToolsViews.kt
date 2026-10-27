@@ -53,6 +53,7 @@ import org.simulationrift.core.TraceOutcome
 import org.simulationrift.core.TrackingParam
 import org.simulationrift.core.linkTracking
 import org.simulationrift.core.linkWithHttps
+import org.simulationrift.core.explainAppLink
 import org.simulationrift.core.linkWithoutQuery
 import org.simulationrift.core.linkWithoutTracking
 
@@ -90,6 +91,12 @@ internal fun LinkTools(
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         if (editing) {
             EditAddress(check.address, onDone = { editing = false; if (it.isNotBlank() && it != check.address) onAddress(it) })
+        }
+        // An app link's web fallback is an address like any other: check it.
+        check.appLink?.fallback?.let { fallback ->
+            TextButton(onClick = { onAddress(fallback) }, modifier = Modifier.testTag("tools-fallback")) {
+                Text("Check the web address it uses without the app")
+            }
         }
         if (web) Cleaning(check.address, onAddress)
         if (web && !listed) {
@@ -338,7 +345,8 @@ private fun ending(trace: LinkTrace): String = when (val outcome = trace.outcome
     is TraceOutcome.Arrived ->
         "That is where its redirects lead. A page's own scripts can send you further; Rift ran none of them."
     is TraceOutcome.Stopped -> "Rift stopped before the last address and did not contact it."
-    is TraceOutcome.LeavesTheWeb -> "Then it tries to open ${outcome.address}, outside the web (an app). Rift did not follow it."
+    is TraceOutcome.LeavesTheWeb -> "Then it tries to open ${outcome.address}, outside the web (an app)." +
+        (explainAppLink(outcome.address)?.let { " ${it.does}" } ?: "") + " Rift did not follow it."
     is TraceOutcome.Failed -> "Rift could not go further: ${outcome.reason}."
 }
 

@@ -365,7 +365,7 @@ fn trim_trailing_punctuation(mut link: &str) -> &str {
 /// The scheme the input explicitly names, if any (`javascript:`, `intent:`, …).
 /// `host:8080`-style input is not a scheme. Inputs without one are treated as
 /// web addresses by canonicalization.
-fn explicit_scheme(raw: &[u8]) -> Option<String> {
+pub(crate) fn explicit_scheme(raw: &[u8]) -> Option<String> {
     let trimmed = raw.trim_ascii_start();
     let colon = trimmed.iter().position(|&b| b == b':')?;
     let (candidate, rest) = trimmed.split_at(colon);

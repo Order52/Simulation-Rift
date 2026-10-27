@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.simulationrift.core.AiLevel
+import org.simulationrift.core.AppLinkRisk
 import org.simulationrift.core.AiView
 import org.simulationrift.core.Fact
 import org.simulationrift.core.LinkCheck
@@ -68,6 +69,11 @@ internal fun verdictOf(check: LinkCheck): CheckVerdict {
         listed -> CheckVerdict(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_bug, "Known malicious",
             "This link is in the threat database. Do not sign in, pay or download there. Rift opens it only after a warning, in a new sealed session.",
             openable = true, openLabel = "Open after a warning")
+        // A link to another app: what it would do there (§10.15).
+        refused && opensApp(check) && check.appLink?.risk == AppLinkRisk.DANGER -> CheckVerdict(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_bug,
+            "Dangerous app link", "${check.appLink!!.does} Rift never opens links to other apps.", openable = false)
+        refused && opensApp(check) -> CheckVerdict(status.warningContainer, status.onWarningContainer, R.drawable.ic_warning,
+            "Opens ${check.appLink!!.app ?: "another app"}", "${check.appLink!!.does} Rift never opens links to other apps.", openable = false)
         refused -> CheckVerdict(status.warningContainer, status.onWarningContainer, R.drawable.ic_warning, "Rift won't open this",
             (navigation as Navigation.Block).reason.text, openable = false)
         dangerLists.isNotEmpty() -> CheckVerdict(scheme.errorContainer, scheme.onErrorContainer, R.drawable.ic_bug, "Listed as dangerous",
@@ -85,6 +91,10 @@ internal fun verdictOf(check: LinkCheck): CheckVerdict {
             "Nothing suspicious was found. No check can prove a link is safe.", openable = true)
     }
 }
+
+/** Whether the link opens another app (`javascript:`, `file:` and the like are explained, but open none). */
+private fun opensApp(check: LinkCheck): Boolean =
+    check.appLink?.scheme?.let { it !in setOf("javascript", "data", "file", "content", "about", "blob") } == true
 
 /** How serious a check's finding is, in [verdictOf]'s order: 5 listed, 4 refused, 3 on a danger list, 2 looks dangerous, 1 warning signs, 0 none. */
 internal fun severity(check: LinkCheck): Int {
@@ -122,7 +132,7 @@ internal fun CheckDetails(check: LinkCheck, verdict: CheckVerdict) {
     val listed = navigation is Navigation.Block && navigation.reason.code == "known-malicious"
     val refused = navigation is Navigation.Block && !listed
     val findings: List<String> = when (navigation) {
-        is Navigation.Block -> listOf(navigation.reason.text)
+        is Navigation.Block -> check.appLink?.details.orEmpty() + navigation.reason.text
         // The AI's own reason is shown by its meter below.
         is Navigation.Confirm -> navigation.reasons.filterNot { it.code.startsWith("ai-") }.map { it.text } +
             navigation.notes.filterNot { it.code.startsWith("ai-") || it.code.startsWith("intel-") }.map { it.text }

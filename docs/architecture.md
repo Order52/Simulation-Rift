@@ -567,7 +567,7 @@ Each request is reported once every two seconds per kind over a `WebMessageListe
 | Read or write the clipboard, read the motion sensors or battery, send notifications, vibrate | Decoys (browser) | Made-up answers; nothing real is read or changed |
 | Ask for a file from the device (upload) | `onShowFileChooser` (browser) | A made-up file (INV-6) |
 | Go fullscreen (which would hide the trusted bar) | `onShowCustomView` (browser) | Refused (INV-6) |
-| Open another app (`intent:`, `market:`, custom schemes) | Navigation policy (core) | Blocked |
+| Open another app (`intent:`, `market:`, custom schemes) | Navigation policy (core) | Blocked, and named with what it asked for (§10.15); Danger for a payment, wallet, sign-in approval, phone code or takeover setting |
 | Reach the local network, the device itself, or a link-local address | Egress proxy (core) | Refused (INV-13) |
 | Send traffic around the proxy (WebRTC, raw sockets, DNS) | Network lock (controller) | Dropped (INV-14) |
 | Deliver a file | Download capture (core) | Fetched into encrypted quarantine, scanned in an isolated worker, verdict shown |
@@ -670,6 +670,25 @@ Rift says which trackers a link or a page carries, what each one does, and how t
 - **Check.** A link carrying tracking parameters gets "This link carries N trackers. Remove them before you open or share the link", with each one explained, and **Remove the tracking**, which takes them off and checks the result again, with Undo (§10.10). It needs no download; ClearURLs' rules, when downloaded, still do the wider cleaning and redirect unwrapping.
 - **The live watch and Test-open.** Every host the proxy let the page reach is looked up; a tracker is noted with its company, kind, explanation and what to do: turn on the content filters, or, with them on, that Rift is already stopping what its lists name. A request the filters blocked is noted as "Rift's content filters blocked …". The Test-open report has a **Trackers (n)** section.
 - **Limits.** The catalogue is short and by name: a tracker on the site's own domain, or a service it does not list, is not named (the content filters' lists are much larger, and they block, without explaining). Only hosts are seen for HTTPS, so a path-based tracker (`facebook.com/tr`) is named only in plain-HTTP requests and in links. Tested by `trackers` and `rift-ffi` unit tests.
+
+### 10.15 Links to other apps, explained (3.1)
+
+Rift never opens a link that leaves the web (§10.2). Since 0.11.3 it says what such a link would have done: `rift-core::applink` reads the link (nothing is opened or asked of the phone) and names the app and the request, with a level.
+
+| The link | Rift says | Level |
+|---|---|---|
+| `upi://pay?pa=…&am=…` (and `upi://mandate`) | "Asks your payment app to pay 4999 INR to …", with the note it carries | Danger |
+| `bitcoin:`, `ethereum:` and other coins' payment links | "Asks your crypto wallet to send … to …" | Danger |
+| `wc:` (WalletConnect) | "Connects your crypto wallet to a website" | Danger |
+| `tg://login?token=` | "Approves a sign-in to your Telegram account, on a device that may be someone else's" | Danger |
+| `tel:` with `*` or `#` (a phone code) | "Dials the phone code …" (call forwarding) | Danger |
+| `intent:` with an APK type, or Android's accessibility, device-admin, unknown-sources, overlay or notification-access settings | "Asks to install an app from outside the Play Store", "Opens the accessibility settings, where phone malware asks to be given control of the screen", … | Danger |
+| `javascript:`, `file:` | "Runs code in the page that opened it", "Opens the file … on this phone" | Danger |
+| `intent:` and `android-app:` otherwise | The app (by package: WhatsApp, PhonePe, MetaMask…, or the package name) and the inner link explained as below; a `browser_fallback_url` is shown and can be checked | as the inner link, or Warning |
+| `tel:`, `sms:`, `whatsapp://send`, `tg://resolve`, `market://details`, `otpauth:`, `data:`, `content:`, known apps' schemes, unknown schemes | The number, the message, the chat, the app; an unknown scheme says Rift cannot tell which app | Warning |
+| `mailto:`, `geo:`, `about:`, `blob:` | The address or place | Note |
+
+Every value shown is cut to 120 characters and escaped (§7.1); a link that does not parse is still explained by its scheme. Check shows it as the verdict (*Dangerous app link*, *Opens WhatsApp*; `javascript:`-like links stay *Rift won't open this*, with the explanation), "Where it goes" explains a hop that leaves the web, and the live watch and Test-open report name the app a page tried to open, as *Danger* for a Danger link. Tested by the `applink` unit tests (every row above, bounds and escaping) and v1 on API 34.
 
 ## 11. Rift Files: intake, quarantine, preview
 
