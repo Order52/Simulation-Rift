@@ -10,11 +10,14 @@ as (a kit that sends visitors elsewhere shows nothing of itself), is not a
 hosting error, parking or bot-check page, and is not a byte-for-byte copy
 of one already kept.
 
+Each list is read in the order given and the first lists fill the quota
+first, so the freshest feed can be put first.
+
 Addresses that resolve to private, loopback, link-local or other non-public
 networks are refused, before connecting and at every redirect, so a link
 cannot reach the machine's own network.
 
-usage: python3 -I fetch_pages.py <out-dir> <max-per-label> <seed> --phishing <urls>... --legit <urls>...
+usage: python3 -I fetch_pages.py <out-dir> <max-per-label> <seed> --phishing <urls>... --legit <urls>... [--legit-max N]
 
 Writes <out-dir>/pages/<n>.html and <out-dir>/index.tsv (url, file, label:
 1 phishing, 0 legitimate; the url is where the page was finally found).
@@ -60,10 +63,11 @@ def site(host):
 
 
 def public(host):
+    """True if every address of the host is public; None if it does not resolve."""
     try:
         infos = socket.getaddrinfo(host, None)
     except (socket.gaierror, UnicodeError):
-        return False
+        return None
     return bool(infos) and all(ipaddress.ip_address(i[4][0].split("%")[0]).is_global for i in infos)
 
 
@@ -90,7 +94,10 @@ def fetch(url):
     u = urllib.parse.urlsplit(url)
     if u.scheme not in ("http", "https") or not u.hostname:
         return None, "not a web address"
-    if not public(u.hostname):
+    reachable = public(u.hostname)
+    if reachable is None:
+        return None, "does not resolve"
+    if not reachable:
         return None, "not a public address"
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT,
@@ -123,6 +130,11 @@ def main(argv):
         sys.exit(__doc__)
     out, most, seed = argv[0], int(argv[1]), argv[2]
     rest = argv[3:]
+    quota = {1: most, 0: most}
+    if "--legit-max" in rest:
+        i = rest.index("--legit-max")
+        quota[0] = int(rest[i + 1])
+        del rest[i:i + 2]
     p, l = rest.index("--phishing"), rest.index("--legit")
     files = {1: rest[p + 1:l] if p < l else rest[p + 1:],
              0: rest[l + 1:p] if l < p else rest[l + 1:]}
@@ -130,22 +142,26 @@ def main(argv):
     rng = random.Random(seed)
     jobs = []
     for label, paths in files.items():
-        urls = set()
+        # Files in the order given, one page per site, so no site outweighs
+        # the others and the first files (the freshest feeds) come first.
+        sites, chosen = set(), []
         for path in paths:
+            by_site = {}
             with open(path, encoding="utf-8", errors="replace") as f:
                 for line in f:
                     url = line.strip()
-                    if url and not url.startswith("#") and "\t" not in url:
-                        urls.add(url if "://" in url else "http://" + url)
-        # One page per site, so no site outweighs the others.
-        by_site = {}
-        for url in sorted(urls):
-            host = urllib.parse.urlsplit(url).hostname
-            if host:
-                by_site.setdefault(site(host), []).append(url)
-        chosen = [rng.choice(v) for v in by_site.values()]
-        rng.shuffle(chosen)
-        jobs += [(label, url) for url in chosen[:most]]
+                    if not url or url.startswith("#") or "\t" in url:
+                        continue
+                    url = url if "://" in url else "http://" + url
+                    host = urllib.parse.urlsplit(url).hostname
+                    if host and site(host) not in sites:
+                        by_site.setdefault(site(host), []).append(url)
+            picks = [rng.choice(sorted(v)) for _, v in sorted(by_site.items())]
+            rng.shuffle(picks)
+            for url in picks[:max(0, quota[label] - len(chosen))]:
+                sites.add(site(urllib.parse.urlsplit(url).hostname))
+                chosen.append(url)
+        jobs += [(label, url) for url in chosen]
     seen, kept, why = set(), {0: 0, 1: 0}, {}
     with open(os.path.join(out, "index.tsv"), "a", encoding="utf-8") as index, \
             concurrent.futures.ThreadPoolExecutor(WORKERS) as pool:

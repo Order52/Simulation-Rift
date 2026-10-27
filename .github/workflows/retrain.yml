@@ -22,12 +22,15 @@ name: retrain rift ai
 on:
   schedule:
     - cron: "17 3 1 * *"
+    # Rift AI's page memory gains the newest phishing pages twice a day,
+    # as OpenPhish's feed changes; they stay up for hours or days.
+    - cron: "41 5,17 * * *"
   workflow_dispatch:
     inputs:
       models:
         description: Which model to retrain
         type: choice
-        options: [all, address, pages, brands]
+        options: [all, address, pages, brands, collect]
         default: all
 
 permissions:
@@ -35,7 +38,7 @@ permissions:
 
 jobs:
   retrain:
-    if: github.event_name == 'schedule' || inputs.models == 'all' || inputs.models == 'address'
+    if: github.event.schedule == '17 3 1 * *' || inputs.models == 'all' || inputs.models == 'address'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     permissions:
@@ -52,17 +55,7 @@ jobs:
       - name: Take the memory the last run left
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/memory"
-          # The newest earlier run that left one (a run whose model failed the gate still did).
-          for run in $(gh run list --workflow retrain.yml --limit 12 --json databaseId -q '.[].databaseId'); do
-            [ "$run" = "$GITHUB_RUN_ID" ] && continue
-            if gh run download "$run" --name rift-ai-memory --dir "$RUNNER_TEMP/memory" 2>/dev/null; then
-              echo "Memory from run $run: $(wc -l < "$RUNNER_TEMP/memory/memory.tsv") pages." | tee -a "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-          done
-          echo "No memory from an earlier run: it starts with this month's feeds." | tee -a "$GITHUB_STEP_SUMMARY"
+        run: sh tools/rift-train/take_memory.sh rift-ai-memory "$RUNNER_TEMP/memory" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Retrain on today's feeds and the memory
         env:
           GH_TOKEN: ${{ secrets.RIFT_SEARCH_TOKEN }}
@@ -106,13 +99,56 @@ jobs:
           gh pr merge --auto --squash "$branch"
           gh workflow run ci.yml --ref "$branch"
 
-  # Rift AI's page model (docs/reports/page-model.md, "Learning from new
-  # pages"): the 2021 dataset, today's pages and the memory of earlier
-  # months' pages, as counts; a pull request only if the gate passes.
-  pages:
-    if: github.event_name == 'schedule' || inputs.models == 'all' || inputs.models == 'pages'
+  # Rift AI's page memory (docs/reports/page-model.md, "Learning from new
+  # pages"): the newest phishing pages and some ordinary ones, fetched as
+  # HTML, counted and deleted; only the counts are kept, as an artifact.
+  collect-pages:
+    if: github.event.schedule == '41 5,17 * * *' || inputs.models == 'collect'
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 60
+    concurrency:
+      group: rift-page-memory
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: The newest Common Crawl collection
+        id: crawl
+        run: echo "id=$(curl -fsSL --retry 3 https://index.commoncrawl.org/collinfo.json | python3 -I -c 'import json, sys; print(json.load(sys.stdin)[0]["id"])')" >> "$GITHUB_OUTPUT"
+      - name: Its sample of ordinary pages, made once per collection
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/ordinary
+          key: ordinary-pages-${{ steps.crawl.outputs.id }}
+      - name: Take the page memory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh tools/rift-train/take_memory.sh rift-page-memory "$RUNNER_TEMP/memory" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Add the newest pages
+        shell: bash  # pipefail: a failed collection must fail the step, not be hidden by grep
+        run: |
+          mkdir -p "$RUNNER_TEMP/ordinary"
+          sh tools/rift-train/retrain_pages.sh collect "$RUNNER_TEMP/pages" "$RUNNER_TEMP/memory/page-memory.tsv" "$RUNNER_TEMP/ordinary/cc-pages.txt" \
+            | grep -E '^(phishing:|legitimate:|Page memory)' | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Hand the page memory on
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rift-page-memory
+          path: ${{ runner.temp }}/memory/page-memory.tsv
+          retention-days: 90
+          if-no-files-found: error
+
+  # Rift AI's page model, monthly: the 2021 dataset and the page memory, as
+  # counts; a pull request only if the gate passes.
+  pages:
+    if: github.event.schedule == '17 3 1 * *' || inputs.models == 'all' || inputs.models == 'pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
     permissions:
       contents: write
       pull-requests: write
@@ -122,44 +158,17 @@ jobs:
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: Take the page memory the last run left
+      - name: Take the page memory
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/memory"
-          for run in $(gh run list --workflow retrain.yml --limit 12 --json databaseId -q '.[].databaseId'); do
-            [ "$run" = "$GITHUB_RUN_ID" ] && continue
-            if gh run download "$run" --name rift-page-memory --dir "$RUNNER_TEMP/memory" 2>/dev/null; then
-              echo "Page memory from run $run: $(wc -l < "$RUNNER_TEMP/memory/page-memory.tsv") pages." | tee -a "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-          done
-          echo "No page memory from an earlier run: it starts with this month's pages." | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Retrain on the 2021 dataset, today's pages and the memory
-        id: retrain
-        env:
-          RIFT_PAGE_MEMORY: ${{ runner.temp }}/memory/page-memory.tsv
+        run: sh tools/rift-train/take_memory.sh rift-page-memory "$RUNNER_TEMP/memory" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Retrain on the 2021 dataset and the memory, and gate
         shell: bash  # pipefail: the gate's refusal must fail the step, not be hidden by tee
         run: |
-          status=0
-          sh tools/rift-train/retrain_pages.sh "$RUNNER_TEMP/pages" 2>&1 | tee "$RUNNER_TEMP/pages.txt" || status=$?
-          grep -E '^(2021 dataset|phishing:|legitimate:|Page memory|test |recent |shipped |refused|  |passed)' "$RUNNER_TEMP/pages.txt" >> "$GITHUB_STEP_SUMMARY" || true
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-      - name: Hand the page memory on
+          sh tools/rift-train/retrain_pages.sh train "$RUNNER_TEMP/pages" "$RUNNER_TEMP/memory/page-memory.tsv" 2>&1 | tee "$RUNNER_TEMP/pages.txt"
+      - name: What the gate saw
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: rift-page-memory
-          path: ${{ runner.temp }}/memory/page-memory.tsv
-          retention-days: 90
-          if-no-files-found: warn
-      - name: The gate
-        run: |
-          case "${{ steps.retrain.outputs.status }}" in
-            0) echo "The new page model passed the gate." ;;
-            2) echo "::notice::The gate refused the new page model; the shipped one stays."; exit 1 ;;
-            *) echo "The page retrain failed."; exit 1 ;;
-          esac
+        run: grep -E '^(2021 dataset|Page memory|test |recent |shipped |refused|  |passed)' "$RUNNER_TEMP/pages.txt" >> "$GITHUB_STEP_SUMMARY" || true
       - name: The shipped-model tests still hold
         run: "cargo test --locked -p rift-core pagemodel:: && cargo test --locked -p rift-ffi"
       - name: Open a pull request
@@ -171,13 +180,13 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
           git add models/page-model.txt
-          git commit -m "models: retrain rift ai's page model on the $(date -u +%Y-%m-%d) pages"
+          git commit -m "models: retrain rift ai's page model on the $(date -u +%Y-%m-%d) page memory"
           git push origin "$branch"
           {
-            echo "Rift AI's page model retrained on the 2021 dataset, this month's pages and its memory of earlier months by the monthly workflow; it passed the gate and the shipped-model tests. Merges itself when CI passes."
+            echo "Rift AI's page model retrained on the 2021 dataset and its memory of recent pages by the monthly workflow; it passed the gate and the shipped-model tests. Merges itself when CI passes."
             echo
             echo '```'
-            grep -E '^(2021 dataset|phishing:|legitimate:|Page memory|test |recent |shipped |passed)' "$RUNNER_TEMP/pages.txt"
+            grep -E '^(2021 dataset|Page memory|test |recent |shipped |passed)' "$RUNNER_TEMP/pages.txt"
             echo '```'
             echo
             echo "docs/reports/page-model.md keeps the figures of the last hand-checked training; the figures above are this model's."
@@ -189,7 +198,7 @@ jobs:
   # The brands Check protects (architecture §10.3): relearned from today's
   # feeds; a pull request only if the gate passes and the list changed.
   brands:
-    if: github.event_name == 'schedule' || inputs.models == 'all' || inputs.models == 'brands'
+    if: github.event.schedule == '17 3 1 * *' || inputs.models == 'all' || inputs.models == 'brands'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
