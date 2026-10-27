@@ -1,0 +1,12 @@
+# The Phishing Websites Dataset (Ariyadasa, Fernando and Fernando, Mendeley Data 2021,
+# CC BY 4.0, doi:10.17632/n96ncsr5g4.1): each file, its address and its SHA-256 as
+# Mendeley publishes it. retrain_pages.sh downloads and checks them; the data is never committed.
+index.sql https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/dac80106-cc68-43c3-8810-96408c09fbbc/file_downloaded 3de752bb74332c8f2c01cbc1355b6eda0e2a6d5bcf9a87fddf9b26b5bc8f1ccc
+dataset_part_1.zip https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/6eaef42e-a5d6-4f69-8dba-8e09df8fd67b/file_downloaded 44bd1fbfac21558f12035f061981fee2976cfdd27782b838122a37d01c358bac
+dataset_part_2.zip https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/44884900-d8fe-46c5-a5ba-bd7cb7bb391c/file_downloaded 22f105a0fed44a3d89e7b29cb566ce3d65bfc45b4eb86fb4608bf8f68b6a5e37
+dataset_part_3.zip https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/4053b563-ff6f-4cb5-85ec-5499c90f4a86/file_downloaded bf3e07a33f47010b2e424524a92db936bdb696d2ee0698900b4ee2115a0d7b5d
+dataset_part_4.zip https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/6699d6cd-b4ca-44bc-a660-030e724ee203/file_downloaded 91ef72ef41b3cf836d9ced852db97b53a9e90057b3d0080b9c372eef876b60a3
+dataset_part_5.zip https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/27b30296-e0d5-4d26-af9e-46b06d1c06cf/file_downloaded 06125350537402958c620f3082f8785e3d2a5def62b3cc869457c9710fce70e4
+dataset_part_6.zip https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/ad484cb0-a8df-4f39-a34f-a5fc9c518f32/file_downloaded 1ea75982c34bc883e117c126074869562ab165b38738f9b5d281629366a03772
+dataset_part_7.zip https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/d855ea5b-f7f6-41a2-a1be-cca5c5a11b50/file_downloaded 07dccfedae7367d7fe3e50cc7c8100f3666a13c6525691f1c289de2ce3f588cd
+dataset_part_8.zip https://data.mendeley.com/public-files/datasets/n96ncsr5g4/files/6e03521f-d8bf-4214-8509-ba9cb50fbed4/file_downloaded 8452d672ab110731b1f76df6459e0249c584ad6ab56e7aa8325f1985f20d7caa

@@ -8,7 +8,7 @@
 //! counts the same things in saved pages and calls [`features`] here, so the
 //! two cannot disagree about what a feature is.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::text::escape_for_display;
 
@@ -20,7 +20,7 @@ const MAX_COUNT: u32 = 100_000;
 
 /// What the page script counts. Field names are the script's JSON keys.
 /// "Another site" is decided by [`site_key`], in the script as here.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct PageCounts {
     /// Password inputs.

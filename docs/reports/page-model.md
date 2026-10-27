@@ -28,6 +28,21 @@ What raises the score most (weights on raw features): links that go nowhere (`#`
 
 On the API 34 emulator (N10), the fixture `kit.html` (a harmless page shaped like a kit) was reported as "closely resembling phishing pages: most of its links go nowhere; its form posts to a bare PHP script, as phishing kits do; it blocks the long-press menu", in the watch and in the Test-open report.
 
+## Learning from new pages (since 27 October 2026)
+
+The page model retrains itself each month (`.github/workflows/retrain.yml`, job `pages`; `tools/rift-train/retrain_pages.sh`):
+
+1. **The 2021 dataset**, downloaded from Mendeley and checked against the SHA-256 Mendeley publishes (`tools/rift-train/page-dataset.txt`), is counted a part at a time.
+2. **Today's pages.** `fetch_pages.py` fetches up to 6,000 phishing pages (one per site, from OpenPhish's feed and Phishing.Database's live links) and 6,000 ordinary ones (Common Crawl's pages of the newest crawl, and 3,000 popular sites' home pages), as a phone's browser asks for them. Only the HTML is read; nothing in it is run. Both kinds go through the same fetch and filters, so the model cannot learn the fetch instead of the page: a page is kept if it answered 200 with HTML, stayed on its site (a kit that sends visitors elsewhere shows nothing of itself), is not a hosting error, parking or bot-check page, and is not a copy of one kept. Addresses that resolve to private, loopback or link-local networks are refused before connecting and at each redirect.
+3. **Counts, not pages.** `rift-train page counts` turns each page into the report the browser's script sends (numbers, the title and the start of the text). The pages are deleted; only counts are kept.
+4. **Memory.** `page_memory.py` adds the month's counts to those of the last 24 months (at most 300,000 pages), kept as a workflow artifact, never in the repository, so pages that go offline keep teaching the model.
+5. **Training** on the dataset and the memory (recent pages weighted twice), with splits by site as before. The split is fixed by the site's name, so a site in the test split is never trained on, this month or any other.
+6. **Gate.** On the recent pages of test-split sites, as the app scores them (`PageModel`), the new model must flag at most 1% of ordinary pages at High and at most 0.25 points more than the shipped model, catch at least as many phishing pages at High, and lose no more than 0.002 of AUC; at least 150 of each kind are needed to judge. It must then pass the shipped-model tests (`pagemodel::` and `rift-ffi`). Only then is a pull request opened; it merges itself when CI passes.
+
+The trainer was split into `counts` and `train` for this. Trained from counts, the 2021 data gives a model identical, line for line, to the shipped one (same test figures above), so the split changed nothing.
+
+This also gives the first measure on today's pages (the gate's figures, in each pull request), which the 2021 test could not.
+
 ## Verified
 
 - The trained model parses, scores a kit page High with reasons and an ordinary page Low (`pagemodel` tests), and is used by `Navigator::assess_page` (`rift-ffi` test). A malformed or oversized report gives no score.
@@ -36,12 +51,13 @@ On the API 34 emulator (N10), the fixture `kit.html` (a harmless page shaped lik
 
 ## Unverified
 
-- **Accuracy on today's pages.** The data is from 2020–2021. Phishing kits and ordinary sites have changed since; no time-separated test was possible with this dataset. The 0.23% false-alarm rate is for the dataset's legitimate pages, which lean towards popular sites' home pages; ordinary pages deeper in sites may differ.
+- **Accuracy on today's pages** until the first monthly run reports it (see *Learning from new pages*). The data is from 2020–2021. Phishing kits and ordinary sites have changed since; no time-separated test was possible with this dataset. The 0.23% false-alarm rate is for the dataset's legitimate pages, which lean towards popular sites' home pages; ordinary pages deeper in sites may differ.
 - **Saved versus live pages.** The dataset holds the HTML as fetched; the browser counts the page after its scripts have run. Pages that build themselves with scripts look different to the two. N10 checks the counting matches on one page, not the distributions.
 - **On a phone.** Tested on the emulator only.
 
 ## Could be improved
 
-- Train on newer pages (for example a crawl of current PhishTank and OpenPhish pages, captured in the sealed browser itself, if a licence allows) and test on a later month.
+- Count fresh pages in the sealed browser itself, after their scripts run, as the app does, instead of their HTML as fetched.
+- Test each month's model on the next month's pages (a forward test), not only on test-split sites of the same months.
 - A visual model (a screenshot compared with well-known brands' sign-in pages) would catch kits that copy a page exactly, which counts cannot; it would need a far larger model.
 - A user-facing "why" screen showing each reason's weight.

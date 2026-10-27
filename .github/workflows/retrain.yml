@@ -23,12 +23,19 @@ on:
   schedule:
     - cron: "17 3 1 * *"
   workflow_dispatch:
+    inputs:
+      models:
+        description: Which model to retrain
+        type: choice
+        options: [both, address, pages]
+        default: both
 
 permissions:
   contents: read
 
 jobs:
   retrain:
+    if: github.event_name == 'schedule' || inputs.models != 'pages'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     permissions:
@@ -96,5 +103,85 @@ jobs:
             echo "docs/reports/rift-ai.md and url-model-notice.txt keep the figures of the last hand-checked training; the gate's figures above are this model's."
           } > "$RUNNER_TEMP/body.md"
           gh pr create --title "models: retrain rift ai ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/body.md"
+          gh pr merge --auto --squash "$branch"
+          gh workflow run ci.yml --ref "$branch"
+
+  # Rift AI's page model (docs/reports/page-model.md, "Learning from new
+  # pages"): the 2021 dataset, today's pages and the memory of earlier
+  # months' pages, as counts; a pull request only if the gate passes.
+  pages:
+    if: github.event_name == 'schedule' || inputs.models != 'address'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Take the page memory the last run left
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/memory"
+          for run in $(gh run list --workflow retrain.yml --limit 12 --json databaseId -q '.[].databaseId'); do
+            [ "$run" = "$GITHUB_RUN_ID" ] && continue
+            if gh run download "$run" --name rift-page-memory --dir "$RUNNER_TEMP/memory" 2>/dev/null; then
+              echo "Page memory from run $run: $(wc -l < "$RUNNER_TEMP/memory/page-memory.tsv") pages." | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          echo "No page memory from an earlier run: it starts with this month's pages." | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Retrain on the 2021 dataset, today's pages and the memory
+        id: retrain
+        env:
+          RIFT_PAGE_MEMORY: ${{ runner.temp }}/memory/page-memory.tsv
+        shell: bash  # pipefail: the gate's refusal must fail the step, not be hidden by tee
+        run: |
+          status=0
+          sh tools/rift-train/retrain_pages.sh "$RUNNER_TEMP/pages" 2>&1 | tee "$RUNNER_TEMP/pages.txt" || status=$?
+          grep -E '^(2021 dataset|phishing:|legitimate:|Page memory|test |recent |shipped |refused|  |passed)' "$RUNNER_TEMP/pages.txt" >> "$GITHUB_STEP_SUMMARY" || true
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+      - name: Hand the page memory on
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rift-page-memory
+          path: ${{ runner.temp }}/memory/page-memory.tsv
+          retention-days: 90
+          if-no-files-found: warn
+      - name: The gate
+        run: |
+          case "${{ steps.retrain.outputs.status }}" in
+            0) echo "The new page model passed the gate." ;;
+            2) echo "::notice::The gate refused the new page model; the shipped one stays."; exit 1 ;;
+            *) echo "The page retrain failed."; exit 1 ;;
+          esac
+      - name: The shipped-model tests still hold
+        run: "cargo test --locked -p rift-core pagemodel:: && cargo test --locked -p rift-ffi"
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="retrain-pages/$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add models/page-model.txt
+          git commit -m "models: retrain rift ai's page model on the $(date -u +%Y-%m-%d) pages"
+          git push origin "$branch"
+          {
+            echo "Rift AI's page model retrained on the 2021 dataset, this month's pages and its memory of earlier months by the monthly workflow; it passed the gate and the shipped-model tests. Merges itself when CI passes."
+            echo
+            echo '```'
+            grep -E '^(2021 dataset|phishing:|legitimate:|Page memory|test |recent |shipped |passed)' "$RUNNER_TEMP/pages.txt"
+            echo '```'
+            echo
+            echo "docs/reports/page-model.md keeps the figures of the last hand-checked training; the figures above are this model's."
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --title "models: retrain rift ai's page model ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/body.md"
           gh pr merge --auto --squash "$branch"
           gh workflow run ci.yml --ref "$branch"

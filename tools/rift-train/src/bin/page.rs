@@ -1,18 +1,24 @@
 //! Trains Rift AI's page model (docs/architecture.md §16.1) on saved pages.
 //!
-//!   page <index.sql> <pages-dir> <out-model> [--limit N]
+//!   page counts <index.sql|index.tsv> <pages-dir> <out.tsv>
+//!   page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL]
 //!
-//! The data is the Phishing Websites Dataset (Ariyadasa, Fernando and
-//! Fernando, Mendeley Data, 2021, CC BY 4.0): an `index.sql` naming each
-//! page's URL, file and label (1 phishing, 0 legitimate), and the pages'
-//! HTML. Each page is counted here as the browser's script counts it in a
-//! live page (`PAGE_COUNTS` in BrowserActivity.kt), and turned into features
-//! by `rift_core::pagemodel::features`, the code the app runs.
+//! `counts` reads each page as text (an HTML5 parser; no scripts run) and
+//! writes what the browser's script counts in a live one (`PAGE_COUNTS` in
+//! BrowserActivity.kt): one `label<TAB>url<TAB>report` line per page, the
+//! report being the JSON the app receives. The index is the Phishing
+//! Websites Dataset's `index.sql` (Ariyadasa, Fernando and Fernando,
+//! Mendeley Data, 2021, CC BY 4.0) or the `index.tsv` that
+//! `fetch_pages.py` writes for the monthly retrain's fresh pages.
 //!
+//! `train` reads counts, turns them into features with
+//! `rift_core::pagemodel::features`, the code the app runs, and trains.
 //! Splits are by site (80/10/10), so the test measures sites the model never
 //! saw. The L2 strength is chosen on validation, thresholds are set there
 //! (High at 0.5% of legitimate pages, Elevated at 2%), and the test split is
-//! used once, for the figures printed at the end.
+//! scored with `PageModel`, as the app scores. With `--recent` and
+//! `--champion`, the recent pages' test split is the gate's: the new model
+//! is written only if it does as well there as the shipped one (`gate`).
 //!
 //! An offline maintainer tool over files the maintainer chose.
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
@@ -23,7 +29,7 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::process::ExitCode;
 
-use rift_core::pagemodel::{self, FEATURES, PageCounts, site_key};
+use rift_core::pagemodel::{self, FEATURES, PageCounts, PageLevel, PageModel, site_key};
 use scraper::{ElementRef, Html, Node};
 use url::Url;
 
@@ -296,6 +302,8 @@ fn split_of(site: &str) -> u8 {
 struct Example {
     x: Vec<f32>,
     y: f32,
+    /// How much the page counts in training.
+    w: f32,
 }
 
 fn sigmoid(z: f32) -> f32 {
@@ -309,7 +317,7 @@ fn train(data: &[Example], mean: &[f32], std: &[f32], l2: f32, epochs: usize) ->
     let mut w = vec![0.0f32; d + 1];
     let (mut m, mut v) = (vec![0.0f32; d + 1], vec![0.0f32; d + 1]);
     let (b1, b2, lr) = (0.9f32, 0.999f32, 0.05f32);
-    let n = data.len() as f32;
+    let n: f32 = data.iter().map(|e| e.w).sum::<f32>().max(1.0);
     for t in 1..=epochs {
         let mut g = vec![0.0f32; d + 1];
         for ex in data {
@@ -317,7 +325,7 @@ fn train(data: &[Example], mean: &[f32], std: &[f32], l2: f32, epochs: usize) ->
             for j in 0..d {
                 z += w[j] * (ex.x[j] - mean[j]) / std[j];
             }
-            let err = sigmoid(z) - ex.y;
+            let err = ex.w * (sigmoid(z) - ex.y);
             for j in 0..d {
                 g[j] += err * (ex.x[j] - mean[j]) / std[j];
             }
@@ -382,74 +390,265 @@ fn rates(s: &[(f32, bool)], t: f32) -> (f64, f64) {
     (tp / pos, fp / neg)
 }
 
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 4 {
-        eprintln!("usage: page <index.sql> <pages-dir> <out-model> [--limit N]");
-        return ExitCode::FAILURE;
+/// One counted page: its address, label and the counts the app would see.
+struct Counted {
+    host: String,
+    phishing: bool,
+    counts: PageCounts,
+}
+
+/// `index.sql` (the dataset's dump) or `index.tsv` (`fetch_pages.py`:
+/// `url<TAB>file<TAB>label` lines).
+fn index(path: &str, text: &str) -> Vec<Row> {
+    if !path.ends_with(".tsv") {
+        return rows(text);
     }
-    let limit = args
-        .iter()
-        .position(|a| a == "--limit")
-        .and_then(|i| args.get(i + 1))
-        .and_then(|n| n.parse::<usize>().ok())
-        .unwrap_or(usize::MAX);
-    let sql = match fs::read(&args[1]) {
+    text.lines()
+        .filter_map(|line| {
+            let mut f = line.split('\t');
+            let (url, file, label) = (f.next()?, f.next()?, f.next()?);
+            matches!(label, "0" | "1").then(|| Row {
+                url: url.to_owned(),
+                file: file.to_owned(),
+                phishing: label == "1",
+            })
+        })
+        .collect()
+}
+
+/// `counts <index> <pages-dir> <out.tsv>`: each page as
+/// `label<TAB>url<TAB>counts JSON`, the report the page script sends.
+fn counts_cmd(args: &[String]) -> ExitCode {
+    let [index_path, dir, out_path] = args else {
+        eprintln!("usage: page counts <index.sql|index.tsv> <pages-dir> <out.tsv>");
+        return ExitCode::FAILURE;
+    };
+    let text = match fs::read(index_path) {
         Ok(b) => String::from_utf8_lossy(&b).into_owned(),
         Err(e) => {
-            eprintln!("page: {}: {e}", args[1]);
+            eprintln!("page: {index_path}: {e}");
             return ExitCode::FAILURE;
         }
     };
-    let dir = Path::new(&args[2]);
-    let mut splits: [Vec<Example>; 3] = [Vec::new(), Vec::new(), Vec::new()];
-    let (mut read, mut missing) = (0usize, 0usize);
-    for row in rows(&sql).into_iter().take(limit) {
+    let (mut out, mut missing) = (String::new(), 0usize);
+    let mut written = 0usize;
+    for row in index(index_path, &text) {
         let Ok(url) = Url::parse(row.url.trim()) else {
             continue;
         };
-        let Some(host) = url.host_str().map(str::to_owned) else {
+        if url.host_str().is_none() || row.url.contains(['\t', '\n']) {
             continue;
-        };
-        let Ok(bytes) = fs::read(dir.join(&row.file)) else {
+        }
+        let Ok(bytes) = fs::read(Path::new(dir).join(&row.file)) else {
             missing += 1;
             continue;
         };
         let bytes = &bytes[..bytes.len().min(MAX_HTML_BYTES)];
-        let html = String::from_utf8_lossy(bytes);
-        let counts = count(&url, &html);
-        let x = pagemodel::features(&host, &counts);
-        let split = match split_of(&site_key(&host)) {
-            0..=7 => 0,
-            8 => 1,
-            _ => 2,
+        let counts = count(&url, &String::from_utf8_lossy(bytes));
+        let Ok(json) = serde_json::to_string(&counts) else {
+            continue;
         };
-        splits[split].push(Example {
-            x,
-            y: if row.phishing { 1.0 } else { 0.0 },
-        });
-        read += 1;
-        if read % 5000 == 0 {
-            eprintln!("page: {read} pages counted");
+        out.push_str(&format!("{}\t{}\t{json}\n", u8::from(row.phishing), url));
+        written += 1;
+        if written.is_multiple_of(5000) {
+            eprintln!("page: {written} pages counted");
         }
     }
-    let [train_set, valid, test] = &splits;
+    eprintln!("page: {written} pages counted ({missing} files missing)");
+    if let Err(e) = fs::write(out_path, out) {
+        eprintln!("page: {out_path}: {e}");
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+/// Reads a counts file; a malformed line is skipped, as a report would be.
+fn read_counts(path: &str) -> Result<Vec<Counted>, String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    Ok(text
+        .lines()
+        .filter_map(|line| {
+            let mut f = line.splitn(3, '\t');
+            let (label, url, json) = (f.next()?, f.next()?, f.next()?);
+            let host = Url::parse(url).ok()?.host_str()?.to_owned();
+            Some(Counted {
+                host,
+                phishing: match label {
+                    "1" => true,
+                    "0" => false,
+                    _ => return None,
+                },
+                counts: PageCounts::from_report(json)?,
+            })
+        })
+        .collect())
+}
+
+fn split_index(host: &str) -> usize {
+    match split_of(&site_key(host)) {
+        0..=7 => 0,
+        8 => 1,
+        _ => 2,
+    }
+}
+
+/// What a model does on a set of pages.
+struct Measured {
+    pages: usize,
+    auc: f64,
+    high: (f64, f64),
+    elevated: (f64, f64),
+}
+
+fn measure(model: &PageModel, pages: &[&Counted]) -> Measured {
+    let (mut s, mut levels) = (Vec::new(), Vec::new());
+    for p in pages {
+        let score = model.score(&p.host, &p.counts);
+        s.push((score.score, p.phishing));
+        levels.push((score.level, p.phishing));
+    }
+    let rate = |min: PageLevel| {
+        let pos = levels.iter().filter(|(_, p)| *p).count().max(1) as f64;
+        let neg = levels.iter().filter(|(_, p)| !p).count().max(1) as f64;
+        let tp = levels.iter().filter(|(l, p)| *p && *l >= min).count() as f64;
+        let fp = levels.iter().filter(|(l, p)| !*p && *l >= min).count() as f64;
+        (tp / pos, fp / neg)
+    };
+    Measured {
+        pages: pages.len(),
+        auc: auc(&s),
+        high: rate(PageLevel::High),
+        elevated: rate(PageLevel::Elevated),
+    }
+}
+
+fn describe(m: &Measured) -> String {
+    format!(
+        "{} pages, AUC {:.4}; High: {:.1}% of phishing, {:.2}% of legitimate; Elevated or High: {:.1}% of phishing, {:.2}% of legitimate",
+        m.pages,
+        m.auc,
+        m.high.0 * 100.0,
+        m.high.1 * 100.0,
+        m.elevated.0 * 100.0,
+        m.elevated.1 * 100.0
+    )
+}
+
+/// Fewest pages of each label in the recent test split for the gate to judge.
+const GATE_MIN_PAGES: usize = 150;
+
+/// The gate (docs/reports/page-model.md, "Learning from new pages"): on the
+/// recent pages of sites no model trained on, the new model may not raise
+/// more false alarms at High than 1%, nor more than the shipped model by
+/// 0.25 points, nor catch fewer phishing pages at High, nor lose AUC.
+fn gate(new: &Measured, shipped: &Measured, phishing: usize, legit: usize) -> Vec<String> {
+    let mut refused = Vec::new();
+    if phishing < GATE_MIN_PAGES || legit < GATE_MIN_PAGES {
+        refused.push(format!(
+            "too few recent pages to judge: {phishing} phishing and {legit} legitimate, at least {GATE_MIN_PAGES} of each needed"
+        ));
+    }
+    if new.high.1 > 0.01 || new.high.1 > shipped.high.1 + 0.0025 {
+        refused.push(format!(
+            "{:.2}% of recent legitimate pages at High, against the shipped model's {:.2}%",
+            new.high.1 * 100.0,
+            shipped.high.1 * 100.0
+        ));
+    }
+    if new.high.0 + 1e-9 < shipped.high.0 {
+        refused.push(format!(
+            "{:.1}% of recent phishing pages at High, against the shipped model's {:.1}%",
+            new.high.0 * 100.0,
+            shipped.high.0 * 100.0
+        ));
+    }
+    if new.auc + 0.002 < shipped.auc {
+        refused.push(format!(
+            "AUC {:.4} on recent pages, against the shipped model's {:.4}",
+            new.auc, shipped.auc
+        ));
+    }
+    refused
+}
+
+/// `train <out-model> --counts FILE[:WEIGHT]... [--recent FILE] [--champion MODEL]`
+fn train_cmd(args: &[String]) -> ExitCode {
+    let Some(out_path) = args.first() else {
+        eprintln!(
+            "usage: page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL]"
+        );
+        return ExitCode::FAILURE;
+    };
+    let mut sources: Vec<(String, f32, bool)> = Vec::new();
+    let mut champion = None;
+    let mut it = args[1..].iter();
+    while let Some(flag) = it.next() {
+        let Some(value) = it.next() else {
+            eprintln!("page: {flag} needs a value");
+            return ExitCode::FAILURE;
+        };
+        match flag.as_str() {
+            "--counts" | "--recent" => {
+                let (path, weight) = match value.rsplit_once(':') {
+                    Some((p, w)) if w.parse::<f32>().is_ok_and(|w| w > 0.0) => {
+                        (p.to_owned(), w.parse().unwrap_or(1.0))
+                    }
+                    _ => (value.clone(), 1.0),
+                };
+                sources.push((path, weight, flag == "--recent"));
+            }
+            "--champion" => champion = Some(value.clone()),
+            _ => {
+                eprintln!("page: unknown option {flag}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    // Every page, with its weight, whether it is recent, and its split.
+    let mut pages: Vec<(Counted, f32, bool, usize)> = Vec::new();
+    for (path, weight, recent) in &sources {
+        match read_counts(path) {
+            Ok(rows) => {
+                eprintln!("page: {path}: {} pages, weight {weight}", rows.len());
+                for c in rows {
+                    let split = split_index(&c.host);
+                    pages.push((c, *weight, *recent, split));
+                }
+            }
+            Err(e) => {
+                eprintln!("page: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    let examples = |split: usize| -> Vec<Example> {
+        pages
+            .iter()
+            .filter(|p| p.3 == split)
+            .map(|(c, w, _, _)| Example {
+                x: pagemodel::features(&c.host, &c.counts),
+                y: if c.phishing { 1.0 } else { 0.0 },
+                w: *w,
+            })
+            .collect()
+    };
+    let (train_set, valid) = (examples(0), examples(1));
     eprintln!(
-        "page: {read} pages ({missing} files missing): train {}, validation {}, test {}",
+        "page: {} pages: train {}, validation {}",
+        pages.len(),
         train_set.len(),
-        valid.len(),
-        test.len()
+        valid.len()
     );
     let d = FEATURES.len();
-    let n = train_set.len().max(1) as f32;
+    let n: f32 = train_set.iter().map(|e| e.w).sum::<f32>().max(1.0);
     let mean: Vec<f32> = (0..d)
-        .map(|j| train_set.iter().map(|e| e.x[j]).sum::<f32>() / n)
+        .map(|j| train_set.iter().map(|e| e.w * e.x[j]).sum::<f32>() / n)
         .collect();
     let std: Vec<f32> = (0..d)
         .map(|j| {
             let var = train_set
                 .iter()
-                .map(|e| (e.x[j] - mean[j]).powi(2))
+                .map(|e| e.w * (e.x[j] - mean[j]).powi(2))
                 .sum::<f32>()
                 / n;
             var.sqrt().max(1e-3)
@@ -457,9 +656,9 @@ fn main() -> ExitCode {
         .collect();
     let mut best: Option<(f64, f32, Vec<f32>)> = None;
     for l2 in [0.0f32, 1e-4, 1e-3, 1e-2] {
-        let w = train(train_set, &mean, &std, l2, 400);
+        let w = train(&train_set, &mean, &std, l2, 400);
         let (raw, bias) = fold(&w, &mean, &std);
-        let s = scores(valid, &raw, bias);
+        let s = scores(&valid, &raw, bias);
         let t = threshold(&s, 0.005);
         let (tpr, _) = rates(&s, t);
         eprintln!(
@@ -475,41 +674,101 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     };
     let (raw, bias) = fold(&w, &mean, &std);
-    let s = scores(valid, &raw, bias);
+    let s = scores(&valid, &raw, bias);
     let high = threshold(&s, 0.005);
     let elevated = threshold(&s, 0.02).min(high);
-    let t = scores(test, &raw, bias);
-    let (tp_h, fp_h) = rates(&t, high);
-    let (tp_e, fp_e) = rates(&t, elevated);
-    let summary = format!(
-        "test (sites never seen): {} pages, AUC {:.4}; High: {:.1}% of phishing, {:.2}% of legitimate; Elevated or High: {:.1}% of phishing, {:.2}% of legitimate",
-        test.len(),
-        auc(&t),
-        tp_h * 100.0,
-        fp_h * 100.0,
-        tp_e * 100.0,
-        fp_e * 100.0
-    );
-    println!("{summary}");
     // Means of legitimate training pages: what the reasons compare against.
     let legit: Vec<&Example> = train_set.iter().filter(|e| e.y < 0.5).collect();
     let ln = legit.len().max(1) as f32;
+    let mut body = format!("bias {bias}\nhigh {high}\nelevated {elevated}\n");
+    for (j, name) in FEATURES.iter().enumerate() {
+        let m = legit.iter().map(|e| e.x[j]).sum::<f32>() / ln;
+        body.push_str(&format!("feature {name} {} {m}\n", raw[j]));
+    }
+    let model = match PageModel::parse(&body) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("page: the trained model does not parse: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    // Measured as the app scores, with the app's code, on sites never trained on.
+    let test: Vec<&Counted> = pages.iter().filter(|p| p.3 == 2).map(|p| &p.0).collect();
+    let recent: Vec<&Counted> = pages
+        .iter()
+        .filter(|p| p.3 == 2 && p.2)
+        .map(|p| &p.0)
+        .collect();
+    let summary = format!(
+        "test (sites never seen): {}",
+        describe(&measure(&model, &test))
+    );
+    println!("{summary}");
+    let mut recent_line = String::new();
+    if !recent.is_empty() {
+        let new = measure(&model, &recent);
+        recent_line = format!("recent pages (sites never seen): {}", describe(&new));
+        println!("{recent_line}");
+        if let Some(path) = &champion {
+            let shipped = match fs::read_to_string(path)
+                .map_err(|e| e.to_string())
+                .and_then(|t| PageModel::parse(&t).map_err(|e| e.to_string()))
+            {
+                Ok(m) => measure(&m, &recent),
+                Err(e) => {
+                    eprintln!("page: {path}: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            println!("shipped model on the same pages: {}", describe(&shipped));
+            let phishing = recent.iter().filter(|c| c.phishing).count();
+            let refused = gate(&new, &shipped, phishing, recent.len() - phishing);
+            if !refused.is_empty() {
+                println!("refused:");
+                for r in &refused {
+                    println!("  {r}");
+                }
+                return ExitCode::from(2);
+            }
+            println!("passed the gate");
+        }
+    }
+    let names: Vec<&str> = sources
+        .iter()
+        .map(|(p, _, _)| p.rsplit('/').next().unwrap_or(p))
+        .collect();
     let mut out = format!(
         "# Rift AI page model (docs/architecture.md §16.1), written by tools/rift-train page.\n\
          # Data: Phishing Websites Dataset, Ariyadasa, Fernando and Fernando, Mendeley Data 2021, CC BY 4.0\n\
-         # (doi:10.17632/n96ncsr5g4.1). {read} pages; split by site 80/10/10; l2 {l2}.\n\
-         # {summary}\n\
-         bias {bias}\nhigh {high}\nelevated {elevated}\n"
+         # (doi:10.17632/n96ncsr5g4.1), and pages fetched by the monthly retrain, as counts.\n\
+         # {} pages ({}); split by site 80/10/10; l2 {l2}.\n\
+         # {summary}\n",
+        pages.len(),
+        names.join(", ")
     );
-    for (j, name) in FEATURES.iter().enumerate() {
-        let m = legit.iter().map(|e| e.x[j]).sum::<f32>() / ln;
-        out.push_str(&format!("feature {name} {} {m}\n", raw[j]));
+    if !recent_line.is_empty() {
+        out.push_str(&format!("# {recent_line}\n"));
     }
-    if let Err(e) = fs::write(&args[3], out) {
-        eprintln!("page: {}: {e}", args[3]);
+    out.push_str(&body);
+    if let Err(e) = fs::write(out_path, out) {
+        eprintln!("page: {out_path}: {e}");
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().collect();
+    match args.get(1).map(String::as_str) {
+        Some("counts") => counts_cmd(&args[2..]),
+        Some("train") => train_cmd(&args[2..]),
+        _ => {
+            eprintln!(
+                "usage: page counts <index.sql|index.tsv> <pages-dir> <out.tsv>\n       page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL]"
+            );
+            ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(test)]
@@ -526,6 +785,38 @@ mod tests {
         assert!(r[0].phishing);
         assert_eq!(r[1].url, "http://b.example/it's");
         assert!(!r[1].phishing);
+    }
+
+    #[test]
+    fn the_gate_refuses_more_false_alarms_fewer_catches_or_too_few_pages() {
+        let m = |high: (f64, f64), auc| Measured {
+            pages: 1000,
+            auc,
+            high,
+            elevated: high,
+        };
+        let shipped = m((0.40, 0.004), 0.90);
+        assert!(gate(&m((0.45, 0.004), 0.91), &shipped, 500, 500).is_empty());
+        assert_eq!(gate(&m((0.45, 0.008), 0.91), &shipped, 500, 500).len(), 1);
+        assert_eq!(gate(&m((0.39, 0.004), 0.91), &shipped, 500, 500).len(), 1);
+        assert_eq!(gate(&m((0.45, 0.004), 0.89), &shipped, 500, 500).len(), 1);
+        assert_eq!(gate(&m((0.45, 0.004), 0.91), &shipped, 100, 500).len(), 1);
+        // Never above 1% of legitimate pages, whatever the shipped model does.
+        assert_eq!(
+            gate(&m((0.9, 0.011), 0.99), &m((0.4, 0.011), 0.9), 500, 500).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_tsv_index_is_read() {
+        let r = index(
+            "x/index.tsv",
+            "https://a.example/\t1-0.html\t1\nbad line\nhttps://b.example/\t0-1.html\t0\n",
+        );
+        assert_eq!(r.len(), 2);
+        assert!(r[0].phishing && !r[1].phishing);
+        assert_eq!(r[1].file, "0-1.html");
     }
 
     #[test]
