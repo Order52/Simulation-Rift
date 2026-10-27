@@ -28,6 +28,7 @@ Evidence for each claim, in the sections **Verified**, **Unverified** and **Coul
 
 | Report | Covers |
 |---|---|
+| [release-3-2.md](reports/release-3-2.md) | A relay for the user's address, fingerprinting named, fixed page rules, held list updates, a store build, Safe Browsing comparison, Pages host |
 | [release-3-1.md](reports/release-3-1.md) | Rift updates itself (with a check at launch), a dark theme, Rift AI keeps a memory |
 | [release-3-0.md](reports/release-3-0.md) | Rift AI reads the page, trackers explained, old WebViews refused |
 | [release-2-9.md](reports/release-2-9.md) | Threat lists in Check, an optional history |

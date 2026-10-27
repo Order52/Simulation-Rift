@@ -85,6 +85,8 @@ While a page is open, the bar at the top of the browser shows what the page has 
 - every device feature the page asked for;
 - the tracking services it reached, with what each records and how to stop it;
 - Rift AI's reading of the page: a password form that sends to another site, links that go nowhere, a brand name that does not match the site, urgent "your account is locked" wording. It warns before you type anything.
+- three fixed checks on sign-in pages, named one by one: its links go nowhere, a form sends what you type to a script on another site, or it blocks the right-click menu;
+- fingerprinting: a page that reads back a drawing, asks for the graphics chip, renders sound out of hearing or measures many fonts to tell your phone apart. Rift changes the drawing and sound readings faintly, differently in each session, so they do not follow you from one session to the next.
 
 The watch comes only from what Rift itself enforced, never from what the page says about itself.
 
@@ -138,9 +140,10 @@ The link field, the session (its state, **New session**, the live watch while a 
 ### Security
 
 - **Protection** and **Network lock**: the state of the lock. If you need your own VPN, turn the lock off: sessions then run with **reduced isolation**, labelled as such, and still only through Rift's proxy. Rift never takes the VPN back without you.
+- **Hide your IP address**: **Off**, **Tor, through Orbot**, or **A SOCKS5 relay** (an `ip:port`). With a relay on, pages, downloads and Where it goes go through it, so sites see the relay's address, and the phone looks up no names. If the relay is not running, pages do not load: Rift never falls back to going direct. For Orbot, Rift pins the Orbot you have installed by its certificate, and **Ask Orbot to start** starts it. Rift's own updates and lists still go direct. A change starts a new session.
 - **Extra isolation** (optional, with [Shizuku](https://shizuku.rikka.app) or root): Android ignores the browser's clipboard and itself wipes the browser at each reset; with root, a firewall also keeps the browser to Rift's proxy. Each change is checked after it is made and undone when you switch it off.
 - **Threat database**: the signed database Check and the browser use. Release builds can **Check for an update** or **Import an update folder…**; every update is verified before it is installed. (Until the project's signing ceremony is held, a release build has no trusted root and says so.)
-- **Threat lists for Check**: HaGeZi, Phishing Army, uBlock Origin badware and StevenBlack. **Download the lists** once; they then update themselves.
+- **Threat lists for Check**: HaGeZi, Phishing Army, uBlock Origin badware and StevenBlack. **Download the lists** once; they then update themselves. If a list's new copy replaces most of the one in use at once (a broken list or a server in other hands looks like that), Rift keeps using the old copy and the card says how much changed: choose **Use the new one** or **Keep the copy in use**.
 
 ### About
 
@@ -162,6 +165,8 @@ Under **About → Updates**:
 Every update is accepted only if its SHA-256 matches the one published with the release and it is signed with Rift's own certificate; Android checks the signature again. The browser is updated together with Rift.
 
 The first time Rift installs an update, Android may ask you to allow Rift to install apps. The dialog has an **Allow** button that opens that setting.
+
+A copy of Rift from an app store (IzzyOnDroid) has both switches off at first, since the store updates it; you can turn them on.
 
 Instead, you can let [Obtainium](https://obtainium.imranr.dev) update Rift: add `https://github.com/Order52/Simulation-Rift` with `^rift-\d` under **Filter APKs by regular expression**.
 
