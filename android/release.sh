@@ -63,6 +63,9 @@ sign() { # unsigned signed
 sign browser/build/outputs/apk/release/browser-release-unsigned.apk "$out/browser-signed.apk"
 ./gradlew -q :app:assembleRelease -Prift.abis=arm64-v8a -Prift.signedBrowserApk="$out/browser-signed.apk" $props
 sign app/build/outputs/apk/release/app-release-unsigned.apk "$out/rift-$version.apk"
+# The same app for stores (IzzyOnDroid), whose updates replace Rift's own (§8.11).
+./gradlew -q :app:assembleRelease -Prift.abis=arm64-v8a -Prift.signedBrowserApk="$out/browser-signed.apk" -Prift.store=true $props
+sign app/build/outputs/apk/release/app-release-unsigned.apk "$out/rift-store-$version.apk"
 
 # The two apps must carry the same certificate, or the install would be refused.
 # The first signer's digest, whichever way this apksigner labels it ("Signer #1",
@@ -82,5 +85,8 @@ if echo "$manifest" | grep -qE 'debuggable|ProbeWorkerService|FilterCheckingPrev
   echo "release: the manifest holds debug components" >&2
   exit 1
 fi
+[ "$(cert "$out/rift-store-$version.apk")" = "$(cert "$out/rift-$version.apk")" ] || { echo "release: the store build is signed differently" >&2; exit 1; }
+"$build_tools/apksigner" verify --min-sdk-version 30 "$out/rift-store-$version.apk"
 (cd "$out" && shasum -a 256 "rift-$version.apk" | tee "rift-$version.apk.sha256")
+(cd "$out" && shasum -a 256 "rift-store-$version.apk" > "rift-store-$version.apk.sha256")
 echo "release: $out/rift-$version.apk ($(du -h "$out/rift-$version.apk" | cut -f1)), certificate $(cert "$out/rift-$version.apk")"

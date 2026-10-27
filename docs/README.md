@@ -8,6 +8,7 @@ Start with the guide for what you want to do. Every security claim in these docu
 |---|---|
 | [User guide](user-guide.md) | Installing Rift and using every screen: Check, the sealed browser, files, filters, updates, troubleshooting |
 | [Developing Rift](development.md) | Setting up, the code map, building, testing, CI, the rules for changes |
+| [Listing Rift in app stores](distribution.md) | IzzyOnDroid and F-Droid: what is ready, how to submit, what F-Droid still needs |
 | [Maintaining Rift](maintenance.md) | Releases, signing keys, Rift AI's retraining, the automated workflows, what to do when one fails |
 
 ## Reference

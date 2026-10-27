@@ -1,0 +1,4 @@
+- A relay hides your address: pages, downloads and Where it goes can go through Orbot (Tor) or a SOCKS5 relay, never falling back to direct.
+- The live watch names fingerprinting, and canvas and audio readings change in each session.
+- Three fixed checks on sign-in pages: links that go nowhere, a form sending to another site's script, the right-click menu blocked.
+- A threat list's update that replaces most of it at once is held until you choose it.

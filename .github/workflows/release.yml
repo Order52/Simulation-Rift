@@ -169,6 +169,7 @@ jobs:
           sha256sum "rift-browser-$VERSION.apk" > "rift-browser-$VERSION.apk.sha256"
           app="$(cut -d' ' -f1 "rift-$VERSION.apk.sha256")"
           browser="$(cut -d' ' -f1 "rift-browser-$VERSION.apk.sha256")"
+          store="$(cut -d' ' -f1 "rift-store-$VERSION.apk.sha256")"
           {
             echo "**Rift v$VERSION for Android** (arm64, Android 11+), the weekly release. In development and not audited: see [STATUS.md](https://github.com/$GITHUB_REPOSITORY/blob/main/STATUS.md)."
             echo
@@ -182,9 +183,11 @@ jobs:
             echo "|---|---|---|"
             echo "| \`rift-$VERSION.apk\` | **Yes**: the app | \`$app\` |"
             echo "| \`rift-browser-$VERSION.apk\` | **Optional**: the sealed browser on its own, only if your phone blocks Rift from installing it | \`$browser\` |"
+            echo "| \`rift-store-$VERSION.apk\` | **No**: the same app for app stores (IzzyOnDroid), with Rift's own update checks off until turned on | \`$store\` |"
             echo
             echo "Signing certificate SHA-256: \`$RIFT_RELEASE_CERT\`"
           } > notes.md
           gh release create "v$VERSION" --target "$SHA" --title "Rift v$VERSION (Android)" --latest --notes-file notes.md \
             "rift-$VERSION.apk" "rift-$VERSION.apk.sha256" \
-            "rift-browser-$VERSION.apk" "rift-browser-$VERSION.apk.sha256"
+            "rift-browser-$VERSION.apk" "rift-browser-$VERSION.apk.sha256" \
+            "rift-store-$VERSION.apk" "rift-store-$VERSION.apk.sha256"

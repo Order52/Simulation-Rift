@@ -39,6 +39,9 @@ import org.simulationrift.core.newerAppRelease
  * installs it. A check the user started (at launch or with Check now)
  * downloads nothing until the user taps Update, so it costs one small
  * request on a metered network; it works whether or not the daily one is on.
+ *
+ * In a store build (BuildConfig.STORE_BUILD) both start off, since the
+ * store updates Rift; the user can still turn them on.
  */
 object SelfUpdate {
 
@@ -61,6 +64,7 @@ object SelfUpdate {
     private const val OFF_FILE = "self-update-off"
     private const val LAUNCH_OFF_FILE = "self-update-launch-off"
     private const val CHECKED_FILE = "self-update-checked"
+    private const val STORE_DEFAULTS_FILE = "self-update-store-defaults"
     private const val APK = "update/rift.apk"
     private const val ACTION_RESULT = "org.simulationrift.app.SELF_UPDATED"
     const val STALE_MS = 24L * 60 * 60 * 1000
@@ -87,6 +91,11 @@ object SelfUpdate {
         File(app.cacheDir, APK).delete()
         val debuggable = (app.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         _state.value = if (debuggable) State.DebugBuild else State.Idle
+        // Once, at a store build's first start: off until the user turns them on.
+        if (BuildConfig.STORE_BUILD && File(app.filesDir, STORE_DEFAULTS_FILE).createNewFile()) {
+            File(app.filesDir, OFF_FILE).createNewFile()
+            File(app.filesDir, LAUNCH_OFF_FILE).createNewFile()
+        }
         _automatic.value = !File(app.filesDir, OFF_FILE).exists()
         _atLaunch.value = !File(app.filesDir, LAUNCH_OFF_FILE).exists()
     }

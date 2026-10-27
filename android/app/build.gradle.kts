@@ -21,6 +21,9 @@ android {
             abiFilters += providers.gradleProperty("rift.abis").orElse("arm64-v8a,x86_64").get().split(",")
         }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // -Prift.store=true: the build for app stores (IzzyOnDroid), whose
+        // own updates replace Rift's: Rift's update checks start off (§8.11).
+        buildConfigField("boolean", "STORE_BUILD", providers.gradleProperty("rift.store").orElse("false").get().toBoolean().toString())
     }
 
     buildTypes {
@@ -37,6 +40,7 @@ android {
 
     buildFeatures {
         aidl = true
+        buildConfig = true
         compose = true
     }
 

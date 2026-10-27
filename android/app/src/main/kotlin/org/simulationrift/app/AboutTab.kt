@@ -129,6 +129,14 @@ private fun UpdatesCard() {
     val atLaunch by SelfUpdate.atLaunch.collectAsState()
     val test = update == SelfUpdate.State.DebugBuild
     AboutCard("Updates") {
+        if (BuildConfig.STORE_BUILD) {
+            Text(
+                "This copy of Rift came from an app store, which updates it, so Rift's own checks start off. " +
+                    "If you turn them on, Rift also asks GitHub and can install releases from there.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag("self-update-store"),
+            )
+        }
         UpdateSwitch(
             "Check when Rift opens",
             "Each time you open Rift it asks GitHub for its latest release, and offers it in a dialog if there is a newer one.",
