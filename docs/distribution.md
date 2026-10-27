@@ -24,7 +24,7 @@ IzzyOnDroid takes the APK from the GitHub release as it is, so Rift's signature,
    - **`REQUEST_INSTALL_PACKAGES`**: Rift installs its own sealed browser, a second APK carried inside it, on first start (§8.10), and reinstalls it if it is missing. In the store APK, Rift does not install its own updates unless the user turns that on.
    - **`BIND_VPN_SERVICE`** (the VPN service): it applies to the browser's UID only and drops everything, so the browser's only route out is Rift's checked proxy (INV-14). It does not carry the user's other traffic.
    - **`HIDE_OVERLAY_WINDOWS`**: other apps' overlays are hidden over Rift's warnings (tapjacking).
-   - **`moe.shizuku.manager.permission.API_V23`**, from the Shizuku library: Shizuku's own permission, granted only through Shizuku's prompt, for the optional way of wiping the browser on phones that refuse it (§8.9). Without Shizuku it does nothing.
+   - **`moe.shizuku.manager.permission.API_V23`**, from the Shizuku library: Shizuku's own permission, granted only through Shizuku's prompt, for the optional Extra isolation, which uses Shizuku to tighten the browser's app-ops and firewall (§8.9). Without Shizuku it does nothing.
    - **`QUERY_ALL_PACKAGES`** is not used; Rift declares the packages it asks about (Orbot, its browser).
 3. IzzyOnDroid's scanner reads the APK for trackers and proprietary libraries; there should be none. If it flags something, compare with [dependencies.md](reports/dependencies.md).
 4. Once listed, every release's `rift-store-…apk` reaches IzzyOnDroid users within a day or so. Nothing more to do per release, except a changelog file when the changes matter to users.
