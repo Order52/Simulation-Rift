@@ -122,6 +122,57 @@ impl HostLists {
     }
 }
 
+/// How a new copy of a list differs from the one in use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Change {
+    /// Hosts in the copy in use.
+    pub before: usize,
+    /// Hosts in the new copy.
+    pub after: usize,
+    /// Hosts in both.
+    pub kept: usize,
+}
+
+/// Below this many hosts a copy in use is too small to judge a change by.
+const MIN_BASELINE: usize = 500;
+
+impl Change {
+    /// Whether the new copy replaces too much at once to be taken without
+    /// the user's word (§10.12): under 40% of the hosts kept, or more than
+    /// four times as many. Lists change by a few percent a day; a list's
+    /// server that was taken over, or a broken build, changes most of it.
+    pub fn held(&self) -> bool {
+        self.before >= MIN_BASELINE
+            && (self.kept.saturating_mul(5) < self.before.saturating_mul(2)
+                || self.after > self.before.saturating_mul(4))
+    }
+}
+
+/// Compares `new` with `old`, two copies of one list; None if either is
+/// unusable (then [`HostLists::load`] says why).
+pub fn change(old: &str, new: &str, wildcard: bool) -> Option<Change> {
+    let hasher = RandomState::new();
+    let read = |text| {
+        parse(
+            &hasher,
+            &Source {
+                id: "",
+                text,
+                wildcard,
+            },
+        )
+        .ok()
+        .map(|(list, _)| list)
+    };
+    let (old, new) = (read(old)?, read(new)?);
+    let shared = |a: &[u64], b: &[u64]| a.iter().filter(|h| b.binary_search(h).is_ok()).count();
+    Some(Change {
+        before: old.exact.len().saturating_add(old.covering.len()),
+        after: new.exact.len().saturating_add(new.covering.len()),
+        kept: shared(&old.exact, &new.exact).saturating_add(shared(&old.covering, &new.covering)),
+    })
+}
+
 fn parse(hasher: &RandomState, source: &Source<'_>) -> Result<(List, Loaded), HostListError> {
     if source.text.len() > MAX_LIST_BYTES {
         return Err(HostListError::TooLarge);
@@ -324,6 +375,49 @@ mod tests {
         assert_eq!(results[1], Err(HostListError::TooLarge));
         assert_eq!(results[2].as_ref().unwrap().hosts, 1);
         assert_eq!(set.lookup("x.example"), ["good"]);
+    }
+
+    fn hosts(range: std::ops::Range<usize>) -> String {
+        range.map(|i| format!("h{i}.example\n")).collect()
+    }
+
+    #[test]
+    fn a_copy_that_replaces_most_of_a_list_is_held() {
+        let old = hosts(0..1000);
+        // A day's churn: 10% gone, 15% new.
+        let daily = change(&old, &hosts(100..1150), false).unwrap();
+        assert_eq!(
+            daily,
+            Change {
+                before: 1000,
+                after: 1050,
+                kept: 900
+            }
+        );
+        assert!(!daily.held());
+        // Most of it replaced.
+        let swapped = change(&old, &hosts(700..1700), false).unwrap();
+        assert_eq!(swapped.kept, 300);
+        assert!(swapped.held());
+        // Everything kept, but flooded with new hosts.
+        assert!(change(&old, &hosts(0..4001), false).unwrap().held());
+        assert!(!change(&old, &hosts(0..4000), false).unwrap().held());
+        // Cut to a fraction.
+        assert!(change(&old, &hosts(0..399), false).unwrap().held());
+        // Too small a copy in use to judge by.
+        assert!(
+            !change(&hosts(0..499), &hosts(1000..2000), false)
+                .unwrap()
+                .held()
+        );
+        // Exact and covering entries are compared as they match.
+        assert_eq!(
+            change(&old, &old.replace("h1.", "*.h1."), false)
+                .unwrap()
+                .kept,
+            999
+        );
+        assert_eq!(change(&old, "# empty\n", false), None);
     }
 
     #[test]

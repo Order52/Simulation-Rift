@@ -76,6 +76,25 @@ internal fun ThreatListsCard() {
                     Spacer(Modifier.width(12.dp))
                     Switch(checked = list.on, onCheckedChange = null, enabled = !state.busy, modifier = Modifier.testTag("lists-${source.id}"))
                 }
+                list.held?.let { held ->
+                    val count = NumberFormat.getIntegerInstance()
+                    Text(
+                        "The latest download keeps only ${count.format(held.kept.toLong())} of the ${count.format(held.before.toLong())} sites in use " +
+                            "and has ${count.format(held.after.toLong())} in all. Lists change a little each day, so Rift is still using the copy it had. " +
+                            "A change this large can be a broken list, or its server in other hands.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("lists-held-${source.id}"),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { ThreatLists.decideHeld(source.id, use = false) }, enabled = !state.busy, modifier = Modifier.testTag("lists-keep-${source.id}")) {
+                            Text("Keep the copy in use")
+                        }
+                        TextButton(onClick = { ThreatLists.decideHeld(source.id, use = true) }, enabled = !state.busy, modifier = Modifier.testTag("lists-use-${source.id}")) {
+                            Text("Use the new one")
+                        }
+                    }
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (state.busy) {

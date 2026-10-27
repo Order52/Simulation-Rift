@@ -74,6 +74,30 @@ fn failure(id: &str, error: &HostListError) -> ThreatListLoaded {
     }
 }
 
+/// How a downloaded copy of a list differs from the copy in use.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ThreatListChange {
+    pub before: u64,
+    pub after: u64,
+    pub kept: u64,
+    /// It replaces too much at once to be used without the user's word.
+    pub held: bool,
+}
+
+/// Compares a downloaded copy `new` of a list with `old`, the copy in use;
+/// None if either has no hosts.
+#[uniffi::export]
+pub fn compare_threat_lists(old: String, new: String, wildcard: bool) -> Option<ThreatListChange> {
+    let change = rift_core::hostlists::change(&old, &new, wildcard)?;
+    let count = |n: usize| u64::try_from(n).unwrap_or(u64::MAX);
+    Some(ThreatListChange {
+        before: count(change.before),
+        after: count(change.after),
+        kept: count(change.kept),
+        held: change.held(),
+    })
+}
+
 /// Fetches one threat list over HTTPS, as [`crate::fetch_filter_list`] does
 /// but with the host lists' larger bound.
 #[uniffi::export]

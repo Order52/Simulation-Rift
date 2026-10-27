@@ -669,6 +669,38 @@ class SecurityTest {
      * link again on a tap, and turning it off deletes it. Lists are installed
      * from text, as a download would be, so the test needs no network.
      */
+    /**
+     * A list's new copy that replaces most of it at once is held (§10.12):
+     * Check keeps using the copy it had, the card says so, and the new copy
+     * is used only on the user's word. Installed from text, as a download.
+     */
+    @Test
+    fun v7_aListThatChangesAtOnceIsHeld() {
+        activeGeneration()
+        val hosts = { from: Int, to: Int -> (from until to).joinToString("\n") { "h$it.held.example" } }
+        try {
+            ThreatLists.install("phishing-army", hosts(0, 1000))
+            awaitCondition("the first copy is in use", UI_TIMEOUT_MS) { ThreatLists.state.value.lists["phishing-army"]?.hosts == 1000L }
+            // A day's change is taken as it comes.
+            ThreatLists.install("phishing-army", hosts(100, 1100))
+            awaitCondition("a day's change is used", UI_TIMEOUT_MS) { Core.check("https://h1050.held.example/").listed.isNotEmpty() }
+            // Most of it replaced: held.
+            ThreatLists.install("phishing-army", hosts(900, 1900))
+            awaitCondition("the copy is held", UI_TIMEOUT_MS) { ThreatLists.state.value.lists["phishing-army"]?.held != null }
+            val held = ThreatLists.state.value.lists["phishing-army"]!!.held!!
+            assertEquals(listOf(1000uL, 1000uL, 200uL), listOf(held.before, held.after, held.kept))
+            assertTrue("the copy in use stays", Core.check("https://h150.held.example/").listed.isNotEmpty())
+            assertTrue("the held copy is not used", Core.check("https://h1500.held.example/").listed.isEmpty())
+            ThreatLists.decideHeld("phishing-army", use = true)
+            awaitCondition("the new copy on the user's word", UI_TIMEOUT_MS) { Core.check("https://h1500.held.example/").listed.isNotEmpty() }
+            assertNull(ThreatLists.state.value.lists["phishing-army"]?.held)
+            assertTrue(Core.check("https://h150.held.example/").listed.isEmpty())
+            report("v7", "a day's change used; a copy keeping ${held.kept} of ${held.before} held until the user chose it")
+        } finally {
+            ThreatLists.remove()
+        }
+    }
+
     @Test
     fun v5_threatListsAndHistory() {
         // Run on its own (run-tests.sh's retry), the home screen may still be starting.

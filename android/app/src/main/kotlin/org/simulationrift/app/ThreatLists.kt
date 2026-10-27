@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.update
 import org.json.JSONException
 import org.json.JSONObject
 import org.simulationrift.core.FilterFetchFailure
+import org.simulationrift.core.ThreatListChange
 import org.simulationrift.core.ThreatListText
+import org.simulationrift.core.compareThreatLists
 import org.simulationrift.core.fetchThreatList
 import org.simulationrift.core.ThreatLists as LoadedLists
 
@@ -56,7 +58,11 @@ object ThreatLists {
         ),
     )
 
-    data class ListState(val on: Boolean = true, val updated: Long? = null, val hosts: Long = 0, val error: String? = null)
+    /** [held]: a downloaded copy that replaces too much at once, kept aside until the user decides. */
+    data class ListState(
+        val on: Boolean = true, val updated: Long? = null, val hosts: Long = 0, val error: String? = null,
+        val held: ThreatListChange? = null,
+    )
 
     data class State(
         val lists: Map<String, ListState> = emptyMap(),
@@ -104,14 +110,24 @@ object ThreatLists {
     /** Installs [text] as list [id], as a download would (tests: no network). */
     internal fun install(id: String, text: String) {
         work.execute {
-            File(dir, "$id.txt").writeText(text)
+            source(id)?.let { take(it, text) }
             rebuild()
+        }
+    }
+
+    /** The user's word on a held copy: use it, or keep the copy in use. */
+    fun decideHeld(id: String, use: Boolean) {
+        work.execute {
+            val held = File(dir, "$id.txt.held")
+            if (use) held.renameTo(File(dir, "$id.txt")) else held.delete()
+            rebuild()
+            _state.update { it.copy(message = if (use) "The new copy is in use." else "Kept the copy in use.") }
         }
     }
 
     fun remove() {
         work.execute {
-            catalog.forEach { File(dir, "${it.id}.txt").delete() }
+            catalog.forEach { File(dir, "${it.id}.txt").delete(); File(dir, "${it.id}.txt.held").delete() }
             _state.update { s -> s.copy(lists = s.lists.mapValues { (_, l) -> ListState(on = l.on) }, message = "Lists removed.") }
             rebuild()
         }
@@ -137,11 +153,11 @@ object ThreatLists {
     private fun fetch(ids: List<String>) {
         _state.update { it.copy(busy = true, message = null) }
         val failed = mutableListOf<String>()
+        val held = mutableListOf<String>()
         for (id in ids) {
             val source = source(id) ?: continue
             try {
-                val text = fetchThreatList(source.url)
-                File(dir, "$id.txt.tmp").apply { writeText(text) }.renameTo(File(dir, "$id.txt"))
+                if (!take(source, fetchThreatList(source.url))) held += source.name
             } catch (e: FilterFetchFailure) {
                 Log.w(TAG, "$id: ${e.message}")
                 failed += source.name
@@ -152,8 +168,29 @@ object ThreatLists {
         }
         rebuild()
         _state.update {
-            it.copy(busy = false, message = if (failed.isEmpty()) "Lists updated." else "Not downloaded: ${failed.joinToString(", ")}. Are you online?")
+            it.copy(
+                busy = false,
+                message = listOfNotNull(
+                    if (failed.isEmpty() && held.isEmpty()) "Lists updated." else null,
+                    if (failed.isNotEmpty()) "Not downloaded: ${failed.joinToString(", ")}. Are you online?" else null,
+                    if (held.isNotEmpty()) "Not used yet: ${held.joinToString(", ")} changed most of the list at once. See below." else null,
+                ).joinToString(" "),
+            )
         }
+    }
+
+    /**
+     * On [work]: puts a downloaded copy in use, unless it replaces too much
+     * of the copy in use at once (§10.12): then it is kept aside, the copy in
+     * use stays, and false is returned.
+     */
+    private fun take(source: Source, text: String): Boolean {
+        val current = File(dir, "${source.id}.txt")
+        val change = if (current.isFile) compareThreatLists(current.readText(), text, source.wildcard) else null
+        val target = if (change?.held == true) File(dir, "${source.id}.txt.held") else current
+        if (change?.held == true) Log.w(TAG, "${source.id}: held, ${change.kept} of ${change.before} hosts kept, ${change.after} now")
+        File(dir, "${source.id}.txt.tmp").apply { writeText(text) }.renameTo(target)
+        return change?.held != true
     }
 
     /** On [work]: loads the lists that are on and downloaded, and hands them to Check. */
@@ -180,10 +217,22 @@ object ThreatLists {
                     updated = file.takeIf { it.isFile }?.lastModified(),
                     hosts = result?.hosts?.toLong() ?: 0,
                     error = result?.error,
+                    held = heldChange(source, file),
                 )
             })
         }
         Log.i(TAG, "threat lists: ${results.values.joinToString { "${it.id} ${it.hosts}" }}")
+    }
+
+    /** On [work]: how the held copy of [source], if any, differs from [current]. */
+    private fun heldChange(source: Source, current: File): ThreatListChange? {
+        val held = File(dir, "${source.id}.txt.held")
+        if (!held.isFile || !current.isFile) return null
+        return try {
+            compareThreatLists(current.readText(), held.readText(), source.wildcard)
+        } catch (e: IOException) {
+            null
+        }
     }
 
     private fun save() {

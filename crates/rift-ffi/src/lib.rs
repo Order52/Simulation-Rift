@@ -39,7 +39,10 @@ pub use relay::{RelayCheck, RelayFailure, RelaySetting};
 mod scan;
 pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressRemark, EgressStats};
 pub use intake::Intake;
-pub use lists::{ThreatListLoaded, ThreatListText, ThreatLists, fetch_threat_list};
+pub use lists::{
+    ThreatListChange, ThreatListLoaded, ThreatListText, ThreatLists, compare_threat_lists,
+    fetch_threat_list,
+};
 /// The Linux controller's proxy, from [`Sessions::forwarded_egress`].
 pub use rift_core::egress::ForwardedEgress;
 pub use scan::{
