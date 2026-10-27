@@ -1,0 +1,52 @@
+name: compare with safe browsing
+
+# Weekly: Check against Google Safe Browsing and URLCheck's hosts check, on
+# phishing links that appeared after Check's lists were taken
+# (tools/rift-train/compare.sh; docs/reports/check-accuracy.md, "Against
+# Safe Browsing"). The table goes to the run's summary; nothing is committed.
+#
+# Needs the SAFE_BROWSING_KEY secret: a Google Cloud API key with only the
+# Safe Browsing API enabled. Without it the run says so and stops. The app
+# never asks Google anything (INV-11); only this measurement does.
+on:
+  schedule:
+    - cron: "23 6 * * 2"
+  workflow_dispatch:
+    inputs:
+      wait:
+        description: Minutes between taking the lists and checking the links
+        default: "180"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      SAFE_BROWSING_KEY: ${{ secrets.SAFE_BROWSING_KEY }}
+    steps:
+      - name: The key is set
+        run: |
+          if [ -z "$SAFE_BROWSING_KEY" ]; then
+            echo "SAFE_BROWSING_KEY is not set: no comparison this week." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Take Check's lists and OpenPhish's feed
+        run: sh tools/rift-train/compare.sh lists "$RUNNER_TEMP/compare"
+      - name: Wait for new phishing
+        env:
+          WAIT: ${{ inputs.wait || '180' }}
+        run: |
+          case "$WAIT" in ''|*[!0-9]*) echo "wait: minutes, a number" >&2; exit 1 ;; esac
+          sleep $(( WAIT * 60 ))
+      - name: Check the new links with Rift and Safe Browsing
+        shell: bash  # pipefail: a failure must fail the step, not be hidden by tee
+        run: |
+          set -o pipefail
+          sh tools/rift-train/compare.sh run "$RUNNER_TEMP/compare" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -41,6 +41,14 @@ OpenPhish's public feed was fetched every 30 minutes after 12:49. It stayed the 
 - **The lists add about 16 points of red** (from 17.9% to 33.7%). They had some of these hosts from other sources (PhishTank, CERT.PL) before OpenPhish named them. Most of the catch on new phishing is still Rift AI and the address checks, and a third of these links get no warning at all.
 - **Two and a half hours is a short gap.** In the app the lists update once a day, so on average they are older than this; the figure may be optimistic for that reason. It is also one afternoon's feed, 190 links.
 
+## Against Safe Browsing
+
+Google Safe Browsing is what Chrome and most Android browsers check links against, so it is the comparison most people would ask for. The app never asks it anything (INV-11): it would send Google the links the user opens. Only this measurement does, from a maintainer's machine or the `compare.yml` workflow, with a Google Cloud API key that has only the Safe Browsing API enabled (`SAFE_BROWSING_KEY`, never in a file or on a command line).
+
+`tools/rift-train/compare.sh` takes the lists, a database pack and OpenPhish's feed first (`lists`), then after a wait (three hours in the workflow) checks OpenPhish's links whose hosts were not in the first fetch (`run`): Rift with the lists as taken, Safe Browsing (Lookup API v4, malware, social engineering, unwanted and potentially harmful software) at that moment, and 2,000 ordinary pages from Common Crawl with both. `compare --safebrowsing` adds three columns: what Safe Browsing flags, what Rift warns about that Safe Browsing does not, and the reverse. Safe Browsing gets the later look, which favours it: its lists have had the three hours to learn the links, Rift's have not.
+
+**Not yet run:** the workflow needs the key in the repository's secrets. The results will be added here with their date.
+
 ## How to run it
 
 ```sh

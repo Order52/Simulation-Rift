@@ -20,6 +20,7 @@ What runs by itself, what needs a person, and how to do each by hand. Building a
 | `ci.yml` | Every pull request; pushes to `main` that touch code | Lints, tests, fuzzing, the device suite on API 33 and 34 ([development.md](development.md#6-ci)) |
 | `release.yml` | Wednesdays 06:41 UTC, or by hand | Builds, signs and publishes the next patch release if the app's code changed since the last tag and CI passed it |
 | `retrain.yml` | 1st of the month 03:17 UTC; page collection at 05:41 and 17:41 UTC daily | Retrains Rift AI's address model, page model and brand list; each opens a pull request only if its gate passes |
+| `compare.yml` | Tuesdays 06:23 UTC (about 3½ hours) | Measures Check against Google Safe Browsing and URLCheck's hosts check on phishing links newer than Check's lists; the table is in the run's summary ([check-accuracy.md](reports/check-accuracy.md#against-safe-browsing)). Needs the `SAFE_BROWSING_KEY` secret |
 | `kev.yml` | Sundays 05:23 UTC | Adds Chromium bugs from CISA's Known Exploited Vulnerabilities catalogue to the WebView refusal list (`KnownExploited.kt`) |
 | `toolchains.yml` | 8th of the month 04:29 UTC | Moves stable Rust, the fuzzing nightly, the NDK, cargo-ndk and OSV-Scanner to their latest releases |
 | Dependabot | Weekly | Rust, Gradle and Actions updates, at least 7 days old |
@@ -95,6 +96,10 @@ sh tools/rift-train/retrain.sh <download-dir> <prepared-dir>
 sh tools/rift-train/retrain_pages.sh collect <work-dir> <memory.tsv>
 sh tools/rift-train/retrain_pages.sh train <work-dir> <memory.tsv>
 sh tools/rift-train/retrain_brands.sh <work-dir> /usr/share/dict/words
+
+gh workflow run compare.yml -f wait=180          # the Safe Browsing comparison
+sh tools/rift-train/compare.sh lists <work-dir>  # then, hours later:
+SAFE_BROWSING_KEY=... sh tools/rift-train/compare.sh run <work-dir>
 ```
 
 These download hundreds of megabytes of feeds and datasets; prefer the workflow on a metered connection. Exit status 2 means the gate refused the result: the shipped model stays.

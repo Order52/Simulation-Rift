@@ -3,10 +3,12 @@
 //! without threat lists (threat database, address checks, Rift AI), and
 //! Rift's Check with them.
 //!
-//!   compare <model> <pack-dir> <positives> <negatives> <id>=<path>[:wildcard]...
+//!   compare [--safebrowsing <flagged>] <model> <pack-dir> <positives> <negatives> <id>=<path>[:wildcard]...
 //!
 //! The list named `stevenblack` stands for URLCheck; `tif` and
-//! `phishing-army` are the lists the app calls dangerous. Prints one table.
+//! `phishing-army` are the lists the app calls dangerous. `<flagged>` holds
+//! the links Google Safe Browsing matched (safebrowsing.py), which adds its
+//! columns. Prints one table.
 //!
 //! An offline maintainer tool over files the maintainer chose: counts are of
 //! lines in those files.
@@ -32,6 +34,7 @@ struct Found {
     ai_elevated: bool,
     lists: Vec<String>,
     urlcheck: bool,
+    safebrowsing: bool,
 }
 
 fn main() -> ExitCode {
@@ -45,7 +48,21 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), String> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let safebrowsing = match args.iter().position(|a| a == "--safebrowsing") {
+        Some(at) if at + 1 < args.len() => {
+            let path = args.remove(at + 1);
+            args.remove(at);
+            let text = fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+            Some(
+                text.lines()
+                    .map(|l| l.trim().to_owned())
+                    .collect::<std::collections::HashSet<_>>(),
+            )
+        }
+        Some(_) => return Err("--safebrowsing needs a file".to_owned()),
+        None => None,
+    };
     let [model, pack, positives, negatives, lists @ ..] = args.as_slice() else {
         return Err(
             "usage: compare <model> <pack-dir> <positives> <negatives> <id>=<path>[:wildcard]..."
@@ -125,10 +142,22 @@ fn run() -> Result<(), String> {
         heuristics: &heuristics,
         model: Some(&model),
     };
+    let sb_head = if safebrowsing.is_some() {
+        " Safe Browsing | Rift 2.9 warns, Safe Browsing not | Safe Browsing, Rift 2.9 no warning |"
+    } else {
+        ""
+    };
     println!(
-        "| Set | Links | URLCheck (StevenBlack hosts) | Rift 2.8: red | Rift 2.8: any warning | Rift 2.9: red | Rift 2.9: any warning | Each list |"
+        "| Set | Links | URLCheck (StevenBlack hosts) | Rift 2.8: red | Rift 2.8: any warning | Rift 2.9: red | Rift 2.9: any warning | Each list |{sb_head}"
     );
-    println!("|---|---|---|---|---|---|---|---|");
+    println!(
+        "|---|---|---|---|---|---|---|---|{}",
+        if safebrowsing.is_some() {
+            "---|---|---|"
+        } else {
+            ""
+        }
+    );
     for (name, path) in [("phishing", positives), ("ordinary", negatives)] {
         let links: Vec<String> = fs::read_to_string(path)
             .map_err(|e| format!("{path}: {e}"))?
@@ -139,7 +168,11 @@ fn run() -> Result<(), String> {
             .collect();
         let found: Vec<Found> = links
             .iter()
-            .filter_map(|l| check(l, &ctx, &model, &hostlists))
+            .filter_map(|l| {
+                let mut found = check(l, &ctx, &model, &hostlists)?;
+                found.safebrowsing = safebrowsing.as_ref().is_some_and(|s| s.contains(l));
+                Some(found)
+            })
             .collect();
         let n = found.len();
         let pct =
@@ -165,13 +198,24 @@ fn run() -> Result<(), String> {
             .map(|(id, c)| format!("{id} {}", pct(*c)))
             .collect::<Vec<_>>()
             .join("; ");
+        let any = |x: &Found| warned(x) || !x.lists.is_empty();
+        let sb = if safebrowsing.is_some() {
+            format!(
+                " {} | {} | {} |",
+                pct(count(&|x| x.safebrowsing)),
+                pct(count(&|x| any(x) && !x.safebrowsing)),
+                pct(count(&|x| x.safebrowsing && !any(x))),
+            )
+        } else {
+            String::new()
+        };
         println!(
-            "| {name} | {n} | {} | {} | {} | {} | {} | {each} |",
+            "| {name} | {n} | {} | {} | {} | {} | {} | {each} |{sb}",
             pct(count(&|x| x.urlcheck)),
             pct(count(&red)),
             pct(count(&warned)),
             pct(count(&|x| red(x) || danger(x))),
-            pct(count(&|x| warned(x) || !x.lists.is_empty())),
+            pct(count(&any)),
         );
     }
     Ok(())
