@@ -2,14 +2,16 @@
 platform, BLOCKS random index blocks within its SURT range, at most
 PER_HOST pages per host and PER_PLATFORM per platform. Hosts any malicious
 feed lists are left out."""
-import bisect, collections, gzip, json, random, sys, urllib.request
+import bisect, collections, json, random
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # cc_index; -I leaves the script's directory out
+import cc_index
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
 crawl, idx_path, platforms_path, out_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 feeds = sys.argv[5:]
 BLOCKS, PER_HOST, PER_PLATFORM = 8, 2, 2500
-BASE = f"https://data.commoncrawl.org/cc-index/collections/{crawl}/indexes/"
 rows = [l.split("\t") for l in open(idx_path, encoding="utf-8").read().splitlines()]
 keys = [r[0].split(" ")[0] for r in rows]
 random.seed(11)
@@ -25,14 +27,7 @@ for path in feeds:
 
 def block(i, surt):
     shard, off, length = rows[i][1], int(rows[i][2]), int(rows[i][3])
-    req = urllib.request.Request(BASE + shard, headers={"Range": f"bytes={off}-{off + length - 1}"})
-    for _ in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                lines = gzip.decompress(r.read()).decode("utf-8", "replace").splitlines()
-            break
-        except Exception:
-            lines = []
+    lines = cc_index.block(crawl, shard, off, length)
     urls = []
     for line in lines:
         if not line.startswith(surt + ","):  # a host under the platform
@@ -57,7 +52,7 @@ def fetch(platform):
     return platform, hi - lo, urls
 
 total = 0
-with open(out_path, "w", encoding="utf-8") as out, ThreadPoolExecutor(8) as pool:
+with open(out_path, "w", encoding="utf-8") as out, ThreadPoolExecutor(4) as pool:
     for platform, nblocks, urls in pool.map(fetch, [l.strip() for l in open(platforms_path) if l.strip()]):
         random.shuffle(urls)
         per_host, n, dropped = collections.Counter(), 0, 0
@@ -74,3 +69,4 @@ with open(out_path, "w", encoding="utf-8") as out, ThreadPoolExecutor(8) as pool
         total += n
         print(f"{platform}: {n} pages, {len(per_host)} hosts, {nblocks} blocks in range, {dropped} on listed hosts", file=sys.stderr, flush=True)
 print(f"done: {total}", file=sys.stderr)
+cc_index.check("cc_platforms")

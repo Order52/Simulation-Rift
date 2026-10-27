@@ -58,7 +58,7 @@ jobs:
         run: sh tools/rift-train/take_memory.sh rift-ai-memory "$RUNNER_TEMP/memory" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Retrain on today's feeds and the memory
         env:
-          GH_TOKEN: ${{ secrets.RIFT_SEARCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.RIFT_SEARCH_TOKEN || github.token }}
           RIFT_AI_MEMORY: ${{ runner.temp }}/memory/memory.tsv
         shell: bash  # pipefail, as for the gate
         run: sh tools/rift-train/retrain.sh "$RUNNER_TEMP/feeds" "$RUNNER_TEMP/prepared" | tee -a "$GITHUB_STEP_SUMMARY"

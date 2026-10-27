@@ -58,6 +58,11 @@ if gh auth status >/dev/null 2>&1; then
   python3 -I $T/gh_platforms.py pages.dev,web.app,firebaseapp.com "$D/gh-platforms.txt" "$P/phishing-db.txt" "$P/phiusiil-phishing.txt"
 fi
 python3 -I $T/prepare.py "$D" "$P"
+# Without ordinary pages on popular sites and hosting platforms, the model
+# learns that those pages are not ordinary (cc_index.py).
+for sample in commoncrawl-popular commoncrawl-platforms; do
+  [ "$(wc -l < "$P/$sample.txt")" -ge 1000 ] || { echo "$sample.txt: too few pages; not training on a lopsided month" >&2; exit 1; }
+done
 
 memory=""
 if [ -n "${RIFT_AI_MEMORY:-}" ]; then

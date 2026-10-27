@@ -1,31 +1,24 @@
 """Samples real page URLs from a Common Crawl index: random cluster blocks,
 HTML pages that answered 200, at most PER_HOST per host."""
-import collections, gzip, json, random, sys, urllib.request
+import collections, json, random
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # cc_index; -I leaves the script's directory out
+import cc_index
 from concurrent.futures import ThreadPoolExecutor
 
 crawl, idx_path, out_path, blocks = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 PER_HOST = 20
-BASE = f"https://data.commoncrawl.org/cc-index/collections/{crawl}/indexes/"
 lines = open(idx_path, encoding="utf-8").read().splitlines()
 random.seed(43)
 chosen = random.sample(lines, blocks)
 
 def fetch(line):
     _, shard, off, length, _ = line.split("\t")
-    off, length = int(off), int(length)
-    req = urllib.request.Request(BASE + shard, headers={"Range": f"bytes={off}-{off + length - 1}"})
-    for _ in range(3):
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return gzip.decompress(r.read()).decode("utf-8", "replace").splitlines()
-        except Exception as e:
-            err = e
-    print("block failed:", err, file=sys.stderr)
-    return []
+    return cc_index.block(crawl, shard, int(off), int(length))
 
 per_host = collections.Counter()
 kept = 0
-with open(out_path, "w", encoding="utf-8") as out, ThreadPoolExecutor(8) as pool:
+with open(out_path, "w", encoding="utf-8") as out, ThreadPoolExecutor(4) as pool:
     for n, rows in enumerate(pool.map(fetch, chosen)):
         for row in rows:
             try:
@@ -46,3 +39,4 @@ with open(out_path, "w", encoding="utf-8") as out, ThreadPoolExecutor(8) as pool
         if n % 100 == 0:
             print(f"{n} blocks, {kept} urls, {len(per_host)} hosts", file=sys.stderr, flush=True)
 print(f"done: {kept} urls from {len(per_host)} hosts", file=sys.stderr)
+cc_index.check("cc_sample")
