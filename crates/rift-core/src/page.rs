@@ -5,8 +5,14 @@
 //! The facts come from a script in the page, which the page can see and
 //! change: they can add warnings, never clear one. Each flag is a fact
 //! ("the title says PayPal"), not a verdict.
+//!
+//! [`rules`] adds fixed checks over the page model's counts (§16.1) that
+//! need no training: what copied sign-in pages are made of. On the 2021
+//! dataset's 80,000 pages each fires on 1-15% of phishing pages and about
+//! 0.1% of ordinary ones (docs/reports/page-model.md).
 
 use crate::heuristics::Severity;
+use crate::pagemodel::PageCounts;
 use crate::text::escape_for_display;
 use crate::urlcanon::CanonicalUrl;
 
@@ -34,12 +40,23 @@ pub enum PageFlag {
     PasswordWithoutTls,
     AsksForPassword,
     AsksForCard,
+    /// A password field, and the page's links go nowhere (`#`, empty) or
+    /// there are none.
+    LinksGoNowhere,
+    /// A password field, and a form sends to a `.php` script on another site.
+    FormToScriptElsewhere,
+    /// A password field, and the right-click menu is blocked.
+    BlocksRightClick,
 }
 
 impl PageFlag {
     pub fn severity(&self) -> Severity {
         match self {
-            Self::ClaimsBrand { .. } | Self::PasswordWithoutTls => Severity::Warn,
+            Self::ClaimsBrand { .. }
+            | Self::PasswordWithoutTls
+            | Self::LinksGoNowhere
+            | Self::FormToScriptElsewhere
+            | Self::BlocksRightClick => Severity::Warn,
             Self::AsksForPassword | Self::AsksForCard => Severity::Info,
         }
     }
@@ -50,6 +67,9 @@ impl PageFlag {
             Self::PasswordWithoutTls => "page-password-no-tls",
             Self::AsksForPassword => "page-asks-password",
             Self::AsksForCard => "page-asks-card",
+            Self::LinksGoNowhere => "page-dead-links",
+            Self::FormToScriptElsewhere => "page-form-elsewhere",
+            Self::BlocksRightClick => "page-no-right-click",
         }
     }
 
@@ -69,6 +89,15 @@ impl PageFlag {
             }
             Self::AsksForPassword => format!("{host} asks for a password."),
             Self::AsksForCard => format!("{host} asks for card details."),
+            Self::LinksGoNowhere => format!(
+                "{host} asks for a password, and its links go nowhere, as on copied sign-in pages."
+            ),
+            Self::FormToScriptElsewhere => format!(
+                "{host} asks for a password, and a form on it sends what is typed to a script on another site."
+            ),
+            Self::BlocksRightClick => format!(
+                "{host} asks for a password and blocks the right-click menu, as copied sign-in pages do to hide how they are made."
+            ),
         }
     }
 }
@@ -111,6 +140,27 @@ pub fn assess(url: &CanonicalUrl, facts: &PageFacts, protected: &[String]) -> Ve
     }
     if facts.card {
         flags.push(PageFlag::AsksForCard);
+    }
+    flags
+}
+
+/// The checks over a page's counts that need no training; only on a page
+/// with a password field.
+pub fn rules(counts: &PageCounts) -> Vec<PageFlag> {
+    let mut flags = Vec::new();
+    if counts.pw == 0 {
+        return flags;
+    }
+    // At least four links in five go nowhere, of five or more; or no link.
+    let nowhere = u64::from(counts.an).saturating_mul(5) >= u64::from(counts.a).saturating_mul(4);
+    if counts.a == 0 || (counts.a >= 5 && nowhere) {
+        flags.push(PageFlag::LinksGoNowhere);
+    }
+    if counts.fphp > 0 && counts.fx > 0 {
+        flags.push(PageFlag::FormToScriptElsewhere);
+    }
+    if counts.rc > 0 {
+        flags.push(PageFlag::BlocksRightClick);
     }
     flags
 }
@@ -212,6 +262,37 @@ mod tests {
         let found = flags("http://intranet.example/", "Sign in", true, false);
         assert!(found.contains(&PageFlag::PasswordWithoutTls));
         assert!(found.iter().any(|f| f.severity() == Severity::Warn));
+    }
+
+    fn counts(json: &str) -> PageCounts {
+        PageCounts::from_report(json).expect("a report")
+    }
+
+    #[test]
+    fn copied_sign_in_pages_are_named_by_rule() {
+        let codes = |json: &str| {
+            rules(&counts(json))
+                .iter()
+                .map(PageFlag::code)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(codes(r#"{"pw":1,"a":10,"an":9}"#), ["page-dead-links"]);
+        assert_eq!(codes(r#"{"pw":1}"#), ["page-dead-links"], "no link at all");
+        assert_eq!(
+            codes(r#"{"pw":1,"a":5,"fm":1,"fx":1,"fphp":1,"rc":1}"#),
+            ["page-form-elsewhere", "page-no-right-click"]
+        );
+        // Ordinary sign-in pages: links that go places; a form to the site's own script.
+        assert!(codes(r#"{"pw":1,"a":10,"an":7,"fm":1,"fphp":1}"#).is_empty());
+        assert!(
+            codes(r#"{"pw":1,"a":4,"an":4}"#).is_empty(),
+            "too few links to judge"
+        );
+        // Nothing without a password field.
+        assert!(codes(r#"{"a":0,"rc":1,"fx":1,"fphp":1}"#).is_empty());
+        let warn = rules(&counts(r#"{"pw":1}"#));
+        assert_eq!(warn[0].severity(), Severity::Warn);
+        assert!(warn[0].explain("a\u{202e}b.example").starts_with("a"));
     }
 
     #[test]

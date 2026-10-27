@@ -42,6 +42,19 @@ The trainer was split into `counts` and `train` for this. Trained from counts, t
 
 **What the first run found (27 October 2026).** A single fetch kept 261 of 6,000 phishing pages tried (4,123 of the sites no longer resolve: Phishing.Database's live list lags) and 4,621 of 6,000 ordinary ones. On the 504 of them from test-split sites, the **shipped model catches 12% of today's phishing pages at High (AUC 0.74)**, against 54% on the 2021 test: phishing pages have changed. A model trained with them did no better on so few pages (12%, AUC 0.745), and the gate refused it for having 25 phishing pages to judge by. Hence the twice-daily collection: it is the only way to gather enough of today's phishing pages, and the monthly run will be judged on them.
 
+## Fixed rules beside the model (3.2)
+
+Three rules over the same counts, on pages with a password field, measured on the 80,000 pages of the 2021 dataset (all of it; nothing was fitted, so there is no test split to keep apart):
+
+| Rule | Phishing pages (30,000) | Ordinary pages (50,000) |
+|---|---|---|
+| Links go nowhere: 4 in 5 of 5 or more, or no link | 14.85% | 0.144% |
+| A form to a `.php` script on another site | 3.26% | 0.124% |
+| The right-click menu blocked | 1.20% | 0.088% |
+| Any of the three | 18.00% | 0.346% |
+
+Rules tried and left out, for their false alarms on ordinary pages with a password: an icon from another site (20% of them), a form to another site in general (5.6%), three or more `eval`/`atob`-style calls (11%), a hidden frame (3.5%). The rules are `rift_core::page::rules`, shown as Warnings in the watch; they share the model's caveat that the dataset is from 2020 to 2021.
+
 ## Verified
 
 - The trained model parses, scores a kit page High with reasons and an ordinary page Low (`pagemodel` tests), and is used by `Navigator::assess_page` (`rift-ffi` test). A malformed or oversized report gives no score.

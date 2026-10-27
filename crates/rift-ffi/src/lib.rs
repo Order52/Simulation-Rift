@@ -222,10 +222,15 @@ impl Navigator {
                     warn: flag.severity() == rift_core::heuristics::Severity::Warn,
                 })
                 .collect();
-        if let (Some(model), Some(counts)) = (
-            page_model(),
-            rift_core::pagemodel::PageCounts::from_report(&counts),
-        ) {
+        let counts = rift_core::pagemodel::PageCounts::from_report(&counts);
+        if let Some(counts) = &counts {
+            found.extend(rift_core::page::rules(counts).iter().map(|flag| PageFact {
+                code: flag.code().to_owned(),
+                text: flag.explain(canonical.host()),
+                warn: flag.severity() == rift_core::heuristics::Severity::Warn,
+            }));
+        }
+        if let (Some(model), Some(counts)) = (page_model(), counts) {
             let score = model.score(canonical.host(), &counts);
             if score.level != rift_core::pagemodel::PageLevel::Low {
                 found.push(PageFact {

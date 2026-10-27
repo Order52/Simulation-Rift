@@ -607,6 +607,9 @@ class SecurityTest {
         val ai = Core.pageWatch(second)?.events?.firstOrNull { it.code == "page-ai" } ?: throw AssertionError("no page-ai event: ${Core.pageWatch(second)?.events?.map { it.code }}")
         assertEquals(PageWatch.Level.WARNING, ai.level)
         assertTrue(ai.text, "resembling phishing" in ai.text && !ai.text.contains("safe", ignoreCase = true))
+        // The fixed rules (§10.5): its form posts to collect.example's .php; it blocks the right-click menu.
+        val codes = Core.pageWatch(second)?.events?.map { it.code }.orEmpty()
+        for (code in listOf("page-form-elsewhere", "page-no-right-click")) assertTrue("$code in $codes", code in codes)
         val reading = Core.testOpenReport(second)?.sections?.first { it.title == "Rift AI's reading of the page" }?.items.orEmpty()
         assertTrue("reading: $reading", reading.any { "resembling phishing" in it })
         (swipeUntil(By.res("test-show")) ?: throw AssertionError("show the page")).let { settled(By.res("test-show"))?.click() ?: it.click() }
