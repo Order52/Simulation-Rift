@@ -598,7 +598,9 @@ class SecurityTest {
         // A session a page has used: the test-open must start a new one.
         visit("s1", "/s1.html")
         val first = activeGeneration()
-        Core.testOpen(fixture("/login?next=/fake-login.html"))
+        LinkCleaning.install("""{"providers":{"globalRules":{"urlPattern":".*","rules":["(?:%3F)?utm(?:_[a-z_]*)?","(?:%3F)?fbclid"]}}}""")
+        // The redirect carries tracking, as an email's link does.
+        Core.testOpen(fixture("/login?next=" + java.net.URLEncoder.encode("/fake-login.html?utm_source=mail&fbclid=a1", "UTF-8")))
         // Queued on the core's worker right behind the reset, so the new
         // session allows the fixture host before its window can ask.
         allowFixtureHost()
@@ -618,6 +620,8 @@ class SecurityTest {
         assertTrue("hops: $hops", hops.any { "/login" in it } && hops.any { "/fake-login.html" in it } && hops.any { "/files/invoice.pdf" in it })
         val sites = report.sections.first { it.title.startsWith("Sites it reached") }.items
         assertTrue("sites: $sites", "localhost:$FIXTURE_PORT" in sites)
+        val tracking = report.sections.first { it.title.startsWith("Tracking in the addresses") }.items.single()
+        assertTrue("tracking: $tracking", "utm_source" in tracking && "fbclid" in tracking)
         assertEquals(PageWatch.Level.WARNING, report.level)
         assertTrue("nothing fetched: ${Core.downloads.value}", Core.downloads.value.isEmpty())
         assertNull("not a test-open", Core.testOpenReport(first))

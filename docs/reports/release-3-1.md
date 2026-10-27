@@ -31,6 +31,7 @@
 
 ## Verified
 
+- **Test-open names redirect tracking and app attempts (§10.11, 27 October 2026):** on the API 34 emulator n9 test-opens a link whose redirect carries `utm_source` and `fbclid`; the report lists both under *Tracking in the addresses it went through*, with the hops, sites and warnings as before.
 - **Links to other apps explained (§10.15, 27 October 2026):** the `applink` unit tests cover each kind of link in §10.15's table, values cut and escaped, unparseable and oversized links; on the API 34 emulator v1 shows a UPI payment link as *Dangerous app link* and a WhatsApp send link as *Opens WhatsApp*, `javascript:` still as *Rift won't open this*, and n1 still blocks a page's `intent:` link.
 - **Rust:** 264 tests in the product workspace pass, with `clippy -D warnings`, `fmt` and `cargo deny`. Five are new, in `appupdate`:
   - a release of Rift is read;

@@ -418,6 +418,8 @@ object Core {
     /** The session being test-opened, and the addresses its window was sent to. */
     private class TestOpen(val generation: Long, val started: Long) {
         val hops = mutableListOf<String>()
+        /** Tracking parameters ClearURLs finds in those addresses, by name. */
+        val tracking = linkedSetOf<String>()
     }
 
     @Volatile private var testing: TestOpen? = null
@@ -430,7 +432,11 @@ object Core {
             is NavigationDecision.Confirm -> "warning: ${decision.reasons.joinToString(" ") { it.text }}"
             is NavigationDecision.Block -> "blocked: ${decision.reason.text}"
         }
-        synchronized(test) { if (test.hops.size < MAX_HOPS) test.hops += "${displaySafe(url).take(MAX_HOP_CHARS)}: $said" }
+        val removed = LinkCleaning.clean(url)?.removed.orEmpty()
+        synchronized(test) {
+            if (test.hops.size < MAX_HOPS) test.hops += "${displaySafe(url).take(MAX_HOP_CHARS)}: $said"
+            if (test.tracking.size < MAX_HOPS) test.tracking += removed
+        }
     }
 
     /** What the test-open of `generation` saw so far; null if it is not one. */
@@ -438,7 +444,7 @@ object Core {
         val test = testing?.takeIf { it.generation == generation } ?: return null
         val watch = pageWatch(generation) ?: return null
         val seconds = (SystemClock.elapsedRealtime() - test.started) / 1000
-        val hops = synchronized(test) { test.hops.toList() }
+        val (hops, inAddresses) = synchronized(test) { test.hops.toList() to test.tracking.toList() }
         val stats = egressStats()
         val summary = when (watch.level) {
             PageWatch.Level.DANGER -> "Rift saw signs of danger. Close it; look at the page only if you need to see what it is."
@@ -448,14 +454,19 @@ object Core {
         val sites = stats?.contacted.orEmpty()
         val refused = stats?.recent.orEmpty().map { "${it.destination}: ${it.reason}" }
         val (tracking, rest) = watch.events.partition { it.code == "tracker" || it.code == "tracker-blocked" }
-        val (ai, seen) = rest.partition { it.code == "page-ai" }
+        val (ai, others) = rest.partition { it.code == "page-ai" }
+        val (apps, seen) = others.partition { it.code == "app-link" }
         return TestReport(watch.level, summary, listOfNotNull(
             TestReport.Section("Where it went", hops.ifEmpty { listOf("It did not load a page.") }),
             TestReport.Section("Rift AI's reading of the page", ai.map { it.text }.ifEmpty {
                 listOf("Nothing it recognises as phishing. It compares the page with known phishing pages; that is not proof either way.")
             }),
+            apps.takeIf { it.isNotEmpty() }?.let { found -> TestReport.Section("Other apps it tried to open (${found.size})", found.map { it.text }) },
             TestReport.Section("What Rift saw", seen.map { (if (it.count > 1) "×${it.count} " else "") + it.text }.ifEmpty { listOf("Nothing.") }),
             TestReport.Section("Trackers (${tracking.size})", tracking.map { it.text }.ifEmpty { listOf("None that Rift knows by name.") }),
+            inAddresses.takeIf { it.isNotEmpty() }?.let {
+                TestReport.Section("Tracking in the addresses it went through (${it.size})", listOf("${it.joinToString(", ")} (ClearURLs). They tell the sender who clicked and where from."))
+            },
             TestReport.Section("Sites it reached (${sites.size})", sites.ifEmpty { listOf("None.") }),
             refused.takeIf { it.isNotEmpty() }?.let { TestReport.Section("Refused by Rift's proxy (${it.size})", it) },
         ))
