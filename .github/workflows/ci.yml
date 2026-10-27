@@ -19,6 +19,7 @@ on:
       - .github/scripts/kev_update.py
       - .github/workflows/caretaker.yml
       - .github/workflows/compare.yml
+      - .github/workflows/intel-pages.yml
       - fastlane/**
       - .github/workflows/dependabot-automerge.yml
       - .github/workflows/fuzz-campaign.yml

@@ -21,6 +21,7 @@ What runs by itself, what needs a person, and how to do each by hand. Building a
 | `release.yml` | Wednesdays 06:41 UTC, or by hand | Builds, signs and publishes the next patch release if the app's code changed since the last tag and CI passed it |
 | `retrain.yml` | 1st of the month 03:17 UTC; page collection at 05:41 and 17:41 UTC daily | Retrains Rift AI's address model, page model and brand list; each opens a pull request only if its gate passes |
 | `compare.yml` | Tuesdays 06:23 UTC (about 3½ hours) | Measures Check against Google Safe Browsing and URLCheck's hosts check on phishing links newer than Check's lists; the table is in the run's summary ([check-accuracy.md](reports/check-accuracy.md#against-safe-browsing)). Needs the `SAFE_BROWSING_KEY` secret |
+| `intel-pages.yml` | Every 5 days 04:37 UTC, and when an `intel-<version>` pre-release is published | Signs a new snapshot and timestamp for the threat database and deploys it to GitHub Pages ([key-ceremony.md](reports/key-ceremony.md#github-pages-as-the-update-host)). Stops with a note until the key ceremony's online keys are set |
 | `kev.yml` | Sundays 05:23 UTC | Adds Chromium bugs from CISA's Known Exploited Vulnerabilities catalogue to the WebView refusal list (`KnownExploited.kt`) |
 | `toolchains.yml` | 8th of the month 04:29 UTC | Moves stable Rust, the fuzzing nightly, the NDK, cargo-ndk and OSV-Scanner to their latest releases |
 | Dependabot | Weekly | Rust, Gradle and Actions updates, at least 7 days old |

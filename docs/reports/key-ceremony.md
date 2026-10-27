@@ -93,6 +93,27 @@ Release builds then verify updates against this root only (§13.2). The update U
 
 The targets expire after 90 days, and the feeds pack asks to be refreshed after 7. A release every week or two keeps devices current, and each one needs the two targets drives.
 
+## GitHub Pages as the update host
+
+Instead of a server of your own, the repository can serve the database from GitHub Pages, at `https://order52.github.io/Simulation-Rift/rift/`. The online keys then live in GitHub, as the APK key already does (key-policy.md): whoever controls the account can delay or replay a release for up to 7 days, but cannot sign a pack or a root. Rehearsed on 27 October 2026 with throwaway 1-of-1 keys and the demo pack: bundle, publish, and `verify` from root v1 gave "OK … targets v1, timestamp v29885496".
+
+**Once, after the ceremony:**
+
+1. Commit the root, which is public: `mkdir intel && cp /Volumes/TRANSFER/root-1.json intel/root-1.json`. Set the repository variable `RIFT_INTEL_URL` to `https://order52.github.io/Simulation-Rift/rift/`. Weekly releases (`release.yml`) then embed both, in place of step 4.
+2. Settings → Pages → Source: **GitHub Actions**.
+3. Settings → Environments → new `intel-publish`, deployments from `main` only, with the secrets `INTEL_SNAPSHOT_KEY` and `INTEL_TIMESTAMP_KEY`: `base64 < $K/rift-snapshot-publisher.pk8` and the same for the timestamp key. Keep the originals offline.
+
+**Each release,** steps 1 and 2 above as before, then in place of step 3:
+
+```sh
+sh tools/rift-pack/pages.sh bundle /Volumes/TRANSFER/targets-<version>.json <work-dir>/pack intel-<version>.tar.gz /Volumes/TRANSFER/root-1.json
+gh release create intel-<version> --prerelease --latest=false --title "Threat database <version>" intel-<version>.tar.gz
+```
+
+Publishing the pre-release starts `intel-pages.yml`, which signs a new snapshot and timestamp, checks the repository from root v1 as the app does, and deploys it. It runs again every 5 days, so the timestamp (7 days) never lapses while the targets (90 days) are current. A pre-release is not "latest", so neither Rift's updater nor Obtainium takes it for an app release. List every root in the chain, oldest first, after a rotation.
+
+Snapshot and timestamp versions are minutes since 1970 (`pages.sh`). Do not publish to the same host by hand with a small version: clients refuse a version lower than one they have seen.
+
 ## Each year, or after a loss
 
 Follow "Renewing or rotating the root" in [key-policy.md](key-policy.md): draft `root-2.json` from a new policy, sign it with two new root keys **and** with two keys of root v1 (`sh ceremony.sh sign root-2.json <old key> root-1.json`), and check it with `sh ceremony.sh check root-2.json root-1.json`. Publish the whole chain, and ship an app release that embeds the newest root.

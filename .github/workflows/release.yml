@@ -142,7 +142,18 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
           echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
       - name: Build (bindings, both ABIs, unit tests)
-        run: sh android/build.sh
+        env:
+          RIFT_INTEL_URL: ${{ vars.RIFT_INTEL_URL }}
+        run: |
+          # After the key ceremony: the production root (public) at intel/root-1.json and
+          # the update host in the RIFT_INTEL_URL variable (key-ceremony.md). Until then the
+          # release has no production root and imports no threat database updates.
+          if [ -f intel/root-1.json ] && [ -n "$RIFT_INTEL_URL" ]; then
+            export RIFT_INTEL_ROOT="$PWD/intel/root-1.json"
+          else
+            unset RIFT_INTEL_URL
+          fi
+          sh android/build.sh
       - name: Build and sign the release
         env:
           RIFT_RELEASE_KEYSTORE: ${{ secrets.RIFT_RELEASE_KEYSTORE }}

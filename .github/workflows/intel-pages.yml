@@ -1,0 +1,84 @@
+name: intel update host
+
+# Serves the signed threat database on GitHub Pages
+# (docs/reports/key-ceremony.md, "GitHub Pages as the update host"). The
+# newest intel-<version> pre-release holds what the targets holders signed
+# offline (tools/rift-pack/pages.sh bundle). Every 5 days, and when a new one
+# is published, this signs a new snapshot and timestamp with the online keys
+# only, checks the repository as the app would, and deploys it. The timestamp
+# expires after 7 days, so a missed run has a day or two to spare.
+#
+# Needs, after the key ceremony: Pages set to "GitHub Actions" in the
+# repository's settings, and an "intel-publish" environment (main only) with
+# INTEL_SNAPSHOT_KEY and INTEL_TIMESTAMP_KEY, each the base64 of the online
+# .pk8 key. Without them the run says so and stops. These keys cannot sign a
+# pack or a root (key-policy.md).
+on:
+  schedule:
+    - cron: "37 4 */5 * *"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intel-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'intel-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: intel-publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - name: The keys and a signed release are there
+        id: ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT: ${{ secrets.INTEL_SNAPSHOT_KEY }}
+          TIMESTAMP: ${{ secrets.INTEL_TIMESTAMP_KEY }}
+        run: |
+          if [ -z "$SNAPSHOT" ] || [ -z "$TIMESTAMP" ]; then
+            echo "The online keys are not set (before the key ceremony): nothing published." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          tag="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            -q '[.[] | select(.tagName | startswith("intel-"))] | sort_by(.createdAt) | last | .tagName // ""')"
+          if [ -z "$tag" ]; then
+            echo "No intel-<version> release yet: nothing published." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Sign a new snapshot and timestamp, and check them
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ready.outputs.tag }}
+          SNAPSHOT: ${{ secrets.INTEL_SNAPSHOT_KEY }}
+          TIMESTAMP: ${{ secrets.INTEL_TIMESTAMP_KEY }}
+        run: |
+          keys="$RUNNER_TEMP/online-keys"
+          (umask 077 && mkdir "$keys")
+          printf '%s' "$SNAPSHOT" | base64 -d > "$keys/rift-snapshot-publisher.pk8"
+          printf '%s' "$TIMESTAMP" | base64 -d > "$keys/rift-timestamp-publisher.pk8"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.tar.gz' --dir "$RUNNER_TEMP/bundle"
+          status=0
+          sh tools/rift-pack/pages.sh publish "$RUNNER_TEMP"/bundle/*.tar.gz "$keys" "$RUNNER_TEMP/site" || status=$?
+          rm -rf "$keys"
+          [ "$status" -ne 0 ] || echo "Published $TAG with a new snapshot and timestamp." >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/site
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
