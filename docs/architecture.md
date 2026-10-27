@@ -740,7 +740,7 @@ A new snapshot invalidates cached conclusions as *current*. They remain visible 
 ### 12.2 URL heuristics (V1, explainable, never "known malicious")
 
 - IP-literal host. Userinfo in the URL (`user@host`). Non-default port.
-- Punycode or mixed-script labels (UTS #39), and a confusable skeleton that equals a protected domain from the pack's brand list while the actual domain differs (`unicode-security` crate).
+- Punycode or mixed-script labels (UTS #39), and a confusable skeleton that equals a protected domain from the pack's brand list while the actual domain differs (`unicode-security` crate). Since 0.11.3 also a slip a reader misses in a word of the host (brands of five letters or more): a look-alike letter the skeleton keeps apart (`i`/`l`/`1`, `o`/`0`, `rn`/`m`, `vv`/`w`, `cl`/`d`, `g`/`q`, `u`/`v`), a repeated letter added or dropped, or two neighbours swapped; an ordinary one-letter difference is not one (`finance` is not flagged for `binance`). On 27 October 2026 it fired on none of 392,855 Common Crawl page URLs and 28,499 popular sites' URLs, on 34 of Tranco's top million sites (mostly squats such as `gooogle.com`, `mlcrosoft.vip`; a few genuine, such as `1cloud.ru`), and caught `robiox.com.tw` and `signin-xfinlty.weebly.com` in OpenPhish's feed (`heuristics` test `slips_a_reader_misses_are_lookalikes`).
 - Excessive subdomain depth, or an excessive length outlier.
 - A known shortener host: "destination unknown until followed". No network expansion is done.
 - No TLS.

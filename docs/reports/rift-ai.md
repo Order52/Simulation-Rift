@@ -125,6 +125,8 @@ OpenPhish's public feed of that day, 300 links, through Check as the app configu
 - **The lists do most of the work on known links:** Phishing Army, one of Check's threat lists (§10.12), named 288 of the 300 hosts. That is partly circular (it takes in OpenPhish), so it says little about a link nobody has reported yet; that is where the address model and the page model matter.
 - **Missed:** lookalikes with a changed letter and another ending (`robiox.com.tw`, `bancolombbia.vercel.app`) and plain-looking names (`id-cms.work`) stay Low.
 
+Since 0.11.3 the look-alike check (architecture §10.3) also catches slips a reader misses, so `robiox.com.tw` is now warned about by name; `bancolombbia` is caught only once `bancolombia.com` is a protected brand.
+
 ## Limits
 
 - **It judges the address, not the page.** A phishing page at an ordinary-looking address on a site it has not seen is missed: about 1 in 5 of the never-seen Phishing.Database pages are not even Elevated. That is why it never says "safe".

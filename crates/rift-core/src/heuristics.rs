@@ -427,6 +427,12 @@ fn protected_name_flags(host: &str, unicode: &str, protected: &[String]) -> Vec<
             });
             continue;
         }
+        if typo_in(host, brand_of(domain)) {
+            flags.push(Flag::LookalikeOf {
+                protected: domain.clone(),
+            });
+            continue;
+        }
         if format!(".{host}.").contains(&format!(".{domain}.")) {
             flags.push(Flag::ProtectedNameInSubdomain {
                 protected: domain.clone(),
@@ -434,6 +440,82 @@ fn protected_name_flags(host: &str, unicode: &str, protected: &[String]) -> Vec<
         }
     }
     flags
+}
+
+/// Letters a glance takes for one another in an address bar, beyond the
+/// UTS #39 skeleton (which keeps `i` and `l` apart).
+const LOOK_ALIKE: &[(&str, &str)] = &[
+    ("i", "l"),
+    ("i", "1"),
+    ("l", "1"),
+    ("o", "0"),
+    ("g", "q"),
+    ("u", "v"),
+    ("rn", "m"),
+    ("vv", "w"),
+    ("cl", "d"),
+];
+
+/// Whether a word of `host` other than its last label is `brand` with one
+/// slip a reader misses (`robiox`, `bancolombbia`, `gogle`, `amazno`): a
+/// look-alike letter, a repeated letter added or dropped, or two
+/// neighbours swapped. An ordinary one-letter difference is not one
+/// (`finance` is a word, not a slip of `binance`). Brands shorter than five
+/// letters are left out: too many real words are one slip from them.
+fn typo_in(host: &str, brand: &str) -> bool {
+    if brand.len() < 5 || !brand.is_ascii() {
+        return false;
+    }
+    let labels: Vec<&str> = host.split('.').collect();
+    labels
+        .get(..labels.len().saturating_sub(1))
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|label| label.split('-'))
+        .any(|word| word != brand && is_slip(word, brand))
+}
+
+fn is_slip(word: &str, brand: &str) -> bool {
+    let (w, b) = (word.as_bytes(), brand.as_bytes());
+    // A look-alike letter or pair in place of the brand's.
+    for (x, y) in LOOK_ALIKE.iter().flat_map(|(x, y)| [(*x, *y), (*y, *x)]) {
+        for (at, _) in brand.match_indices(x) {
+            let (head, tail) = (brand.get(..at), brand.get(at.saturating_add(x.len())..));
+            if let (Some(head), Some(tail)) = (head, tail)
+                && word.len()
+                    == head
+                        .len()
+                        .saturating_add(y.len())
+                        .saturating_add(tail.len())
+                && word.starts_with(head)
+                && word.ends_with(tail)
+                && word.get(head.len()..head.len().saturating_add(y.len())) == Some(y)
+            {
+                return true;
+            }
+        }
+    }
+    // A repeated letter added or dropped.
+    let doubled = |long: &[u8], short: &[u8]| {
+        long.len() == short.len().saturating_add(1)
+            && (1..long.len()).any(|i| {
+                long.get(i) == long.get(i.wrapping_sub(1))
+                    && long.get(..i) == short.get(..i)
+                    && long.get(i.saturating_add(1)..) == short.get(i..)
+            })
+    };
+    if doubled(w, b) || doubled(b, w) {
+        return true;
+    }
+    // Two neighbours swapped.
+    w.len() == b.len()
+        && (1..w.len()).any(|i| {
+            w.get(i) != w.get(i.wrapping_sub(1))
+                && w.get(i) == b.get(i.wrapping_sub(1))
+                && w.get(i.wrapping_sub(1)) == b.get(i)
+                && w.get(..i.wrapping_sub(1)) == b.get(..i.wrapping_sub(1))
+                && w.get(i.saturating_add(1)..) == b.get(i.saturating_add(1)..)
+        })
 }
 
 fn skeleton_of(text: &str) -> String {
@@ -546,6 +628,47 @@ mod tests {
                 protected: "paypal.com".into()
             }
         ));
+    }
+
+    #[test]
+    fn slips_a_reader_misses_are_lookalikes() {
+        let cfg = HeuristicConfig {
+            protected_domains: vec![
+                "roblox.com".into(),
+                "bancolombia.com".into(),
+                "google.com".into(),
+                "amazon.com".into(),
+                "binance.com".into(),
+                "microsoft.com".into(),
+            ],
+            ..HeuristicConfig::default()
+        };
+        let lookalike = |raw: &str| {
+            let url = canonicalize(raw.as_bytes()).expect("canonicalizes");
+            assess(raw.as_bytes(), &url, &cfg)
+                .iter()
+                .any(|f| matches!(f, Flag::LookalikeOf { .. }))
+        };
+        // Seen in OpenPhish's feed, 27 October 2026.
+        assert!(lookalike("https://www.robiox.com.tw/games/1"));
+        assert!(lookalike("https://bancolombbia.example/personas"));
+        assert!(lookalike("https://gogle.example/"));
+        assert!(lookalike("https://gooogle.example/"));
+        assert!(lookalike("https://amazno.example/"));
+        assert!(lookalike("https://login-rnicrosoft.example/"));
+        assert!(lookalike("https://secure.goog1e.example/"));
+        // Ordinary words one letter away, the brands themselves, and their sites.
+        for quiet in [
+            "https://finance-today.example/",
+            "https://www.roblox.com/",
+            "https://create.roblox.com/",
+            "https://googly.example/",
+            "https://amazing.example/",
+            "https://robloxx.com.roblox.com/",
+            "https://example.gogle/",
+        ] {
+            assert!(!lookalike(quiet), "{quiet}");
+        }
     }
 
     #[test]
