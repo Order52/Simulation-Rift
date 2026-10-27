@@ -109,6 +109,22 @@ Ten months on, a model without the new links catches about half the fakes on new
 
 `crates/rift-ffi/src/ai.rs` tests the shipped file on addresses like these: the most visited sites are not scored, the fakes are High (now including fakes on pages.dev and web.app), and the ordinary platform sites are Low (now including pages.dev and web.app).
 
+### Live phishing links (27 October 2026)
+
+OpenPhish's public feed of that day, 300 links, through Check as the app configures it (warning rules, Rift AI, policy; `rift-ffi`, on a computer; no threat database or lists loaded, nothing fetched):
+
+| | Before | After the two changes below |
+|---|---|---|
+| Rift AI High | 63 (21%) | 64 |
+| Rift AI Elevated | 117 (39%) | 119 |
+| Rift AI Low, or not scored | 120 (40%), 14 of them not scored | 117, 1 not scored (a link shortener's own address) |
+| Check warns before loading | 72 (24%) | 79 (26%) |
+
+- **Not scored on site builders:** 13 links were someone's own site on weebly.com, jimdofree.com or backblazeb2.com, which Rift AI took for the popular site itself. `UrlModel::abstains` now scores a subdomain of a listed site builder (`SITE_BUILDERS`: weebly.com, wordpress.com, jimdo's, tumblr.com and others the Public Suffix List does not list); the builder's own pages are still not scored. Ordinary-looking blogs there stayed Low (7–38).
+- **Brands:** the app's protected names grew from 10 to 34 with the brands most faked in the feed (Roblox, Bank of America, Xfinity, Okta, Coinbase, DHL, USPS, …); 6 more links warn, and those brands' real sign-in pages stay quiet.
+- **The lists do most of the work on known links:** Phishing Army, one of Check's threat lists (§10.12), named 288 of the 300 hosts. That is partly circular (it takes in OpenPhish), so it says little about a link nobody has reported yet; that is where the address model and the page model matter.
+- **Missed:** lookalikes with a changed letter and another ending (`robiox.com.tw`, `bancolombbia.vercel.app`) and plain-looking names (`id-cms.work`) stay Low.
+
 ## Limits
 
 - **It judges the address, not the page.** A phishing page at an ordinary-looking address on a site it has not seen is missed: about 1 in 5 of the never-seen Phishing.Database pages are not even Elevated. That is why it never says "safe".

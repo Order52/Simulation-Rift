@@ -52,6 +52,27 @@ const PATH_GRAM_BYTES: usize = 64;
 const GRAMS: std::ops::RangeInclusive<usize> = 3..=5;
 const SIGNALS: usize = 3;
 
+/// Popular sites whose subdomains are their users' own sites, which the
+/// Public Suffix List does not list as suffixes (it lists github.io and the
+/// like, whose sites the model already scores).
+const SITE_BUILDERS: &[&str] = &[
+    "weebly.com",
+    "wordpress.com",
+    "jimdofree.com",
+    "jimdosite.com",
+    "jimdo.com",
+    "tumblr.com",
+    "webnode.page",
+    "mystrikingly.com",
+    "godaddysites.com",
+    "tilda.ws",
+    "ucoz.net",
+    "canva.site",
+    "site123.me",
+    "wix.com",
+    "backblazeb2.com",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ModelError {
     #[error("not a Rift URL model")]
@@ -785,11 +806,19 @@ impl UrlModel {
         }
     }
 
-    /// Whether the model abstains on `url`'s site.
+    /// Whether the model abstains on `url`'s site. Not on someone's own site
+    /// on a popular site builder (`someone.weebly.com`): anyone can publish
+    /// there, and fake sign-in pages often do.
     pub fn abstains(&self, url: &CanonicalUrl) -> bool {
-        self.popular
-            .binary_search(&site_key(&self.site(url)))
-            .is_ok()
+        let site = self.site(url);
+        let host = url.host();
+        if SITE_BUILDERS.contains(&site.as_str())
+            && host != site
+            && host.strip_prefix("www.") != Some(site.as_str())
+        {
+            return false;
+        }
+        self.popular.binary_search(&site_key(&site)).is_ok()
     }
 
     /// `probability` as [`Assessment::risk`]: linear within each level's band.
@@ -1445,6 +1474,16 @@ mod tests {
             Level::High
         );
         assert!(!on("https://evil.workers.dev/signin").abstained);
+        // So is someone's own site on a site builder that is itself popular.
+        let builder = UrlModel {
+            popular: vec![site_key("weebly.com")],
+            ..model.clone()
+        };
+        let on = |s: &str| builder.assess(&url(s), View::Address);
+        assert!(on("https://weebly.com/login").abstained);
+        assert!(on("https://www.weebly.com/").abstained);
+        assert!(!on("https://signin-xfinlty.weebly.com/").abstained);
+        assert!(!on("http://www.xfinityhelplogin.weebly.com/").abstained);
     }
 
     #[test]
