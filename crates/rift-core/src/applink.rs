@@ -271,10 +271,13 @@ fn intent(scheme: &str, url: Option<&Url>) -> AppLink {
         .or_else(|| get("component").and_then(|c| c.split('/').next().map(str::to_owned)));
     let app = package
         .as_deref()
-        .map(|p| known_package(p).map_or_else(|| p.to_owned(), str::to_owned));
+        .map(|p| known_package(p).map_or_else(|| show(p), str::to_owned));
+    // Kept whole (to be checked), as the URL parser writes it: no spaces or controls.
     let fallback = get("S.browser_fallback_url")
-        .filter(|f| f.starts_with("https://") || f.starts_with("http://"))
-        .map(|f| show(&f));
+        .and_then(|f| Url::parse(&f).ok())
+        .filter(|f| matches!(f.scheme(), "http" | "https"))
+        .map(String::from)
+        .filter(|f| f.len() <= MAX_FALLBACK_BYTES);
     let action = get("action").unwrap_or_default();
     let mime = get("type").unwrap_or_default();
 
@@ -329,7 +332,8 @@ fn intent(scheme: &str, url: Option<&Url>) -> AppLink {
     }
     if let Some(fallback) = &fallback {
         explained.details.push(format!(
-            "Without the app, it sends the browser to {fallback}"
+            "Without the app, it sends the browser to {}",
+            show(fallback)
         ));
     }
     explained.fallback = fallback;
@@ -438,6 +442,9 @@ fn decoded(text: &str) -> String {
 }
 
 /// `text` cut to [`MAX_SHOWN`] characters and escaped for display.
+/// A fallback address longer than this is not offered to be checked.
+const MAX_FALLBACK_BYTES: usize = 8 * 1024;
+
 fn show(text: &str) -> String {
     let mut cut: String = text.chars().take(MAX_SHOWN).collect();
     if text.chars().nth(MAX_SHOWN).is_some() {
@@ -520,6 +527,14 @@ mod tests {
             unknown.details.iter().any(|d| d == "App: com.unknown.app"),
             "{unknown:?}"
         );
+        // A made-up package name is shown escaped; a long fallback is kept whole to be checked.
+        let hidden = of("intent://x#Intent;scheme=weird;package=com.\u{202e}ppa;end");
+        assert_eq!(hidden.app.as_deref(), Some("com.\\u{202e}ppa"));
+        let long = format!("https://evil.example/{}", "a".repeat(500));
+        let kept = of(&format!(
+            "intent://x#Intent;scheme=weird;S.browser_fallback_url={long};end"
+        ));
+        assert_eq!(kept.fallback.as_deref(), Some(long.as_str()));
         let android_app = of("android-app://com.whatsapp/whatsapp/send?phone=1");
         assert_eq!(android_app.app.as_deref(), Some("WhatsApp"));
         // A fallback that is not a web address is not offered for checking.

@@ -119,3 +119,10 @@ path = "fuzz_targets/host_lists.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "app_link"
+path = "fuzz_targets/app_link.rs"
+test = false
+doc = false
+bench = false
