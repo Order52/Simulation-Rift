@@ -1,0 +1,114 @@
+# The brands Check protects (docs/architecture.md §10.3): the hand-picked ones
+# (tools/rift-train/brands-picked.txt), then those today's phishing addresses
+# fake most, written by tools/rift-train/brands.py from 436631 phishing
+# and 50450 ordinary hosts. One registrable domain per line; a learned one is
+# marked `learned` and protects addresses only, not page names (§10.5).
+paypal.com
+google.com
+apple.com
+microsoft.com
+amazon.com
+facebook.com
+instagram.com
+whatsapp.com
+netflix.com
+github.com
+roblox.com
+okta.com
+bankofamerica.com
+bofa.com
+wellsfargo.com
+xfinity.com
+steamcommunity.com
+discord.com
+coinbase.com
+binance.com
+metamask.io
+trezor.io
+dhl.com
+usps.com
+fedex.com
+linkedin.com
+outlook.com
+icloud.com
+adobe.com
+docusign.com
+dropbox.com
+americanexpress.com
+tiktok.com
+ebay.com
+santander.com.br learned  # 277 phishing sites, 0 ordinary
+rakuten.co.jp learned  # 276 phishing sites, 1 ordinary
+royalmail.com learned  # 214 phishing sites, 1 ordinary
+mercari.com learned  # 211 phishing sites, 0 ordinary
+trustwallet.com learned  # 201 phishing sites, 0 ordinary
+allegrolokalnie.pl learned  # 170 phishing sites, 0 ordinary
+opensea.io learned  # 159 phishing sites, 0 ordinary
+lloydsbank.co.uk learned  # 153 phishing sites, 0 ordinary
+commbank.com.au learned  # 139 phishing sites, 0 ordinary
+garena.com learned  # 131 phishing sites, 0 ordinary
+uniswap.org learned  # 130 phishing sites, 1 ordinary
+airbnb.com learned  # 128 phishing sites, 0 ordinary
+vodafone.pt learned  # 120 phishing sites, 1 ordinary
+microsoftonline.com learned  # 102 phishing sites, 0 ordinary
+runescape.com learned  # 88 phishing sites, 0 ordinary
+walletconnect.org learned  # 78 phishing sites, 0 ordinary
+codashop.com learned  # 78 phishing sites, 0 ordinary
+caixa.gov.br learned  # 73 phishing sites, 0 ordinary
+snapchat.com learned  # 69 phishing sites, 0 ordinary
+onedrive.com learned  # 68 phishing sites, 0 ordinary
+jreast.co.jp learned  # 65 phishing sites, 0 ordinary
+steampowered.com learned  # 54 phishing sites, 0 ordinary
+blockchain.info learned  # 54 phishing sites, 0 ordinary
+auone.jp learned  # 51 phishing sites, 0 ordinary
+ionos.de learned  # 48 phishing sites, 0 ordinary
+americanas.com.br learned  # 48 phishing sites, 0 ordinary
+ameli.fr learned  # 45 phishing sites, 0 ordinary
+midasbuy.com learned  # 42 phishing sites, 0 ordinary
+leboncoin.fr learned  # 41 phishing sites, 0 ordinary
+huntington.com learned  # 41 phishing sites, 0 ordinary
+fanpage.it learned  # 40 phishing sites, 0 ordinary
+krafton.com learned  # 38 phishing sites, 0 ordinary
+impots.gouv.fr learned  # 37 phishing sites, 0 ordinary
+craigslist.org learned  # 37 phishing sites, 0 ordinary
+kleinanzeigen.de learned  # 35 phishing sites, 0 ordinary
+hostpoint.ch learned  # 35 phishing sites, 0 ordinary
+inbox.lv learned  # 34 phishing sites, 0 ordinary
+japanpost.jp learned  # 32 phishing sites, 0 ordinary
+carousell.sg learned  # 32 phishing sites, 0 ordinary
+acesso.gov.br learned  # 30 phishing sites, 0 ordinary
+scotiabank.com learned  # 29 phishing sites, 0 ordinary
+pubgmobile.com learned  # 29 phishing sites, 0 ordinary
+nordea.com learned  # 29 phishing sites, 0 ordinary
+wetransfer.com learned  # 28 phishing sites, 0 ordinary
+vidio.com learned  # 27 phishing sites, 0 ordinary
+labanquepostale.fr learned  # 27 phishing sites, 0 ordinary
+itunes.com learned  # 27 phishing sites, 0 ordinary
+davivienda.com learned  # 27 phishing sites, 0 ordinary
+optusnet.com.au learned  # 26 phishing sites, 0 ordinary
+bancolombia.com learned  # 26 phishing sites, 0 ordinary
+swisscom.ch learned  # 25 phishing sites, 0 ordinary
+royalbank.com learned  # 25 phishing sites, 0 ordinary
+telstra.com learned  # 24 phishing sites, 0 ordinary
+tiktokshop.com learned  # 23 phishing sites, 0 ordinary
+strato.de learned  # 23 phishing sites, 0 ordinary
+chronopost.fr learned  # 23 phishing sites, 0 ordinary
+sistema.gov.br learned  # 22 phishing sites, 0 ordinary
+poste.it learned  # 22 phishing sites, 0 ordinary
+mercadopago.com learned  # 22 phishing sites, 0 ordinary
+magazineluiza.com.br learned  # 22 phishing sites, 0 ordinary
+semana.com learned  # 21 phishing sites, 0 ordinary
+bnpparibas.com learned  # 20 phishing sites, 0 ordinary
+rabobank.nl learned  # 19 phishing sites, 0 ordinary
+kucoin.com learned  # 19 phishing sites, 0 ordinary
+dcard.tw learned  # 19 phishing sites, 0 ordinary
+robinhood.com learned  # 18 phishing sites, 0 ordinary
+mercadolivre.com.br learned  # 18 phishing sites, 0 ordinary
+skype.com learned  # 17 phishing sites, 0 ordinary
+hotmail.com learned  # 17 phishing sites, 0 ordinary
+docomo.ne.jp learned  # 17 phishing sites, 0 ordinary
+citibank.com learned  # 17 phishing sites, 0 ordinary
+turkiye.gov.tr learned  # 16 phishing sites, 0 ordinary
+joins.com learned  # 16 phishing sites, 0 ordinary
+capitalone.com learned  # 16 phishing sites, 0 ordinary
+sprzedajemy.pl learned  # 15 phishing sites, 0 ordinary

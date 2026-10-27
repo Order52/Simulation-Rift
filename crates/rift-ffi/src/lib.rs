@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rift_core::download::{self, DownloadPolicy, DownloadRequest};
-use rift_core::heuristics::HeuristicConfig;
+use rift_core::heuristics::{HeuristicConfig, SHIPPED_BRANDS};
 use rift_core::policy::{self, Decision, IntelState, NavigationContext};
 use rift_core::session::{RecoveryReport, SessionError, SessionManager, SessionPlatform};
 use rift_core::store::StoredObject;
@@ -73,6 +73,18 @@ pub struct Navigator {
     ai: Option<Arc<Ai>>,
     /// The threat lists Check consults (§10.12); set when they load.
     lists: std::sync::RwLock<Option<Arc<ThreatLists>>>,
+    /// The protected brands a page's own name is compared with: the hand-picked ones.
+    page_brands: Vec<String>,
+}
+
+/// The brands Check protects (§10.3), as the app ships them: hand-picked,
+/// and learned from the feeds by the monthly workflow.
+#[uniffi::export]
+pub fn shipped_brands() -> Vec<String> {
+    rift_core::heuristics::parse_brands(SHIPPED_BRANDS)
+        .into_iter()
+        .map(|b| b.domain)
+        .collect()
 }
 
 #[uniffi::export]
@@ -92,7 +104,19 @@ impl Navigator {
         hosting: Vec<String>,
         ai: Option<Arc<Ai>>,
     ) -> Arc<Self> {
+        // Learned brands protect addresses only (§10.3, §10.5).
+        let learned: Vec<String> = rift_core::heuristics::parse_brands(SHIPPED_BRANDS)
+            .into_iter()
+            .filter(|b| b.learned)
+            .map(|b| b.domain)
+            .collect();
+        let page_brands = protected_domains
+            .iter()
+            .filter(|d| !learned.contains(d))
+            .cloned()
+            .collect();
         Arc::new(Self {
+            page_brands,
             heuristics: HeuristicConfig {
                 protected_domains,
                 shorteners,
@@ -185,7 +209,7 @@ impl Navigator {
             card,
         };
         let mut found: Vec<PageFact> =
-            rift_core::page::assess(&canonical, &facts, &self.heuristics.protected_domains)
+            rift_core::page::assess(&canonical, &facts, &self.page_brands)
                 .iter()
                 .map(|flag| PageFact {
                     code: flag.code().to_owned(),

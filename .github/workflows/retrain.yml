@@ -27,15 +27,15 @@ on:
       models:
         description: Which model to retrain
         type: choice
-        options: [both, address, pages]
-        default: both
+        options: [all, address, pages, brands]
+        default: all
 
 permissions:
   contents: read
 
 jobs:
   retrain:
-    if: github.event_name == 'schedule' || inputs.models != 'pages'
+    if: github.event_name == 'schedule' || inputs.models == 'all' || inputs.models == 'address'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     permissions:
@@ -110,7 +110,7 @@ jobs:
   # pages"): the 2021 dataset, today's pages and the memory of earlier
   # months' pages, as counts; a pull request only if the gate passes.
   pages:
-    if: github.event_name == 'schedule' || inputs.models != 'address'
+    if: github.event_name == 'schedule' || inputs.models == 'all' || inputs.models == 'pages'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     permissions:
@@ -183,5 +183,50 @@ jobs:
             echo "docs/reports/page-model.md keeps the figures of the last hand-checked training; the figures above are this model's."
           } > "$RUNNER_TEMP/body.md"
           gh pr create --title "models: retrain rift ai's page model ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/body.md"
+          gh pr merge --auto --squash "$branch"
+          gh workflow run ci.yml --ref "$branch"
+
+  # The brands Check protects (architecture §10.3): relearned from today's
+  # feeds; a pull request only if the gate passes and the list changed.
+  brands:
+    if: github.event_name == 'schedule' || inputs.models == 'all' || inputs.models == 'brands'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: A dictionary, to leave out ordinary words
+        run: sudo apt-get install -y --no-install-recommends wamerican
+      - name: Relearn the brands and gate them
+        shell: bash  # pipefail: a refusal must fail the step, not be hidden by tee
+        run: sh tools/rift-train/retrain_brands.sh "$RUNNER_TEMP/brands" /usr/share/dict/words | tee "$RUNNER_TEMP/brands.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The shipped-brand tests still hold
+        run: "cargo test --locked -p rift-core heuristics:: && cargo test --locked -p rift-ffi"
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- models/brands.txt; then echo "The brand list is unchanged."; exit 0; fi
+          branch="brands/$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add models/brands.txt
+          git commit -m "models: relearn the brands check protects from the $(date -u +%Y-%m-%d) feeds"
+          git push origin "$branch"
+          {
+            echo "The brands Check protects, relearned from today's feeds by the monthly workflow; the list passed the gate and the shipped-brand tests. Merges itself when CI passes."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/brands.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --title "models: relearn the protected brands ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/body.md"
           gh pr merge --auto --squash "$branch"
           gh workflow run ci.yml --ref "$branch"

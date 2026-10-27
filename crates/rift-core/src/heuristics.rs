@@ -37,6 +37,45 @@ impl Default for HeuristicConfig {
     }
 }
 
+/// The brands Check protects (§10.3), written by `tools/rift-train/brands.py`:
+/// the hand-picked ones, and those today's phishing addresses fake most.
+pub const SHIPPED_BRANDS: &str = include_str!("../../../models/brands.txt");
+
+/// A protected brand's registrable domain. A learned one protects
+/// addresses only: its name may be a product people run on their own sites,
+/// so a page naming it is not a claim to be it (§10.5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Brand {
+    pub domain: String,
+    pub learned: bool,
+}
+
+/// Reads `domain [learned]` lines; `#` starts a comment. A line that is not
+/// a plain lowercase domain is skipped.
+pub fn parse_brands(text: &str) -> Vec<Brand> {
+    text.lines()
+        .filter_map(|line| {
+            let mut words = line.split('#').next()?.split_whitespace();
+            let domain = words.next()?;
+            let learned = match words.next() {
+                None => false,
+                Some("learned") => true,
+                Some(_) => return None,
+            };
+            let plain = domain.len() <= 253
+                && domain.contains('.')
+                && !domain.starts_with(['.', '-'])
+                && domain.bytes().all(|b| {
+                    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-'
+                });
+            (plain && words.next().is_none()).then(|| Brand {
+                domain: domain.to_owned(),
+                learned,
+            })
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
     /// Shown in the protection details; does not interrupt navigation.
@@ -628,6 +667,36 @@ mod tests {
                 protected: "paypal.com".into()
             }
         ));
+    }
+
+    #[test]
+    fn the_shipped_brands_parse_and_keep_the_hand_picked_ones() {
+        let brands = parse_brands(SHIPPED_BRANDS);
+        assert!(
+            brands
+                .iter()
+                .any(|b| b.domain == "paypal.com" && !b.learned)
+        );
+        assert!(brands.len() <= 300, "{}", brands.len());
+        // Every line that names something is read: a typo would drop a brand silently.
+        let lines = SHIPPED_BRANDS
+            .lines()
+            .filter(|l| !l.split('#').next().unwrap_or_default().trim().is_empty())
+            .count();
+        assert_eq!(brands.len(), lines);
+        assert_eq!(
+            parse_brands("a.example learned # x\nB.example\nc.example other\nd.example"),
+            vec![
+                Brand {
+                    domain: "a.example".into(),
+                    learned: true
+                },
+                Brand {
+                    domain: "d.example".into(),
+                    learned: false
+                },
+            ]
+        );
     }
 
     #[test]

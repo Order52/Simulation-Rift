@@ -1,0 +1,14 @@
+# Names brands.py never learns, though phishing addresses use them: products
+# anyone can run on their own site (their real sign-in pages are on
+# thousands of domains, often at cpanel.<site> or webmail.<site>) and
+# platforms anyone can publish on (named in Check's free-hosting list).
+cpanel
+plesk
+zimbra
+roundcube
+sharepoint
+sharefile
+checkpoint
+blogspot
+groups
+reviews
