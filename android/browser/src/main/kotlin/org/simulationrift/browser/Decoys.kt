@@ -27,6 +27,8 @@ import org.simulationrift.bridge.PageWatch
  * Decoys (§10.5): a page that asks for the camera, the microphone, the
  * location, files, notifications, the clipboard or the motion sensors is
  * given something made up, and Rift's live watch is told what it asked for.
+ * A page that fingerprints the phone (§10.14) is reported too, and its
+ * canvas and audio readings are changed faintly for the session.
  * Nothing real is ever given: the browser app holds none of those
  * permissions, and the engine's own requests are still refused
  * ([BrowserActivity]'s Chrome client), which is what a page that gets past
@@ -65,6 +67,7 @@ internal class Decoys(private val context: Context, private val report: (kind: S
         .replace("__RIFT_CAMERA_ID__", hex(32))
         .replace("__RIFT_MIC_ID__", hex(32))
         .replace("__RIFT_GROUP_ID__", hex(32))
+        .replace("__RIFT_SEED__", random.nextInt().toUInt().toString())
 
     @Suppress("UNUSED_PARAMETER") // the listener's signature
     private fun onMessage(view: WebView, message: WebMessageCompat, sourceOrigin: Uri, isMainFrame: Boolean, reply: JavaScriptReplyProxy) {

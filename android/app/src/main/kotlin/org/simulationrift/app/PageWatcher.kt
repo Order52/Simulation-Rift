@@ -170,13 +170,31 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
                 "$host tried to vibrate the phone. Nothing happened.")
             PageWatch.Decoy.FILES -> record(Level.WARNING, kind, host,
                 "$host asked you to choose a file$quoted. Rift gave it a made-up file; none of your files was shared.")
+            PageWatch.Decoy.FINGERPRINT -> fingerprint(host, detail)
         }
+    }
+
+    /** The ways each host fingerprinted the phone (§10.14), from [PageWatch.Decoy.FINGERPRINTS]. */
+    private val fingerprints = HashMap<String, MutableSet<String>>()
+
+    @Synchronized
+    private fun fingerprint(host: String, technique: String) {
+        val how = FINGERPRINT_WAYS[technique] ?: return
+        record(Level.NOTE, "fingerprint-$technique", host, "$host $how")
+        val ways = fingerprints.getOrPut(host) { LinkedHashSet() }
+        if (!ways.add(technique) || ways.size < 2) return
+        // A second way makes it plain: the page is telling phones apart.
+        events.remove("fingerprinting\u0000$host")
+        record(Level.NOTE, "fingerprinting", host,
+            "$host is fingerprinting this phone: it used ${ways.size} ways to tell phones apart (${ways.joinToString(", ")}), " +
+                "so it can recognise you without cookies. Rift gave it made-up answers, different in each session, so it cannot follow you from one to the next.")
     }
 
     /** What the decoys cover, for the watch's coverage list. */
     private fun decoyCoverage(): String? = when (decoys) {
         true -> "Decoys: a page that asks for the camera, microphone, screen, location, files, notifications, clipboard, " +
             "motion sensors or battery gets something made up, and is listed here. Nothing real is given. " +
+            "A page that fingerprints the phone (canvas, graphics chip, audio, fonts) is listed too, and gets answers that change in each session. " +
             "A page can tell it is a decoy if it looks closely, and can add made-up decoy reports about itself."
         false -> "Decoys are not available with this device's browser engine: those requests are refused instead."
         null -> null
@@ -285,6 +303,12 @@ internal class PageWatcher(private val lockEpoch: Long, private val tally: (Tall
         displaySafe(android.net.Uri.parse(url).host?.takeIf { it.isNotEmpty() } ?: "a page").take(MAX_SUBJECT)
 
     private companion object {
+        val FINGERPRINT_WAYS = mapOf(
+            "canvas" to "read back a drawing it made out of sight, a common way to fingerprint a phone. Rift changed it faintly, differently in each session.",
+            "webgl" to "asked for the name of the phone's graphics chip, or read back a 3D drawing, a common way to fingerprint a phone. Rift named a common chip and changed drawings faintly, differently in each session.",
+            "audio" to "rendered sound out of hearing to measure it, a common way to fingerprint a phone. Rift changed the result faintly, differently in each session.",
+            "fonts" to "measured text in more than 20 fonts to find which fonts the phone has, a common way to fingerprint it.",
+        )
         const val MAX_EVENTS = 64
         const val MAX_COUNT = 9_999
         const val MAX_SUBJECT = 120

@@ -71,14 +71,17 @@ data class PageWatch(val events: List<Event>, val coverage: List<String>) {
         const val MOTION = "decoy-motion"
         const val BATTERY = "decoy-battery"
         const val VIBRATE = "decoy-vibrate"
+        /** A way of fingerprinting the phone, named by its detail: one of [FINGERPRINTS]. */
+        const val FINGERPRINT = "decoy-fingerprint"
         const val FILES = "decoy-files"
         const val ACTIVE = "decoys-active"
         const val UNAVAILABLE = "decoys-unavailable"
 
         val FROM_PAGES = setOf(
             CAMERA, MICROPHONE, SCREEN, DEVICES, LOCATION, PERMISSION_CHECK, NOTIFICATION,
-            CLIPBOARD_READ, CLIPBOARD_WRITE, MOTION, BATTERY, VIBRATE,
+            CLIPBOARD_READ, CLIPBOARD_WRITE, MOTION, BATTERY, VIBRATE, FINGERPRINT,
         )
+        val FINGERPRINTS = setOf("canvas", "webgl", "audio", "fonts")
         val ALL = FROM_PAGES + setOf(FILES, ACTIVE, UNAVAILABLE)
     }
 

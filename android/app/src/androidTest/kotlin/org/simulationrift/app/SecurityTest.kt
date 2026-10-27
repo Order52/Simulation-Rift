@@ -1952,7 +1952,7 @@ class SecurityTest {
         }
         assertTrue("file: $file", Regex("""IMG_\d{8}_\d{6}\.jpg \d+ image/jpeg jpeg=true""").matches(file))
 
-        val expected = PageWatch.Decoy.FROM_PAGES - PageWatch.Decoy.SCREEN + PageWatch.Decoy.FILES -
+        val expected = PageWatch.Decoy.FROM_PAGES - PageWatch.Decoy.SCREEN - PageWatch.Decoy.FINGERPRINT + PageWatch.Decoy.FILES -
             setOfNotNull(PageWatch.Decoy.PERMISSION_CHECK.takeUnless { permissions })
         val seen = awaitWatch(generation) { it.containsAll(expected) }
         assertTrue("missing: ${expected - seen}", seen.containsAll(expected))
@@ -1963,6 +1963,35 @@ class SecurityTest {
         assertNotNull(device.wait(Until.findObject(By.res("watch-list")), UI_TIMEOUT_MS))
         screenshot("d1-list")
         report("d1", "page: $page; file: $file; watch: " + watch.events.joinToString(" | ") { "${it.level} ${it.code} x${it.count}: ${it.text}" })
+    }
+
+    /**
+     * Fingerprinting (§10.14): a page that reads back a canvas, asks for the
+     * graphics chip, renders audio off screen and measures many fonts is
+     * listed by each way and as fingerprinting, and its canvas and audio
+     * results stay the same within a session and change in the next one.
+     */
+    @Test
+    fun d2_fingerprintingIsListedAndDoesNotFollowThePhone() {
+        val first = resetAndAwait(activeGeneration())
+        val a = visit("d2", "/fingerprint.html")
+        assertEquals("true", a.optString("canvas_png"))
+        assertEquals("true", a.optString("looks_native"))
+        assertEquals("the same canvas twice in one session", a.optString("canvas"), a.optString("canvas_again"))
+        val expected = setOf("fingerprint-canvas", "fingerprint-audio", "fingerprint-fonts", "fingerprinting") +
+            setOfNotNull("fingerprint-webgl".takeUnless { a.optString("webgl") == "UNAVAILABLE" })
+        val seen = awaitWatch(first) { it.containsAll(expected) }
+        assertTrue("missing: ${expected - seen}", seen.containsAll(expected))
+        val watch = Core.pageWatch(first)!!
+        assertTrue("fingerprinting is a note, not a warning: ${watch.level}", watch.events.filter { it.code.startsWith("fingerprint") }.all { it.level == PageWatch.Level.NOTE })
+
+        val second = resetAndAwait(first)
+        val b = visit("d2", "/fingerprint.html")
+        assertNotEquals("canvas in a new session", a.optString("canvas"), b.optString("canvas"))
+        assertNotEquals("canvas pixels in a new session", a.optString("canvas_pixels"), b.optString("canvas_pixels"))
+        assertNotEquals("audio in a new session", a.optString("audio"), b.optString("audio"))
+        report("d2", "first: $a; second: $b; watch: " + watch.events.filter { it.code.startsWith("fingerprint") }.joinToString(" | ") { it.text })
+        assertTrue(second > first)
     }
 
     /**

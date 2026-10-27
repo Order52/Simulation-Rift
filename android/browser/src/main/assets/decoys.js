@@ -14,13 +14,14 @@
 
   const LAT = __RIFT_LAT__, LON = __RIFT_LON__;
   const CAMERA_ID = "__RIFT_CAMERA_ID__", MIC_ID = "__RIFT_MIC_ID__", GROUP_ID = "__RIFT_GROUP_ID__";
+  const SEED = __RIFT_SEED__ >>> 0;
 
-  // ---- Reporting: one message per kind every few seconds ----
+  // ---- Reporting: one message per kind (or per key) every few seconds ----
   const lastSent = new Map();
-  function tell(kind, detail) {
+  function tell(kind, detail, key = kind) {
     const now = Date.now();
-    if (now - (lastSent.get(kind) || 0) < 2000) return;
-    lastSent.set(kind, now);
+    if (now - (lastSent.get(key) || 0) < 2000) return;
+    lastSent.set(key, now);
     try {
       channel.postMessage(JSON.stringify({ k: kind, d: String(detail || "").slice(0, 200) }));
     } catch (e) { /* the channel is gone with the page */ }
@@ -303,12 +304,146 @@
   if (window.performance && "memory" in performance) {
     getter(Performance.prototype, "memory", { jsHeapSizeLimit: 2172649472, totalJSHeapSize: 10000000, usedJSHeapSize: 10000000 });
   }
+  // ---- Fingerprinting: noticed, and kept from following the phone ----
+  // A page that reads back what it drew, asks for the GPU's name, renders
+  // sound off screen or measures many fonts is fingerprinting: the answers
+  // differ a little between phones and stay the same on one, so they name
+  // the phone without a cookie. Each way is reported. Canvas and audio
+  // readings are also changed faintly with a seed new in every session
+  // (as Brave does), the same way each time within the session, so the
+  // fingerprint is stable for the page now and different in the next one.
+  function fingerprint(technique) { tell("decoy-fingerprint", technique, "decoy-fingerprint " + technique); }
+  function mix(i) {
+    let x = (SEED ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0;
+    x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0;
+    return (x ^ (x >>> 13)) >>> 0;
+  }
+  // One colour value in about every 128 moves by one: invisible, but a
+  // different hash.
+  function farblePixels(data) {
+    for (let i = 0; i < data.length; i++) {
+      const m = mix(i);
+      if ((m & 127) === 0) data[i] = data[i] ^ 1;
+    }
+  }
+  const MAX_FARBLED_PIXELS = 4000000;
+  const FONT_PROBES = 20;
+  function canvasCopy(canvas, getImageData) {
+    const w = canvas.width, h = canvas.height;
+    if (!w || !h || w * h > MAX_FARBLED_PIXELS) return null;
+    const copy = typeof OffscreenCanvas !== "undefined" && canvas instanceof OffscreenCanvas
+      ? new OffscreenCanvas(w, h) : document.createElement("canvas");
+    copy.width = w; copy.height = h;
+    const context = copy.getContext("2d");
+    context.drawImage(canvas, 0, 0);
+    const image = getImageData.call(context, 0, 0, w, h);
+    farblePixels(image.data);
+    context.putImageData(image, 0, 0);
+    return copy;
+  }
+  // The engine's own, before they are replaced, for the copies below.
+  const getImageData2d = window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype.getImageData;
+  const getImageDataOff = window.OffscreenCanvasRenderingContext2D && OffscreenCanvasRenderingContext2D.prototype.getImageData;
+  for (const name of ["CanvasRenderingContext2D", "OffscreenCanvasRenderingContext2D"]) {
+    const proto = window[name] && window[name].prototype;
+    if (!proto) continue;
+    const getImageData = proto.getImageData, measureText = proto.measureText;
+    replace(proto, "getImageData", function getImageData_() {
+      const image = getImageData.apply(this, arguments);
+      fingerprint("canvas");
+      farblePixels(image.data);
+      return image;
+    });
+    // Measuring text in many fonts tells which fonts the phone has.
+    const fonts = new Set();
+    replace(proto, "measureText", function measureText_() {
+      if (fonts.size <= FONT_PROBES) {
+        fonts.add(String(this.font));
+        if (fonts.size > FONT_PROBES) fingerprint("fonts");
+      }
+      return measureText.apply(this, arguments);
+    });
+  }
+  if (document.fonts && typeof document.fonts.check === "function") {
+    const check = document.fonts.check, checked = new Set();
+    replace(Object.getPrototypeOf(document.fonts), "check", function check_(font) {
+      if (checked.size <= FONT_PROBES) {
+        checked.add(String(font));
+        if (checked.size > FONT_PROBES) fingerprint("fonts");
+      }
+      return check.apply(this, arguments);
+    });
+  }
+  if (window.HTMLCanvasElement && getImageData2d) {
+    const proto = HTMLCanvasElement.prototype, toDataURL = proto.toDataURL, toBlob = proto.toBlob;
+    replace(proto, "toDataURL", function toDataURL_() {
+      fingerprint("canvas");
+      let copy = null;
+      try { copy = canvasCopy(this, getImageData2d); } catch (e) { /* a tainted canvas: the engine's own error follows */ }
+      return toDataURL.apply(copy || this, arguments);
+    });
+    replace(proto, "toBlob", function toBlob_() {
+      fingerprint("canvas");
+      let copy = null;
+      try { copy = canvasCopy(this, getImageData2d); } catch (e) {}
+      return toBlob.apply(copy || this, arguments);
+    });
+  }
+  if (typeof OffscreenCanvas !== "undefined" && getImageDataOff) {
+    const proto = OffscreenCanvas.prototype, convertToBlob = proto.convertToBlob;
+    if (convertToBlob) replace(proto, "convertToBlob", function convertToBlob_() {
+      fingerprint("canvas");
+      let copy = null;
+      try { copy = canvasCopy(this, getImageDataOff); } catch (e) {}
+      return convertToBlob.apply(copy || this, arguments);
+    });
+  }
+  for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
+    const proto = window[name] && window[name].prototype;
+    if (!proto) continue;
+    const readPixels = proto.readPixels;
+    replace(proto, "readPixels", function readPixels_() {
+      const result = readPixels.apply(this, arguments);
+      fingerprint("webgl");
+      const pixels = arguments[6];
+      if (pixels instanceof Uint8Array || pixels instanceof Uint8ClampedArray) farblePixels(pixels);
+      return result;
+    });
+  }
+  // Sound rendered off screen differs in its last digits between phones.
+  // The rendered buffer reaches the page through a promise or an event, so
+  // its samples are changed when the page reads them.
+  if (window.OfflineAudioContext && window.AudioBuffer) {
+    const rendering = [], farbled = new WeakSet();
+    const startRendering = OfflineAudioContext.prototype.startRendering;
+    replace(OfflineAudioContext.prototype, "startRendering", function startRendering_() {
+      fingerprint("audio");
+      rendering.push(this.length + ":" + this.sampleRate);
+      if (rendering.length > 16) rendering.shift();
+      return startRendering.apply(this, arguments);
+    });
+    const farbleBuffer = buffer => {
+      if (farbled.has(buffer) || !rendering.includes(buffer.length + ":" + buffer.sampleRate)) return;
+      farbled.add(buffer);
+      for (let c = 0; c < buffer.numberOfChannels; c++) {
+        const data = getChannelData.call(buffer, c);
+        for (let i = 0; i < data.length; i++) {
+          const m = mix(i + c * data.length);
+          if ((m & 15) === 0) data[i] += ((m >>> 8) % 3 - 1) * 1e-7;
+        }
+      }
+    };
+    const proto = AudioBuffer.prototype, getChannelData = proto.getChannelData, copyFromChannel = proto.copyFromChannel;
+    replace(proto, "getChannelData", function getChannelData_() { farbleBuffer(this); return getChannelData.apply(this, arguments); });
+    if (copyFromChannel) replace(proto, "copyFromChannel", function copyFromChannel_() { farbleBuffer(this); return copyFromChannel.apply(this, arguments); });
+  }
   // WebGL names the GPU, and so the phone's make.
   for (const name of ["WebGLRenderingContext", "WebGL2RenderingContext"]) {
     const proto = window[name] && window[name].prototype;
     if (!proto) continue;
     const getParameter = proto.getParameter;
     replace(proto, "getParameter", function getParameter_(parameter) {
+      if (parameter === 0x9245 || parameter === 0x9246) fingerprint("webgl");
       if (parameter === 0x9245) return "Google Inc. (Google)"; // UNMASKED_VENDOR_WEBGL
       if (parameter === 0x9246) return "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"; // UNMASKED_RENDERER_WEBGL
       return getParameter.apply(this, arguments);

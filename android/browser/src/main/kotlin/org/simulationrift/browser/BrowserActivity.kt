@@ -502,7 +502,8 @@ class BrowserActivity : ComponentActivity() {
      */
     private fun reportDecoy(kind: String, origin: String, detail: String) {
         if (kind != PageWatch.Decoy.ACTIVE && kind != PageWatch.Decoy.UNAVAILABLE) {
-            val key = "$kind $origin"
+            // Each way of fingerprinting is its own report.
+            val key = if (kind == PageWatch.Decoy.FINGERPRINT) "$kind $detail $origin" else "$kind $origin"
             val now = SystemClock.elapsedRealtime()
             if (reported[key]?.let { now - it < ATTEMPT_REPORT_MS } == true) return
             if (reported.size >= MAX_REPORTED) reported.clear()
