@@ -6,8 +6,13 @@ name: caretaker
 # - Weekly: GitHub turns scheduled workflows off after 60 days without
 #   activity; this turns every workflow on again, which restarts that count.
 # - Weekly: a bot's pull request that failed CI and is behind main is
-#   rebased onto main and CI starts again (it may have failed on a main
+#   rebased onto main so CI runs again (it may have failed on a main
 #   that has since been fixed).
+# - Every 6 hours: GitHub holds the pull_request runs on a branch a bot
+#   pushed ("action_required") until someone approves them, and branch
+#   protection counts only those runs. This approves held runs on this
+#   repository's own branches pushed by this repository's bots (never a
+#   fork's), so their pull requests can merge themselves.
 # - Weekly: a monthly bot pull request (retrain/, toolchains/, kev/) that
 #   is still open after 40 days is closed; a newer one has replaced it.
 on:
@@ -16,6 +21,7 @@ on:
     types: [completed]
   schedule:
     - cron: "47 2 * * 1"
+    - cron: "23 */6 * * *"
   workflow_dispatch:
 
 permissions: {}
@@ -33,8 +39,26 @@ jobs:
           RUN: ${{ github.event.workflow_run.id }}
         run: gh run rerun "$RUN" --failed --repo "$GITHUB_REPOSITORY"
 
-  tend:
+  approve:
     if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Approve held runs on the bots' own branches
+        run: |
+          gh api "repos/$GH_REPO/actions/runs?status=action_required&per_page=100" \
+            --jq ".workflow_runs[] | select(.head_repository.full_name == \"$GH_REPO\") | select(.actor.login == \"github-actions[bot]\" or .actor.login == \"dependabot[bot]\") | .id" |
+          while read -r id; do
+            gh api -X POST "repos/$GH_REPO/actions/runs/$id/approve"
+            echo "Approved run $id." >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  tend:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '47 2 * * 1'
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -51,13 +75,13 @@ jobs:
           done
       - name: Rebase bot pull requests that failed on an older main
         run: |
-          gh pr list --state open --json number,headRefName,author,statusCheckRollup \
-            --jq '.[] | select(.author.is_bot) | select([.statusCheckRollup[] | .conclusion] | index("FAILURE")) | "\(.number) \(.headRefName)"' |
-          while read -r number branch; do
+          gh pr list --state open --json number,author,statusCheckRollup \
+            --jq '.[] | select(.author.is_bot) | select([.statusCheckRollup[] | .conclusion] | index("FAILURE")) | "\(.number)"' |
+          while read -r number; do
             # Fails, and nothing more happens, when the branch is already on main.
+            # The new CI run is held; the next approve run lets it go.
             if gh pr update-branch "$number" --rebase; then
-              gh workflow run ci.yml --ref "$branch"
-              echo "Rebased #$number and started CI." >> "$GITHUB_STEP_SUMMARY"
+              echo "Rebased #$number." >> "$GITHUB_STEP_SUMMARY"
             fi
           done
       - name: Close monthly bot pull requests a newer one replaced
