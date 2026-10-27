@@ -159,7 +159,7 @@ Updates keep your settings. Every release is signed with the same certificate, S
 
 ### Updates
 
-**Rift updates itself.** Once a day it asks GitHub for its latest release. If there is a newer one, Rift downloads it, checks it against the SHA-256 published with it, and checks that it is signed with Rift's own certificate. The first time, Android asks you to confirm. After that, on Android 12 and newer, Rift installs updates by itself while you are not using it. You can turn this off under **About → Updates**.
+**Rift updates itself.** When you open it, Rift asks GitHub for its latest release and, if there is a newer one, offers it in a dialog: one tap on **Update** installs it. Once a day it also checks by itself, and after the first update (which Android asks you to confirm) it installs new releases on its own while you are not using it (Android 12 and newer). Every update is checked against the SHA-256 published with it and must be signed with Rift's own certificate. Under **About → Updates** you can switch off **Check when Rift opens** or **Update Rift by itself**, and **Check for updates** checks right away.
 
 Or use [Obtainium](https://obtainium.imranr.dev): with Obtainium installed, open **[Add Rift to Obtainium](https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22org.simulationrift.app%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FOrder52%2FSimulation-Rift%22%2C%22author%22%3A%22Order52%22%2C%22name%22%3A%22Rift%22%2C%22preferredApkIndex%22%3A0%2C%22additionalSettings%22%3A%22%7B%5C%22apkFilterRegEx%5C%22%3A%5C%22%5Erift-%5C%5C%5C%5Cd%5C%22%2C%5C%22includePrereleases%5C%22%3Afalse%7D%22%7D)** on the phone. To add it by hand instead, add `https://github.com/Order52/Simulation-Rift`, with `^rift-\d` under **Filter APKs by regular expression** (so it takes the app, not the optional browser file).
 
@@ -200,10 +200,14 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 
 | Document | What it covers |
 |---|---|
+| [User guide](docs/user-guide.md) | Installing Rift and using every screen |
+| [Developing Rift](docs/development.md) | Setup, code map, building, testing, CI, rules for changes |
+| [Maintaining Rift](docs/maintenance.md) | Releases, keys, Rift AI's retraining, the automated workflows |
 | [STATUS.md](STATUS.md) | What works now, what's left, the known limits |
 | [docs/architecture.md](docs/architecture.md) | Design, threat model, invariants, acceptance tests, residual risks |
 | [docs/reports/](docs/reports/) | Evidence for every claim: Verified, Unverified, Could be improved |
-| [Latest release report](docs/reports/release-3-0.md) | Changes and test results for 0.10.0 |
+| [Latest release report](docs/reports/release-3-1.md) | Changes and test results for 0.11 |
+| [All documentation](docs/README.md) | Every guide and report |
 | [SECURITY.md](SECURITY.md) | How to report a vulnerability |
 | [TODO.md](TODO.md) | Planned work, including the Linux version |
 
