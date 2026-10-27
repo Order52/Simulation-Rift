@@ -12,7 +12,7 @@ use rift_core::download::{self, DownloadPolicy, TraceEnd};
 use rift_core::text::escape_for_display;
 use rift_core::trackers;
 
-use crate::{Intel, LinkCheck, Navigation, Navigator};
+use crate::{Intel, LinkCheck, Navigation, Navigator, RelaySetting};
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CleanFailure {
@@ -181,8 +181,9 @@ pub struct LinkTrace {
 }
 
 /// Short timeouts: a trace is one tap that someone is waiting on.
-fn trace_policy() -> DownloadPolicy {
+fn trace_policy(relay: Option<Arc<RelaySetting>>) -> DownloadPolicy {
     DownloadPolicy {
+        relay: relay.map(|r| r.relay.clone()),
         connect_timeout: Duration::from_secs(10),
         response_timeout: Duration::from_secs(10),
         total_timeout: Duration::from_secs(30),
@@ -196,15 +197,17 @@ impl Navigator {
     /// (the core asks each address for its status and reads no body). Each
     /// hop is checked first, and one Rift would not open is not contacted.
     /// Contacting a link tells its server it was followed, so this runs only
-    /// when the user asks. Blocks for up to 30 seconds.
+    /// when the user asks. With `relay`, every hop goes through it (§8.12).
+    /// Blocks for up to 30 seconds.
     pub fn trace(
         &self,
         url: String,
         intel: Option<Arc<Intel>>,
         now_unix: u64,
         user_agent: String,
+        relay: Option<Arc<RelaySetting>>,
     ) -> LinkTrace {
-        self.trace_with(&url, intel, now_unix, &user_agent, &trace_policy())
+        self.trace_with(&url, intel, now_unix, &user_agent, &trace_policy(relay))
     }
 }
 
@@ -342,7 +345,7 @@ mod tests {
     fn local() -> DownloadPolicy {
         DownloadPolicy {
             local_hosts: vec!["localhost".into()],
-            ..trace_policy()
+            ..trace_policy(None)
         }
     }
 
@@ -379,7 +382,13 @@ mod tests {
             }
         );
         // The phone's own network is refused, as for any transfer.
-        let t = navigator.trace(format!("http://localhost:{port}/a"), None, 0, "t".into());
+        let t = navigator.trace(
+            format!("http://localhost:{port}/a"),
+            None,
+            0,
+            "t".into(),
+            None,
+        );
         assert!(matches!(t.outcome, TraceOutcome::Failed { .. }), "{t:?}");
         assert_eq!(t.hops.len(), 1);
         assert_eq!(t.hops[0].status, None);

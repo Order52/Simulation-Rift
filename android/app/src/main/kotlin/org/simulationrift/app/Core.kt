@@ -35,6 +35,8 @@ import org.simulationrift.core.AiFailure
 import org.simulationrift.core.DisposalException
 import org.simulationrift.core.LinkCheck
 import org.simulationrift.core.LinkTrace
+import org.simulationrift.core.RelayFailure
+import org.simulationrift.core.TraceOutcome
 import org.simulationrift.core.DownloadFailure
 import org.simulationrift.core.EgressFailure
 import org.simulationrift.core.EgressStats
@@ -296,7 +298,14 @@ object Core {
      * contacted. The link's servers see the request, so only when the user
      * asks. Blocks for up to 30 seconds: call it away from the main thread.
      */
-    fun trace(address: String): LinkTrace = navigator.trace(typed(address), database, nowUnix(), TRACE_USER_AGENT)
+    fun trace(address: String): LinkTrace {
+        val relay = try {
+            Relay.setting()
+        } catch (e: RelayFailure) {
+            return LinkTrace(emptyList(), TraceOutcome.Failed("the relay you chose cannot be used: ${Relay.describe(e)}"))
+        }
+        return navigator.trace(typed(address), database, nowUnix(), TRACE_USER_AGENT, relay)
+    }
 
     /**
      * [check], once the threat database has been opened or has failed to,
@@ -320,8 +329,9 @@ object Core {
             ThreatLists.init(app)
             CheckHistory.init(app)
             AppearanceChoice.init(app)
-            // The user's network lock choice, before the first session starts.
+            // The user's network lock and relay choices, before the first session starts.
             NetworkLock.init(app)
+            Relay.init(app)
             updating.execute {
                 // An update's working copy left by a kill during an install (found by
                 // F4). First on the update executor, so before any new install.
@@ -549,6 +559,13 @@ object Core {
 
     private fun start(opened: Sessions, recovered: Long?) {
         try {
+            // Fixed for the session's life (§8.12); one chosen and unusable fails the session.
+            opened.setRelay(Relay.setting())
+        } catch (e: RelayFailure) {
+            fail(opened, "The relay you chose cannot be used: ${Relay.describe(e)} Change it on the Protection card, or turn it off.")
+            return
+        }
+        try {
             val generation = opened.start().toLong()
             // Before the generation is current, so its first decision is watched.
             watch = Watch(generation, PageWatcher(NetworkLock.newSession(), WeeklyStats::count))
@@ -614,6 +631,19 @@ object Core {
     /** The user turned the lock on or off: the current session ends, and the next one runs as chosen. */
     fun networkLockTurned() {
         currentGeneration?.let { reset(it) }
+    }
+
+    /** The user changed the relay (§8.12): likewise, the next session goes through the new one. */
+    fun relayChanged() {
+        if (!started.get()) return
+        val generation = currentGeneration
+        if (generation != null) reset(generation) else if (_state.value is State.Failed) worker.execute { openAndStart() }
+    }
+
+    /** The relay this session goes through (`ip:port`); null for none. */
+    fun sessionRelay(): String? {
+        val generation = currentGeneration ?: return null
+        return sessions?.sessionRelay(generation.toULong())
     }
 
     fun dismissNotice() {

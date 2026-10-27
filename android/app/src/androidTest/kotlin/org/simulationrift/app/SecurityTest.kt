@@ -1995,6 +1995,94 @@ class SecurityTest {
     }
 
     /**
+     * The relay (§8.12): with one chosen, the browser's connections reach
+     * sites through it by name, so the phone looks nothing up; Where it goes
+     * does too. While the pinned app has not said it is running on that
+     * port, or another certificate is pinned, nothing goes out at all, not
+     * even directly. The relay here is a SOCKS5 server in this process that
+     * sends every connection to the fixture server; the pin is to the
+     * outsider's certificate, as it would be to Orbot's.
+     */
+    @Test
+    fun r1_theRelayCarriesPagesByNameAndNothingGoesOutUnconfirmed() {
+        val names = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val server = java.net.ServerSocket(0, 50, java.net.InetAddress.getByName("127.0.0.1"))
+        thread(isDaemon = true, name = "r1-relay") {
+            while (!server.isClosed) {
+                val client = try { server.accept() } catch (e: java.io.IOException) { break }
+                // Rift closes a connection unsent when the check refuses it.
+                thread(isDaemon = true) { try { socks(client, names) } catch (e: java.io.IOException) { client.close() } }
+            }
+        }
+        try {
+            Relay.report(on = true, port = server.localPort)
+            val first = activeGeneration()
+            val cert = Relay.useApp(OUTSIDER, server.localPort) ?: throw AssertionError("the outsider is not visible to Rift")
+            var generation = awaitNewSession(first)
+            assertEquals("127.0.0.1:${server.localPort}", Core.sessionRelay())
+            http("/arrivals/clear")
+            openBrowser(generation, "http://relay-test.example:$FIXTURE_PORT/hit/r1")
+            awaitCondition("the page through the relay", PAGE_TIMEOUT_MS) { arrivals().any { it.startsWith("tcp r1 ") } }
+            assertTrue("asked by name: $names", names.contains("relay-test.example"))
+            val trace = Core.trace("http://relay-trace.example:$FIXTURE_PORT/hit/r1-trace")
+            assertTrue("$trace", trace.outcome is TraceOutcome.Arrived)
+            assertTrue("traced by name: $names", names.contains("relay-trace.example"))
+
+            // Not said to be running: refused, and nothing direct either.
+            Relay.report(on = false, port = server.localPort)
+            generation = resetAndAwait(generation)
+            val before = names.size
+            openBrowser(generation, "http://relay-test.example:$FIXTURE_PORT/hit/r1-off")
+            awaitCondition("a relay refusal", PAGE_TIMEOUT_MS) { Core.egressStats()?.recent?.any { it.code == "relay" } == true }
+            // Another pinned certificate: the same.
+            Relay.report(on = true, port = server.localPort)
+            Relay.choose(Relay.Choice.App(OUTSIDER, "00".repeat(32), server.localPort))
+            generation = awaitNewSession(generation)
+            openBrowser(generation, "http://relay-test.example:$FIXTURE_PORT/hit/r1-cert")
+            awaitCondition("a relay refusal", PAGE_TIMEOUT_MS) { Core.egressStats()?.recent?.any { it.code == "relay" } == true }
+            SystemClock.sleep(1_000)
+            assertEquals("nothing reached the relay unconfirmed", before, names.size)
+            assertFalse("nothing arrived: ${arrivals()}", arrivals().any { it.startsWith("tcp r1-off") || it.startsWith("tcp r1-cert") })
+            report("r1", "pinned $cert; asked by name: $names; unconfirmed: refused (${Core.egressStats()?.recent?.lastOrNull()?.reason})")
+        } finally {
+            val last = (Core.state.value as? Core.State.Active)?.generation
+            Relay.turnOff()
+            server.close()
+            awaitNewSession(last)
+        }
+    }
+
+    /** A session other than [old], once the relay change's reset is done. */
+    private fun awaitNewSession(old: Long? = null): Long {
+        awaitCondition("a new session", SESSION_TIMEOUT_MS) { (Core.state.value as? Core.State.Active)?.generation?.let { it != old } == true }
+        return activeGeneration()
+    }
+
+    /** One SOCKS5 CONNECT (no authentication), recorded and sent on to the fixture server. */
+    private fun socks(client: java.net.Socket, names: MutableList<String>) = client.use {
+        val input = java.io.DataInputStream(client.getInputStream())
+        val output = client.getOutputStream()
+        input.readUnsignedByte() // the version, 5
+        val methods = input.readUnsignedByte()
+        input.readFully(ByteArray(methods))
+        output.write(byteArrayOf(5, 0))
+        val head = ByteArray(4).also { input.readFully(it) }
+        val name = when (head[3].toInt()) {
+            3 -> String(ByteArray(input.readUnsignedByte()).also { input.readFully(it) })
+            1 -> ByteArray(4).also { input.readFully(it) }.joinToString(".") { (it.toInt() and 0xff).toString() }
+            else -> ByteArray(16).also { input.readFully(it) }.toString()
+        }
+        input.readUnsignedShort()
+        names += name
+        java.net.Socket("127.0.0.1", FIXTURE_PORT).use { upstream ->
+            output.write(byteArrayOf(5, 0, 0, 1, 127, 0, 0, 1, 0, 0))
+            val up = thread(isDaemon = true) { runCatching { client.getInputStream().copyTo(upstream.getOutputStream()); upstream.shutdownOutput() } }
+            runCatching { upstream.getInputStream().copyTo(output) }
+            up.join(1_000)
+        }
+    }
+
+    /**
      * Text fields ask the keyboard not to learn (§10.6): Rift's own address
      * fields in both apps and a page's field. Read from the system's record
      * of input starts, which is what the keyboard was given.

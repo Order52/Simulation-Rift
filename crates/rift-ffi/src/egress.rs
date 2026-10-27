@@ -31,7 +31,7 @@ pub struct EgressDenial {
     /// Counts this session's refusals from 1, so a reader can tell which are new.
     pub seq: u64,
     /// Stable: `local-address`, `known-malicious`, `not-checked`,
-    /// `does-not-resolve`, `unreachable`, `malformed` or `busy`.
+    /// `does-not-resolve`, `unreachable`, `malformed`, `busy` or `relay`.
     pub code: String,
     pub destination: String,
     pub reason: String,
@@ -98,11 +98,10 @@ impl Sessions {
         if extras.egress.is_none() {
             let screen = screen(intel, ai, Arc::clone(&extras.inspected));
             extras.screen.clone_from(&screen);
-            let started = Egress::start(policy(&extras.local_hosts), screen).map_err(|e| {
-                EgressFailure::Start {
+            let started = Egress::start(policy(&extras.local_hosts, extras.relay.clone()), screen)
+                .map_err(|e| EgressFailure::Start {
                     detail: e.to_string(),
-                }
-            })?;
+                })?;
             extras.egress = Some(Proxy::Loopback(started));
         }
         match extras.egress.as_ref() {
@@ -173,7 +172,7 @@ impl Sessions {
             .ok_or(EgressFailure::NoActiveSession)?;
         if extras.egress.is_none() {
             let started = ForwardedEgress::new(
-                policy(&extras.local_hosts),
+                policy(&extras.local_hosts, extras.relay.clone()),
                 screen(intel, None, Arc::clone(&extras.inspected)),
             );
             extras.egress = Some(Proxy::Forwarded(Arc::new(started)));
@@ -239,9 +238,10 @@ impl Proxy {
     }
 }
 
-fn policy(local_hosts: &[String]) -> EgressPolicy {
+fn policy(local_hosts: &[String], relay: Option<rift_core::relay::Relay>) -> EgressPolicy {
     EgressPolicy {
         local_hosts: local_hosts.to_vec(),
+        relay,
         ..EgressPolicy::default()
     }
 }

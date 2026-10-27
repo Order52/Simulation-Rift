@@ -2,6 +2,10 @@
 <!-- Debug builds only: test workers for S3–S7. Each isolated one has exactly
      PreviewService's isolation attributes; release builds contain none of them. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- R1: the outsider plays the relay app, so Rift must see it to pin it. -->
+    <queries>
+        <package android:name="org.simulationrift.outsider" />
+    </queries>
     <application>
         <service
             android:name=".ProbeWorkerService"

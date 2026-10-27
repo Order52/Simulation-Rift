@@ -21,6 +21,8 @@
     <!-- The browser app must be visible to bind and start it (API 30). -->
     <queries>
         <package android:name="org.simulationrift.browser" />
+        <!-- §8.12: the relay app, to pin its certificate and ask it to start. -->
+        <package android:name="org.torproject.android" />
     </queries>
 
     <application

@@ -16,6 +16,7 @@ pub mod pack;
 pub mod page;
 pub mod pagemodel;
 pub mod policy;
+pub mod relay;
 pub mod scan;
 pub mod seal;
 pub mod session;

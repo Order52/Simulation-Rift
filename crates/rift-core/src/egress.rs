@@ -45,6 +45,7 @@ use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
+use crate::relay::{Relay, RelayError};
 use crate::transfer::{DestinationError, check_destination};
 use crate::urlcanon::{self, CanonError, CanonicalUrl};
 use crate::urlmodel::View;
@@ -73,6 +74,10 @@ pub struct EgressPolicy {
     pub connect_timeout: Duration,
     /// A tunnel with no traffic in either direction for this long is closed.
     pub idle_timeout: Duration,
+    /// Where every connection goes on to, if anywhere (§8.12): then nothing
+    /// is resolved here, except for the user's local host names, which are
+    /// reached directly.
+    pub relay: Option<Relay>,
 }
 
 impl Default for EgressPolicy {
@@ -83,6 +88,7 @@ impl Default for EgressPolicy {
             head_timeout: Duration::from_secs(30),
             connect_timeout: Duration::from_secs(15),
             idle_timeout: Duration::from_secs(10 * 60),
+            relay: None,
         }
     }
 }
@@ -120,6 +126,8 @@ pub enum Refusal {
     Malformed(&'static str),
     #[error("too many connections are open")]
     Busy,
+    #[error("{0}")]
+    Relay(RelayError),
 }
 
 impl Refusal {
@@ -133,6 +141,7 @@ impl Refusal {
             Self::Unreachable => "unreachable",
             Self::Malformed(_) => "malformed",
             Self::Busy => "busy",
+            Self::Relay(_) => "relay",
         }
     }
 }
@@ -743,8 +752,22 @@ fn record_denial(shared: &Shared, target: &Target, refusal: Refusal) {
     });
 }
 
-/// Resolves once and connects only to the addresses that passed the check.
+/// Resolves once and connects only to the addresses that passed the check;
+/// or, with a relay, has the relay connect (§8.12).
 fn connect(target: &Target, policy: &EgressPolicy) -> Result<TcpStream, Refusal> {
+    let local_name = target.host.parse::<IpAddr>().is_err()
+        && policy
+            .local_hosts
+            .iter()
+            .any(|h| h.eq_ignore_ascii_case(&target.host));
+    if let Some(relay) = policy.relay.as_ref().filter(|_| !local_name) {
+        return relay
+            .connect(&target.host, target.port, policy.connect_timeout)
+            .map_err(|e| match e {
+                RelayError::NotPublic(d) => Refusal::Destination(d),
+                other => Refusal::Relay(other),
+            });
+    }
     let addresses: Vec<SocketAddr> = match target.host.parse::<IpAddr>() {
         Ok(ip) => vec![SocketAddr::new(ip, target.port)],
         Err(_) => (target.host.as_str(), target.port)
@@ -1296,6 +1319,87 @@ mod tests {
         assert!(
             p.denials().is_empty(),
             "challenges are not destination refusals"
+        );
+    }
+
+    #[test]
+    fn with_a_relay_names_go_to_it_unresolved_and_local_hosts_stay_direct() {
+        let (port, rx) = upstream();
+        let (relay, names) = crate::relay::test_relay(port);
+        let p = Egress::start(
+            EgressPolicy {
+                local_hosts: vec!["localhost".into()],
+                connect_timeout: Duration::from_secs(5),
+                relay: Some(relay),
+                ..EgressPolicy::default()
+            },
+            Some(Arc::new(Listed(vec!["listed.invalid/"]))),
+        )
+        .unwrap();
+        // .invalid never resolves: this can only work through the relay.
+        let (line, mut s) = ask(
+            &p,
+            &format!("CONNECT site.invalid:443 HTTP/1.1\r\n{}\r\n", auth(&p)),
+        );
+        assert_eq!(line, "HTTP/1.1 200 Connection Established");
+        s.write_all(b"hello").unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), "hello");
+        assert_eq!(*names.lock().unwrap(), vec!["site.invalid".to_owned()]);
+        // A listed host is refused before the relay hears of it.
+        let (line, _) = ask(
+            &p,
+            &format!("CONNECT listed.invalid:443 HTTP/1.1\r\n{}\r\n", auth(&p)),
+        );
+        assert!(line.starts_with("HTTP/1.1 403"), "{line}");
+        // Private literals and local names are refused, not relayed.
+        for target in ["192.168.1.1:80", "router:80", "nas.local:80"] {
+            let (line, _) = ask(
+                &p,
+                &format!("CONNECT {target} HTTP/1.1\r\n{}\r\n", auth(&p)),
+            );
+            assert!(!line.starts_with("HTTP/1.1 200"), "{target}: {line}");
+        }
+        assert_eq!(names.lock().unwrap().len(), 1);
+        let codes: Vec<_> = p.denials().iter().map(|d| d.refusal.code()).collect();
+        assert_eq!(
+            codes,
+            ["known-malicious", "local-address", "relay", "relay"]
+        );
+    }
+
+    #[test]
+    fn a_dead_relay_fails_the_connection_without_going_direct() {
+        let (port, rx) = upstream();
+        let closed = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap();
+        #[derive(Debug)]
+        struct Anyone;
+        impl crate::relay::RelayGuard for Anyone {
+            fn trusted(&self, _: SocketAddr, _: SocketAddr) -> bool {
+                true
+            }
+        }
+        let p = Egress::start(
+            EgressPolicy {
+                connect_timeout: Duration::from_secs(2),
+                relay: Some(Relay::new(closed, Some(Arc::new(Anyone))).unwrap()),
+                ..EgressPolicy::default()
+            },
+            None,
+        )
+        .unwrap();
+        // 127.0.0.1 itself would be refused anyway; a public literal shows no fallback.
+        let (line, _) = ask(
+            &p,
+            &format!("CONNECT 93.184.216.34:{port} HTTP/1.1\r\n{}\r\n", auth(&p)),
+        );
+        assert!(!line.starts_with("HTTP/1.1 200"), "{line}");
+        assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
+        assert_eq!(
+            p.denials()[0].refusal,
+            Refusal::Relay(RelayError::Unreachable)
         );
     }
 

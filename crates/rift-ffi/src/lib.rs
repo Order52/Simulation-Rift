@@ -29,11 +29,13 @@ pub use filters::{ContentFilters, FilterFetchFailure, Hiding, fetch_filter_list}
 mod intake;
 mod link;
 mod lists;
+mod relay;
 pub use ai::{Ai, AiFailure, AiLevel, AiView, LinkCheck};
 pub use link::{
     CleanFailure, CleanedLink, LinkCleaner, LinkTrace, TraceHop, TraceOutcome, link_with_https,
     link_without_query,
 };
+pub use relay::{RelayCheck, RelayFailure, RelaySetting};
 mod scan;
 pub use egress::{EgressDenial, EgressEndpoint, EgressFailure, EgressRemark, EgressStats};
 pub use intake::Intake;
@@ -428,10 +430,13 @@ struct SessionExtras {
     /// The proxy's threat-database screen, which the core's own download
     /// fetches go through too.
     screen: Option<Arc<dyn rift_core::egress::Screen>>,
+    /// The relay this session's proxy and downloads go through (§8.12),
+    /// fixed when the session starts.
+    relay: Option<rift_core::relay::Relay>,
 }
 
 impl SessionExtras {
-    fn new(generation: u64) -> Self {
+    fn new(generation: u64, relay: Option<rift_core::relay::Relay>) -> Self {
         Self {
             generation,
             cancel: Arc::new(AtomicBool::new(false)),
@@ -444,6 +449,7 @@ impl SessionExtras {
             verdicts: Vec::new(),
             egress: None,
             screen: None,
+            relay,
         }
     }
 }
@@ -693,6 +699,8 @@ fn frame(request: &Envelope<Request>) -> Vec<u8> {
 struct State {
     manager: SessionManager<Platform>,
     extras: Option<SessionExtras>,
+    /// The relay the next session starts with.
+    relay: Option<rift_core::relay::Relay>,
 }
 
 impl State {
@@ -727,6 +735,7 @@ impl Sessions {
             state: Mutex::new(State {
                 manager,
                 extras: None,
+                relay: None,
             }),
             recovery: report.into(),
             next_job: AtomicU64::new(1),
@@ -741,8 +750,24 @@ impl Sessions {
     pub fn start(&self) -> Result<u64, SessionFailure> {
         let mut state = self.lock()?;
         let generation = state.manager.start()?.generation();
-        state.extras = Some(SessionExtras::new(generation));
+        let relay = state.relay.clone();
+        state.extras = Some(SessionExtras::new(generation, relay));
         Ok(generation)
+    }
+
+    /// The relay sessions started from now on send everything through
+    /// (§8.12); None sends them direct. A session keeps the relay it
+    /// started with, so a change takes effect at the next reset.
+    pub fn set_relay(&self, relay: Option<Arc<RelaySetting>>) -> Result<(), SessionFailure> {
+        self.lock()?.relay = relay.map(|r| r.relay.clone());
+        Ok(())
+    }
+
+    /// The relay this session goes through (`ip:port`), if any.
+    pub fn session_relay(&self, generation: u64) -> Option<String> {
+        let mut state = self.lock().ok()?;
+        let relay = state.current(generation)?.relay.as_ref()?;
+        Some(relay.address().to_string())
     }
 
     /// Destroys the active session and returns its generation. Transfers
@@ -882,6 +907,7 @@ impl Sessions {
                 local_hosts: extras.local_hosts.clone(),
                 max_bytes: room.min(DownloadPolicy::default().max_bytes),
                 screen: extras.screen.clone(),
+                relay: extras.relay.clone(),
                 ..DownloadPolicy::default()
             };
             if policy.max_bytes == 0 {
@@ -1140,6 +1166,50 @@ mod tests {
 
     fn root(dir: &tempfile::TempDir) -> String {
         dir.path().to_string_lossy().into_owned()
+    }
+
+    #[derive(Debug)]
+    struct Yes;
+    impl RelayCheck for Yes {
+        fn trusted(&self, _: u16, _: u16) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn a_relay_setting_takes_effect_at_the_next_session() {
+        assert!(matches!(
+            RelaySetting::new("127.0.0.1:9050".into(), None),
+            Err(RelayFailure::Refused { .. })
+        ));
+        assert!(matches!(
+            RelaySetting::new("10.0.0.2:1080".into(), None),
+            Err(RelayFailure::Refused { .. })
+        ));
+        assert!(matches!(
+            RelaySetting::new("relay.example:1080".into(), None),
+            Err(RelayFailure::Address { .. })
+        ));
+        let orbot = RelaySetting::new("127.0.0.1:9050".into(), Some(Arc::new(Yes))).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Sessions::open(root(&dir), Arc::new(FakeDisposal::default())).unwrap();
+        let first = sessions.start().unwrap();
+        sessions.set_relay(Some(orbot)).unwrap();
+        assert_eq!(
+            sessions.session_relay(first),
+            None,
+            "a session keeps its relay"
+        );
+        sessions.reset().unwrap();
+        let second = sessions.start().unwrap();
+        assert_eq!(
+            sessions.session_relay(second).as_deref(),
+            Some("127.0.0.1:9050")
+        );
+        sessions.set_relay(None).unwrap();
+        sessions.reset().unwrap();
+        let third = sessions.start().unwrap();
+        assert_eq!(sessions.session_relay(third), None);
     }
 
     #[test]

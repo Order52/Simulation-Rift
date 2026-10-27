@@ -59,6 +59,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -302,6 +303,7 @@ class MainActivity : ComponentActivity() {
                         Tab.SECURITY -> {
                             Text("Security", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                             ProtectionCard(lock, active?.generation, reduced)
+                            RelayCard(active?.generation)
                             ExtraIsolationCard()
                             IntelCard()
                             ThreatListsCard()
@@ -1179,6 +1181,108 @@ class MainActivity : ComponentActivity() {
                             "Rift limits what such an escape reaches, and wipes the session.",
                     ).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
+            }
+        }
+    }
+
+    /** The relay (§8.12): off, Tor through Orbot, or a SOCKS5 relay. A change resets the session. */
+    @Composable
+    private fun RelayCard(generation: Long?) {
+        val choice by Relay.choice.collectAsState()
+        val status by Relay.status.collectAsState()
+        val lock by NetworkLock.state.collectAsState()
+        var expanded by rememberSaveable { mutableStateOf(false) }
+        var address by rememberSaveable { mutableStateOf((choice as? Relay.Choice.Socks)?.address ?: "") }
+        var message by remember { mutableStateOf<String?>(null) }
+        val through = remember(generation, choice) { Core.sessionRelay() }
+        Card(
+            Modifier.fillMaxWidth().animateContentSize().testTag("relay"),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Hide your IP address", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            when (choice) {
+                                Relay.Choice.Off -> "Off: sites see this phone's address."
+                                is Relay.Choice.App -> "Through Tor (Orbot)."
+                                is Relay.Choice.Socks -> "Through the relay ${(choice as Relay.Choice.Socks).address}."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(if (expanded) "Less" else "Change", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                }
+                if (choice is Relay.Choice.App && (status?.on != true || lock != NetworkLock.State.Active)) {
+                    Text(
+                        if (status?.on != true) "Orbot has not said it is running: pages will not load until it does. Open Orbot and start it."
+                        else "Orbot is running.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("relay-status"),
+                    )
+                }
+                if (!expanded) return@Column
+                Text(
+                    "Pages, downloads and Where it goes are sent through the relay, so sites see its address, and names are " +
+                        "looked up by the relay, not this phone. If the relay stops, pages stop loading: nothing goes direct. " +
+                        "Rift's own updates and lists still go direct. A change starts a new session.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = choice == Relay.Choice.Off, onClick = { Relay.turnOff(); message = null }, modifier = Modifier.testTag("relay-off"))
+                    Text("Off")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = choice is Relay.Choice.App,
+                        onClick = {
+                            message = Relay.useApp()?.let { "Pinned Orbot's certificate (SHA-256 ${it.take(16)}…). Rift uses only this Orbot." }
+                                ?: "Orbot is not installed. Install it from F-Droid or Google Play, then choose this again."
+                        },
+                        modifier = Modifier.testTag("relay-orbot"),
+                    )
+                    Column {
+                        Text("Tor, through Orbot")
+                        Text(
+                            "Rift checks the Orbot it pinned is installed and has said it is running. Android cannot tell an app who " +
+                                "listens on a port, so while Orbot is stopped another app could take its place; it would see the names " +
+                                "of sites, not what HTTPS carries.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (choice is Relay.Choice.App) {
+                    TextButton(onClick = { Relay.askToStart() }, modifier = Modifier.testTag("relay-start-orbot")) { Text("Ask Orbot to start") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = choice is Relay.Choice.Socks, onClick = { message = Relay.useSocks(address) }, modifier = Modifier.testTag("relay-socks"))
+                    Text("A SOCKS5 relay")
+                }
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = { Text("IP address and port") },
+                    placeholder = { Text("203.0.113.5:1080") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.noAutofill().fillMaxWidth().testTag("relay-address"),
+                )
+                Text(
+                    "Use only a relay you trust: it sees the names of the sites you visit, as your network does now. It must be at a " +
+                        "public address and need no password.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (choice is Relay.Choice.Socks || address.isNotBlank()) {
+                    TextButton(onClick = { message = Relay.useSocks(address) }, modifier = Modifier.testTag("relay-use")) { Text("Use this relay") }
+                }
+                message?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("relay-message")) }
+                through?.let { Text("This session goes through $it.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("relay-session")) }
             }
         }
     }

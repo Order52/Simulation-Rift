@@ -15,9 +15,12 @@
 //!   site cannot use it.
 //! * The byte limit applies to the stream (`Content-Length` is never trusted),
 //!   and nothing is visible until the whole object is committed.
+//! * With a relay (§8.12), every hop but the user's local host names goes
+//!   through it, and nothing is resolved here: the relay is told the name.
 
 use std::fmt;
 use std::io::{self, Read, Write};
+use std::net::TcpStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -27,10 +30,14 @@ use ureq::config::Config;
 use ureq::http::Uri;
 use ureq::tls::{TlsConfig, TlsProvider};
 use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
-use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
+use ureq::unversioned::transport::{
+    Buffers, ConnectionDetails, Connector, Either, LazyBuffers, NextTimeout, RustlsConnector,
+    TcpConnector, Transport,
+};
 use url::Url;
 
 use crate::egress::Screen;
+use crate::relay::{Relay, RelayError};
 use crate::seal::SealError;
 use crate::store::{ObjectStore, StoredObject};
 use crate::transfer::{DestinationError, check_destination, display_name};
@@ -66,6 +73,8 @@ pub struct DownloadPolicy {
     /// The threat database's view, as the proxy uses it: a hop whose address
     /// it lists is not fetched (internal review, Oct 2026).
     pub screen: Option<Arc<dyn Screen>>,
+    /// The session's relay, as the proxy's (§8.12).
+    pub relay: Option<Relay>,
 }
 
 impl Default for DownloadPolicy {
@@ -78,6 +87,7 @@ impl Default for DownloadPolicy {
             response_timeout: Duration::from_secs(30),
             total_timeout: Duration::from_secs(15 * 60),
             screen: None,
+            relay: None,
         }
     }
 }
@@ -424,15 +434,142 @@ fn agent(policy: &DownloadPolicy) -> ureq::Agent {
                 .build(),
         )
         .build();
+    let local_hosts: Vec<String> = policy
+        .local_hosts
+        .iter()
+        .map(|h| h.to_ascii_lowercase())
+        .collect();
     let resolver = CheckedResolver {
         inner: DefaultResolver::default(),
-        local_hosts: policy
-            .local_hosts
-            .iter()
-            .map(|h| h.to_ascii_lowercase())
-            .collect(),
+        local_hosts: local_hosts.clone(),
+        relayed: policy.relay.is_some(),
     };
-    ureq::Agent::with_parts(config, DefaultConnector::default(), resolver)
+    let connector = ()
+        .chain(RelayConnector {
+            relay: policy.relay.clone(),
+            local_hosts,
+            timeout: policy.connect_timeout,
+        })
+        .chain(TcpConnector::default())
+        .chain(RustlsConnector::default());
+    ureq::Agent::with_parts(config, connector, resolver)
+}
+
+/// Lowercase, without an IPv6 literal's brackets.
+fn uri_host(uri: &Uri) -> String {
+    uri.host()
+        .unwrap_or_default()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_ascii_lowercase()
+}
+
+/// With a relay, opens each hop's connection through it (§8.12); TLS is
+/// then laid over it as over a direct connection.
+#[derive(Debug)]
+struct RelayConnector {
+    relay: Option<Relay>,
+    local_hosts: Vec<String>,
+    timeout: Duration,
+}
+
+impl<In: Transport> Connector<In> for RelayConnector {
+    type Out = Either<In, RelayTransport>;
+
+    fn connect(
+        &self,
+        details: &ConnectionDetails,
+        chained: Option<In>,
+    ) -> Result<Option<Self::Out>, ureq::Error> {
+        if let Some(chained) = chained {
+            return Ok(Some(Either::A(chained)));
+        }
+        let host = uri_host(details.uri);
+        let Some(relay) = self
+            .relay
+            .as_ref()
+            .filter(|_| !self.local_hosts.contains(&host))
+        else {
+            return Ok(None);
+        };
+        let port = details
+            .uri
+            .port_u16()
+            .unwrap_or(if details.uri.scheme_str() == Some("https") {
+                443
+            } else {
+                80
+            });
+        let stream = relay
+            .connect(&host, port, self.timeout)
+            .map_err(|error| match error {
+                RelayError::NotPublic(source) => {
+                    ureq::Error::Other(Box::new(Refused { host, source }))
+                }
+                other => ureq::Error::Other(Box::new(other)),
+            })?;
+        let config = details.config;
+        let buffers = LazyBuffers::new(config.input_buffer_size(), config.output_buffer_size());
+        Ok(Some(Either::B(RelayTransport { stream, buffers })))
+    }
+}
+
+/// A connection the relay made, as ureq's own TCP transport (which ureq
+/// does not export) handles one.
+#[derive(Debug)]
+struct RelayTransport {
+    stream: TcpStream,
+    buffers: LazyBuffers,
+}
+
+fn timed_out(error: io::Error, timeout: NextTimeout) -> ureq::Error {
+    match error.kind() {
+        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => ureq::Error::Timeout(timeout.reason),
+        _ => ureq::Error::Io(error),
+    }
+}
+
+impl Transport for RelayTransport {
+    fn buffers(&mut self) -> &mut dyn Buffers {
+        &mut self.buffers
+    }
+
+    fn transmit_output(&mut self, amount: usize, timeout: NextTimeout) -> Result<(), ureq::Error> {
+        self.stream
+            .set_write_timeout(timeout.not_zero().map(|t| *t))
+            .map_err(ureq::Error::Io)?;
+        let output = self
+            .buffers
+            .output()
+            .get(..amount)
+            .ok_or(ureq::Error::Io(io::ErrorKind::InvalidInput.into()))?;
+        self.stream
+            .write_all(output)
+            .map_err(|e| timed_out(e, timeout))
+    }
+
+    fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+        self.stream
+            .set_read_timeout(timeout.not_zero().map(|t| *t))
+            .map_err(ureq::Error::Io)?;
+        let amount = self
+            .stream
+            .read(self.buffers.input_append_buf())
+            .map_err(|e| timed_out(e, timeout))?;
+        self.buffers.input_appended(amount);
+        Ok(amount > 0)
+    }
+
+    fn is_open(&mut self) -> bool {
+        // As ureq's: an idle connection with bytes waiting, or closed, is not reused.
+        if self.stream.set_nonblocking(true).is_err() {
+            return false;
+        }
+        let mut probe = [0u8; 1];
+        let open =
+            matches!(self.stream.read(&mut probe), Err(e) if e.kind() == io::ErrorKind::WouldBlock);
+        self.stream.set_nonblocking(false).is_ok() && open
+    }
 }
 
 /// Resolves once and refuses the hop if any address is not public (unless
@@ -440,6 +577,8 @@ fn agent(policy: &DownloadPolicy) -> ureq::Agent {
 struct CheckedResolver {
     inner: DefaultResolver,
     local_hosts: Vec<String>,
+    /// A relay connects to the hosts not in `local_hosts`, by name.
+    relayed: bool,
 }
 
 impl fmt::Debug for CheckedResolver {
@@ -464,13 +603,12 @@ impl Resolver for CheckedResolver {
         config: &Config,
         timeout: NextTimeout,
     ) -> Result<ResolvedSocketAddrs, ureq::Error> {
+        let host = uri_host(uri);
+        if self.relayed && !self.local_hosts.contains(&host) {
+            // Nothing is looked up here: the relay is given the name.
+            return Ok(self.inner.empty());
+        }
         let addrs = self.inner.resolve(uri, config, timeout)?;
-        let host = uri
-            .host()
-            .unwrap_or_default()
-            .trim_start_matches('[')
-            .trim_end_matches(']')
-            .to_ascii_lowercase();
         if self.local_hosts.contains(&host) {
             return Ok(addrs);
         }
@@ -996,6 +1134,55 @@ mod tests {
                 "{path}"
             );
         }
+    }
+
+    #[test]
+    fn with_a_relay_hops_go_through_it_by_name_and_literals_are_still_checked() {
+        let server = Server::start(routes);
+        let (relay, names) = crate::relay::test_relay(server.port);
+        let relayed = DownloadPolicy {
+            relay: Some(relay),
+            ..DownloadPolicy::default()
+        };
+        let no = AtomicBool::new(false);
+        // .invalid never resolves: only the relay can reach it.
+        let url = server.url("site.invalid", "/file");
+        assert_eq!(
+            fetch(&url, &relayed, "rift-test", 1024, &no).unwrap(),
+            b"hello quarantine"
+        );
+        assert_eq!(*names.lock().unwrap(), vec!["site.invalid".to_owned()]);
+        let t = traced(&server.url("site.invalid", "/nowhere"), &relayed, |_| true);
+        assert_eq!(statuses(&t), [Some(404)]);
+        // A loopback literal is refused, not handed to the relay.
+        assert!(matches!(
+            fetch(
+                &server.url("127.0.0.1", "/file"),
+                &relayed,
+                "rift-test",
+                1024,
+                &no
+            ),
+            Err(DownloadError::Destination { .. })
+        ));
+        assert_eq!(names.lock().unwrap().len(), 2);
+        // The user's local names are reached directly.
+        let local = DownloadPolicy {
+            local_hosts: vec!["localhost".into()],
+            ..relayed.clone()
+        };
+        assert_eq!(
+            fetch(
+                &server.url("localhost", "/file"),
+                &local,
+                "rift-test",
+                1024,
+                &no
+            )
+            .unwrap(),
+            b"hello quarantine"
+        );
+        assert_eq!(names.lock().unwrap().len(), 2);
     }
 
     #[test]

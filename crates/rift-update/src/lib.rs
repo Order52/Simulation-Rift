@@ -197,6 +197,8 @@ impl CheckedTransport {
                 total_timeout: Duration::from_secs(5 * 60),
                 // Signed metadata decides what is accepted, not the database it delivers.
                 screen: None,
+                // Rift's own fetches go direct (§8.12).
+                relay: None,
             },
         }
     }
