@@ -217,6 +217,11 @@ object Core {
     private val protectedDomains = listOf(
         "paypal.com", "google.com", "apple.com", "microsoft.com", "amazon.com",
         "facebook.com", "instagram.com", "whatsapp.com", "netflix.com", "github.com",
+        // Among the most faked in OpenPhish's feed (27 October 2026).
+        "roblox.com", "okta.com", "bankofamerica.com", "bofa.com", "wellsfargo.com", "xfinity.com",
+        "steamcommunity.com", "discord.com", "coinbase.com", "binance.com", "metamask.io", "trezor.io",
+        "dhl.com", "usps.com", "fedex.com", "linkedin.com", "outlook.com", "icloud.com", "adobe.com",
+        "docusign.com", "dropbox.com", "americanexpress.com", "tiktok.com", "ebay.com",
     )
     private val shorteners = listOf(
         "bit.ly", "t.co", "tinyurl.com", "goo.gl", "ow.ly", "is.gd", "buff.ly", "rb.gy", "cutt.ly", "shorturl.at",
