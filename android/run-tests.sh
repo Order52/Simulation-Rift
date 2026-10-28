@@ -173,14 +173,21 @@ scroll_down() {
 }
 # tap, but only once the node's centre is in the upper three quarters of the
 # screen: a node at the bottom edge was found, and the tap landed on the
-# navigation bar (S16d on API 36).
-tap_upper() { # text|id value
+# navigation bar (S16d on API 36). And only once it stays put between two
+# dumps: found while a swipe's fling still moved the page, the tap landed on
+# whatever came under it (S16d on API 34, once the relay card made the page longer).
+centre_of() { # text|id value
   "$adb" shell uiautomator dump /data/local/tmp/rift-ui.xml > "$out/last-dump.txt" 2>&1 || return 1
   case $1 in text) match="text=\"$2\"" ;; id) match="resource-id=\"$2\"" ;; esac
-  xy="$("$adb" shell cat /data/local/tmp/rift-ui.xml | tr -d '\r' | tr '>' '\n' | grep -iF "$match" | head -1 \
+  "$adb" shell cat /data/local/tmp/rift-ui.xml | tr -d '\r' | tr '>' '\n' | grep -iF "$match" | head -1 \
     | sed -n 's/.*bounds="\[\([0-9]*\),\([0-9]*\)\]\[\([0-9]*\),\([0-9]*\)\]".*/\1 \2 \3 \4/p' \
-    | awk '{ print int(($1 + $3) / 2), int(($2 + $4) / 2) }')"
+    | awk '{ print int(($1 + $3) / 2), int(($2 + $4) / 2) }'
+}
+tap_upper() { # text|id value
+  xy="$(centre_of "$1" "$2")"
   [ -n "$xy" ] || return 1
+  sleep 1
+  [ "$(centre_of "$1" "$2")" = "$xy" ] || return 1
   h="$("$adb" shell wm size | tr -d '\r' | sed -n 's/.*: *[0-9]*x\([0-9]*\)$/\1/p' | tail -1)"
   [ "${xy#* }" -le $((h * 3 / 4)) ] || return 1
   "$adb" shell input tap $xy
