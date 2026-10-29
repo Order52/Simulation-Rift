@@ -1,10 +1,11 @@
 name: retrain rift ai
 
-# Monthly: retrains Rift AI on that day's feeds (tools/rift-train/retrain.sh)
-# and, if the new model passes the gate (tools/rift-train/gate.py) and the
-# shipped-model tests, opens a pull request with it that merges itself once
-# CI passes; the next weekly release (release.yml) ships it. The feeds
-# themselves are never committed.
+# Weekly, on Tuesdays: retrains Rift AI on that day's feeds
+# (tools/rift-train/retrain.sh) and, if the new model passes the gate
+# (tools/rift-train/gate.py) and the shipped-model tests, opens a pull
+# request with it that merges itself once CI passes; the weekly release
+# (release.yml, Wednesdays) ships it the next morning. The feeds themselves
+# are never committed.
 #
 # Needs "Allow GitHub Actions to create and approve pull requests" in the
 # repository's Actions settings. A pull request opened with GITHUB_TOKEN
@@ -21,10 +22,10 @@ name: retrain rift ai
 # without it the model trains without that sample, and the PR says so.
 on:
   schedule:
-    - cron: "17 3 1 * *"
-    # Rift AI's page memory gains the newest phishing pages twice a day,
+    - cron: "17 3 * * 2"
+    # Rift AI's page memory gains the newest phishing pages four times a day,
     # as OpenPhish's feed changes; they stay up for hours or days.
-    - cron: "41 5,17 * * *"
+    - cron: "41 5,11,17,23 * * *"
   workflow_dispatch:
     inputs:
       models:
@@ -38,7 +39,7 @@ permissions:
 
 jobs:
   retrain:
-    if: github.event.schedule == '17 3 1 * *' || inputs.models == 'all' || inputs.models == 'address'
+    if: github.event.schedule == '17 3 * * 2' || inputs.models == 'all' || inputs.models == 'address'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     permissions:
@@ -86,7 +87,7 @@ jobs:
           git commit -m "models: retrain rift ai on the $(date -u +%Y-%m-%d) feeds"
           git push origin "$branch"
           {
-            echo "Rift AI retrained on today's feeds and its memory of earlier months by the monthly workflow; it passed the gate and \`cargo test -p rift-ffi ai::\`. Merges itself when CI passes."
+            echo "Rift AI retrained on today's feeds and its memory of earlier months by the weekly workflow; it passed the gate and \`cargo test -p rift-ffi ai::\`. Merges itself when CI passes."
             echo
             echo '```'
             cat "$RUNNER_TEMP/gate.txt"
@@ -103,7 +104,7 @@ jobs:
   # pages"): the newest phishing pages and some ordinary ones, fetched as
   # HTML, counted and deleted; only the counts are kept, as an artifact.
   collect-pages:
-    if: github.event.schedule == '41 5,17 * * *' || inputs.models == 'collect'
+    if: github.event.schedule == '41 5,11,17,23 * * *' || inputs.models == 'collect'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
@@ -143,10 +144,10 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-  # Rift AI's page model, monthly: the 2021 dataset and the page memory, as
+  # Rift AI's page model, weekly: the 2021 dataset and the page memory, as
   # counts; a pull request only if the gate passes.
   pages:
-    if: github.event.schedule == '17 3 1 * *' || inputs.models == 'all' || inputs.models == 'pages'
+    if: github.event.schedule == '17 3 * * 2' || inputs.models == 'all' || inputs.models == 'pages'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -168,7 +169,7 @@ jobs:
           sh tools/rift-train/retrain_pages.sh train "$RUNNER_TEMP/pages" "$RUNNER_TEMP/memory/page-memory.tsv" 2>&1 | tee "$RUNNER_TEMP/pages.txt"
       - name: What the gate saw
         if: always()
-        run: grep -E '^(2021 dataset|Page memory|test |recent |shipped |refused|  |passed)' "$RUNNER_TEMP/pages.txt" >> "$GITHUB_STEP_SUMMARY" || true
+        run: grep -E '^(2021 dataset|Page memory|Forward test|test |recent |shipped |refused|  |passed)' "$RUNNER_TEMP/pages.txt" >> "$GITHUB_STEP_SUMMARY" || true
       - name: The shipped-model tests still hold
         run: "cargo test --locked -p rift-core pagemodel:: && cargo test --locked -p rift-ffi"
       - name: Open a pull request
@@ -183,10 +184,10 @@ jobs:
           git commit -m "models: retrain rift ai's page model on the $(date -u +%Y-%m-%d) page memory"
           git push origin "$branch"
           {
-            echo "Rift AI's page model retrained on the 2021 dataset and its memory of recent pages by the monthly workflow; it passed the gate and the shipped-model tests. Merges itself when CI passes."
+            echo "Rift AI's page model retrained on the 2021 dataset and its memory of recent pages by the weekly workflow; it passed the gate and the shipped-model tests. Merges itself when CI passes."
             echo
             echo '```'
-            grep -E '^(2021 dataset|Page memory|test |recent |shipped |passed)' "$RUNNER_TEMP/pages.txt"
+            grep -E '^(2021 dataset|Page memory|Forward test|test |recent |shipped |passed)' "$RUNNER_TEMP/pages.txt"
             echo '```'
             echo
             echo "docs/reports/page-model.md keeps the figures of the last hand-checked training; the figures above are this model's."
@@ -198,7 +199,7 @@ jobs:
   # The brands Check protects (architecture §10.3): relearned from today's
   # feeds; a pull request only if the gate passes and the list changed.
   brands:
-    if: github.event.schedule == '17 3 1 * *' || inputs.models == 'all' || inputs.models == 'brands'
+    if: github.event.schedule == '17 3 * * 2' || inputs.models == 'all' || inputs.models == 'brands'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -230,7 +231,7 @@ jobs:
           git commit -m "models: relearn the brands check protects from the $(date -u +%Y-%m-%d) feeds"
           git push origin "$branch"
           {
-            echo "The brands Check protects, relearned from today's feeds by the monthly workflow; the list passed the gate and the shipped-brand tests. Merges itself when CI passes."
+            echo "The brands Check protects, relearned from today's feeds by the weekly workflow; the list passed the gate and the shipped-brand tests. Merges itself when CI passes."
             echo
             echo '```'
             cat "$RUNNER_TEMP/brands.txt"

@@ -1,6 +1,7 @@
 //! Rift AI's page model (docs/architecture.md §16.1): logistic regression
 //! over what a loaded page is made of (its forms, links, scripts and words),
-//! to warn about a phishing page before anything is typed into it.
+//! plus boosted trees over the counts (3.3), to warn about a phishing page
+//! before anything is typed into it.
 //!
 //! The counts come from a script in the page ([`PageCounts`], read by the
 //! browser) and the page can change them, so the model can only add a
@@ -337,6 +338,28 @@ pub fn features(host: &str, counts: &PageCounts) -> Vec<f32> {
     ]
 }
 
+/// Most distinct words read from a page, and the longest word.
+const MAX_PAGE_WORDS: usize = 400;
+const MAX_WORD_CHARS: usize = 32;
+
+/// The distinct words of the page's title and text, lower-cased, of two to
+/// [`MAX_WORD_CHARS`] letters or digits, sorted: what a model's `word` lines
+/// are looked up in.
+pub fn words(counts: &PageCounts) -> Vec<String> {
+    // Lower-cased before splitting: lower-casing can add a mark that is not
+    // a letter (İ becomes i and a combining dot), which then splits there.
+    let both = format!("{} {}", counts.title, counts.text).to_lowercase();
+    let mut found: Vec<String> = both
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| (2..=MAX_WORD_CHARS).contains(&w.chars().count()) && w.to_lowercase() == *w)
+        .map(str::to_owned)
+        .collect();
+    found.sort_unstable();
+    found.dedup();
+    found.truncate(MAX_PAGE_WORDS);
+    found
+}
+
 /// What a feature that raised the score says about the page.
 fn reason(feature: &str) -> Option<&'static str> {
     Some(match feature {
@@ -362,6 +385,7 @@ fn reason(feature: &str) -> Option<&'static str> {
         }
         "credential_words_log" => "its text asks for sign-in or payment details",
         "urgency_words_log" => "its text pushes you to act now (locked, suspended, expires)",
+        WORDING => "its wording is that of recent phishing pages",
         _ => return None,
     })
 }
@@ -414,7 +438,95 @@ pub enum PageModelError {
     Missing(&'static str),
 }
 
-/// Weights and the means they were measured against, per feature.
+/// The name the reasons give the page's words, taken together.
+const WORDING: &str = "wording";
+/// Most `word` and `tree` lines a model may have.
+pub const MAX_WORDS: usize = 5000;
+pub const MAX_TREES: usize = 1000;
+/// Each tree is complete and three splits deep: 7 splits, 8 leaves.
+pub const TREE_SPLITS: usize = 7;
+pub const TREE_LEAVES: usize = 8;
+
+/// One regression tree over [`features`]: split `i` sends a page to `2i+1`
+/// when its feature is below the threshold, else to `2i+2`; past the third
+/// split, to a leaf. `values` are each split's mean output in training, so a
+/// page's path says which features moved the score (Saabas).
+#[derive(Debug, Clone, PartialEq)]
+struct Tree {
+    features: [usize; TREE_SPLITS],
+    thresholds: [f32; TREE_SPLITS],
+    values: [f32; TREE_SPLITS],
+    leaves: [f32; TREE_LEAVES],
+}
+
+impl Tree {
+    /// `tree` then, per split, `<feature> <threshold> <value>`, then the leaves.
+    fn parse(parts: &[&str], number: &dyn Fn(&str) -> Option<f32>) -> Option<Self> {
+        if parts.len() != 3 * TREE_SPLITS + TREE_LEAVES {
+            return None;
+        }
+        let (splits, leaves) = parts.split_at(3 * TREE_SPLITS);
+        let mut tree = Tree {
+            features: [0; TREE_SPLITS],
+            thresholds: [0.0; TREE_SPLITS],
+            values: [0.0; TREE_SPLITS],
+            leaves: [0.0; TREE_LEAVES],
+        };
+        for (((split, f), t), v) in splits
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .zip(&mut tree.features)
+            .zip(&mut tree.thresholds)
+            .zip(&mut tree.values)
+        {
+            let [name, threshold, value] = split;
+            *f = FEATURES.iter().position(|known| known == name)?;
+            *t = number(threshold)?;
+            *v = number(value)?;
+        }
+        for (leaf, text) in tree.leaves.iter_mut().zip(leaves) {
+            *leaf = number(text)?;
+        }
+        Some(tree)
+    }
+
+    /// The leaf's output, and each split's change on the way there, by feature.
+    fn walk(&self, x: &[f32], mut credit: impl FnMut(usize, f32)) -> f32 {
+        let mut node = 0usize;
+        loop {
+            let (Some(&f), Some(&t), Some(&here)) = (
+                self.features.get(node),
+                self.thresholds.get(node),
+                self.values.get(node),
+            ) else {
+                return 0.0;
+            };
+            let left = x.get(f).is_some_and(|v| *v < t);
+            let next = node
+                .saturating_mul(2)
+                .saturating_add(if left { 1 } else { 2 });
+            let after = match self.values.get(next) {
+                Some(v) => *v,
+                None => {
+                    let leaf = self
+                        .leaves
+                        .get(next.saturating_sub(TREE_SPLITS))
+                        .copied()
+                        .unwrap_or(here);
+                    credit(f, leaf - here);
+                    return leaf;
+                }
+            };
+            credit(f, after - here);
+            node = next;
+        }
+    }
+}
+
+/// Logistic regression over [`features`] and the page's [`words`], plus
+/// boosted trees over the features (3.3); a model with neither words nor
+/// trees is the plain regression of 3.0.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageModel {
     bias: f32,
@@ -422,6 +534,10 @@ pub struct PageModel {
     means: Vec<f32>,
     high: f32,
     elevated: f32,
+    words: std::collections::HashMap<String, f32>,
+    /// The words' summed weight on an average legitimate training page.
+    words_mean: f32,
+    trees: Vec<Tree>,
 }
 
 /// The model the app ships, trained by `tools/rift-train` (§16.1).
@@ -429,13 +545,17 @@ pub const SHIPPED: &str = include_str!("../../../models/page-model.txt");
 
 impl PageModel {
     /// Reads the text form: `bias`, `high` and `elevated` lines with one
-    /// number, then `feature <name> <weight> <mean>` per feature; `#` starts
-    /// a comment. Every feature in [`FEATURES`] must be present.
+    /// number, then `feature <name> <weight> <mean>` per feature; optionally
+    /// `words_mean <m>`, `word <word> <weight>` and `tree …` lines ([`Tree`]).
+    /// `#` starts a comment. Every feature in [`FEATURES`] must be present.
     pub fn parse(text: &str) -> Result<Self, PageModelError> {
         let mut bias = None;
         let mut high = None;
         let mut elevated = None;
         let mut found: Vec<Option<(f32, f32)>> = vec![None; FEATURES.len()];
+        let mut words = std::collections::HashMap::new();
+        let mut words_mean = 0.0;
+        let mut trees = Vec::new();
         for (i, line) in text.lines().enumerate() {
             let line = line.split('#').next().unwrap_or_default().trim();
             if line.is_empty() {
@@ -443,21 +563,33 @@ impl PageModel {
             }
             let bad = || PageModelError::Malformed(i.saturating_add(1));
             let parts: Vec<&str> = line.split_whitespace().collect();
-            let number = |s: &str| {
-                s.parse::<f32>()
-                    .ok()
-                    .filter(|x| x.is_finite())
-                    .ok_or_else(bad)
-            };
+            let finite = |s: &str| s.parse::<f32>().ok().filter(|x| x.is_finite());
+            let number = |s: &str| finite(s).ok_or_else(bad);
             match parts.as_slice() {
                 ["bias", x] => bias = Some(number(x)?),
                 ["high", x] => high = Some(number(x)?),
                 ["elevated", x] => elevated = Some(number(x)?),
+                ["words_mean", x] => words_mean = number(x)?,
                 ["feature", name, w, mean] => {
                     let at = FEATURES.iter().position(|f| f == name).ok_or_else(bad)?;
                     if let Some(slot) = found.get_mut(at) {
                         *slot = Some((number(w)?, number(mean)?));
                     }
+                }
+                ["word", word, w] => {
+                    let fits = (2..=MAX_WORD_CHARS).contains(&word.chars().count())
+                        && word.chars().all(char::is_alphanumeric)
+                        && word.to_lowercase() == *word;
+                    if !fits || words.len() >= MAX_WORDS {
+                        return Err(bad());
+                    }
+                    words.insert((*word).to_owned(), number(w)?);
+                }
+                ["tree", rest @ ..] => {
+                    if trees.len() >= MAX_TREES {
+                        return Err(bad());
+                    }
+                    trees.push(Tree::parse(rest, &finite).ok_or_else(bad)?);
                 }
                 _ => return Err(bad()),
             }
@@ -480,6 +612,9 @@ impl PageModel {
             means,
             high,
             elevated,
+            words,
+            words_mean,
+            trees,
         })
     }
 
@@ -487,19 +622,37 @@ impl PageModel {
         Self::parse(SHIPPED)
     }
 
-    /// The probability for a feature vector from [`features`].
-    pub fn probability(&self, x: &[f32]) -> f32 {
-        let z: f32 = self
+    /// The model's log-odds for a page, and what each feature (and the
+    /// words, under [`WORDING`]) added to it against an average legitimate page.
+    fn logit(&self, x: &[f32], words: &[String]) -> (f32, Vec<(&'static str, f32)>) {
+        let mut pushes: Vec<(&'static str, f32)> = FEATURES
+            .iter()
+            .zip(self.weights.iter().zip(&self.means))
+            .zip(x)
+            .map(|((name, (w, mean)), v)| (*name, w * (v - mean)))
+            .collect();
+        let mut z = self
             .weights
             .iter()
             .zip(x)
             .fold(self.bias, |z, (w, v)| z + w * v);
-        1.0 / (1.0 + (-z).exp())
+        let said: f32 = words.iter().filter_map(|w| self.words.get(w)).sum();
+        z += said;
+        pushes.push((WORDING, said - self.words_mean));
+        for tree in &self.trees {
+            z += tree.walk(x, |f, change| {
+                if let Some(push) = pushes.get_mut(f) {
+                    push.1 += change;
+                }
+            });
+        }
+        (z, pushes)
     }
 
     pub fn score(&self, host: &str, counts: &PageCounts) -> PageScore {
         let x = features(host, counts);
-        let score = self.probability(&x);
+        let (z, mut pushes) = self.logit(&x, &words(counts));
+        let score = 1.0 / (1.0 + (-z).exp());
         let level = if score >= self.high {
             PageLevel::High
         } else if score >= self.elevated {
@@ -507,18 +660,10 @@ impl PageModel {
         } else {
             PageLevel::Low
         };
-        let mut pushes: Vec<(f32, &'static str)> = FEATURES
-            .iter()
-            .zip(self.weights.iter().zip(self.means.iter()))
-            .zip(&x)
-            .filter_map(|((name, (w, mean)), v)| {
-                let push = w * (v - mean);
-                (push > 0.25).then_some((push, reason(name)?))
-            })
-            .collect();
-        pushes.sort_by(|a, b| b.0.total_cmp(&a.0));
+        pushes.retain(|(_, push)| *push > 0.25);
+        pushes.sort_by(|a, b| b.1.total_cmp(&a.1));
         let mut reasons: Vec<&'static str> = Vec::new();
-        for (_, text) in pushes {
+        for text in pushes.iter().filter_map(|(name, _)| reason(name)) {
             if !reasons.contains(&text) && reasons.len() < 3 {
                 reasons.push(text);
             }
@@ -640,5 +785,109 @@ mod tests {
         assert!(PageModel::parse("bias 1\nhigh 0.9\nelevated 0.5\n").is_err());
         assert!(PageModel::parse(&SHIPPED.replace("bias", "bias NaN #")).is_err());
         assert!(PageModel::parse(&SHIPPED.replace("high", "high 0.1 #")).is_err());
+        let plain = regression_only();
+        for extra in [
+            "word Seed 1",
+            "word seed phrase 1",
+            "word x 1",
+            "word seed inf",
+            "tree has_password 0.5 0",
+            &format!(
+                "tree {}",
+                "nosuchfeature 0.5 0 ".repeat(7) + &"0 ".repeat(8)
+            ),
+        ] {
+            assert!(
+                PageModel::parse(&format!("{plain}{extra}\n")).is_err(),
+                "{extra}"
+            );
+        }
+    }
+
+    #[test]
+    fn words_are_distinct_lower_case_and_of_two_letters_or_more() {
+        let counts = PageCounts {
+            title: "Sign-In | PayPal".into(),
+            text: "Enter your PayPal password. a 2 Ünïcode İzmir".into(),
+            ..PageCounts::default()
+        };
+        assert_eq!(
+            words(&counts),
+            [
+                "enter",
+                "in",
+                "password",
+                "paypal",
+                "sign",
+                "your",
+                "zmir",
+                "ünïcode"
+            ]
+        );
+    }
+
+    /// The shipped model's regression, without its words and trees.
+    fn regression_only() -> String {
+        SHIPPED
+            .lines()
+            .filter(|l| !l.starts_with("word") && !l.starts_with("tree"))
+            .map(|l| format!("{l}\n"))
+            .collect()
+    }
+
+    /// A model with one word and one tree beside the shipped regression.
+    fn with_word_and_tree(base: &str) -> PageModel {
+        let leaf = |v: &str| format!("has_password 3e38 {v} ");
+        let tree = format!(
+            "tree context_menu_blocked 0.5 0 {}{}{}{}{}{}-0.1 -0.1 -0.1 -0.1 2 2 2 2",
+            leaf("-0.1"),
+            leaf("2"),
+            leaf("-0.1"),
+            leaf("-0.1"),
+            leaf("2"),
+            leaf("2"),
+        );
+        PageModel::parse(&format!(
+            "{base}words_mean 0.5\nword seedphrase 3\n{tree}\n"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn words_and_trees_add_to_the_score_and_name_their_reasons() {
+        let plain = PageModel::parse(&regression_only()).unwrap();
+        let model = with_word_and_tree(&regression_only());
+        let logit = |p: f32| (p / (1.0 - p)).ln();
+        let page = PageCounts {
+            pw: 1,
+            fm: 1,
+            a: 30,
+            el: 300,
+            hb: 20_000,
+            title: "Wallet".into(),
+            text: "Enter your seedphrase".into(),
+            ..PageCounts::default()
+        };
+        let blocked = PageCounts {
+            rc: 1,
+            ..page.clone()
+        };
+        let gap = |c: &PageCounts| {
+            logit(model.score("w.example", c).score) - logit(plain.score("w.example", c).score)
+        };
+        // The word (3) and the tree's leaf: -0.1 without the block, 2 with it.
+        assert!((gap(&page) - 2.9).abs() < 1e-3, "{}", gap(&page));
+        assert!((gap(&blocked) - 5.0).abs() < 1e-3, "{}", gap(&blocked));
+        let scored = model.score("w.example", &blocked);
+        assert!(
+            scored
+                .reasons
+                .contains(&"its wording is that of recent phishing pages"),
+            "{scored:?}"
+        );
+        assert!(
+            scored.reasons.contains(&"it blocks the long-press menu"),
+            "{scored:?}"
+        );
     }
 }

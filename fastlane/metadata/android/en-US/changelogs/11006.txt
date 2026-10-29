@@ -1,0 +1,2 @@
+- Rift AI is retrained every week instead of every month, and each release carries the newest model that passed its accuracy checks.
+- Rift AI's page reading can now learn the wording of recent phishing pages and combinations of signs; it takes over once the weekly checks find it better.

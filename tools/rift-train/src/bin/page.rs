@@ -1,7 +1,7 @@
 //! Trains Rift AI's page model (docs/architecture.md §16.1) on saved pages.
 //!
 //!   page counts <index.sql|index.tsv> <pages-dir> <out.tsv>
-//!   page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL]
+//!   page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL] [--words on|off] [--trees N]
 //!
 //! `counts` reads each page as text (an HTML5 parser; no scripts run) and
 //! writes what the browser's script counts in a live one (`PAGE_COUNTS` in
@@ -15,10 +15,17 @@
 //! `rift_core::pagemodel::features`, the code the app runs, and trains.
 //! Splits are by site (80/10/10), so the test measures sites the model never
 //! saw. The L2 strength is chosen on validation, thresholds are set there
-//! (High at 0.5% of legitimate pages, Elevated at 2%), and the test split is
+//! (High at 0.5% of legitimate pages, Elevated at 2%, each page counting by its
+//! weight, so recent pages set them), and the test split is
 //! scored with `PageModel`, as the app scores. With `--recent` and
 //! `--champion`, the recent pages' test split is the gate's: the new model
 //! is written only if it does as well there as the shipped one (`gate`).
+//! The model reads the page's words as well as its counts, and adds boosted
+//! trees over the counts (3.3); `--words off --trees 0` trains the plain
+//! regression of 3.0.
+//!
+//! `eval` scores counts with a model as the app does, all of them: for pages
+//! no model trained on, such as those gathered after it was trained.
 //!
 //! An offline maintainer tool over files the maintainer chose.
 #![allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
@@ -301,6 +308,8 @@ fn split_of(site: &str) -> u8 {
 
 struct Example {
     x: Vec<f32>,
+    /// The page's words that are in the vocabulary, as its indices.
+    words: Vec<u32>,
     y: f32,
     /// How much the page counts in training.
     w: f32,
@@ -310,29 +319,44 @@ fn sigmoid(z: f32) -> f32 {
     1.0 / (1.0 + (-z).exp())
 }
 
-/// Logistic regression on standardised features, full-batch gradient
-/// descent with Adam; returns weights (last is the bias).
-fn train(data: &[Example], mean: &[f32], std: &[f32], l2: f32, epochs: usize) -> Vec<f32> {
+/// Logistic regression on standardised features and the page's words
+/// (0 or 1 each), full-batch gradient descent with Adam; returns the
+/// feature weights (last is the bias) and the words' weights.
+fn train(
+    data: &[Example],
+    mean: &[f32],
+    std: &[f32],
+    vocabulary: usize,
+    l2: f32,
+    epochs: usize,
+) -> (Vec<f32>, Vec<f32>) {
     let d = mean.len();
-    let mut w = vec![0.0f32; d + 1];
-    let (mut m, mut v) = (vec![0.0f32; d + 1], vec![0.0f32; d + 1]);
+    let all = d + 1 + vocabulary;
+    let mut w = vec![0.0f32; all];
+    let (mut m, mut v) = (vec![0.0f32; all], vec![0.0f32; all]);
     let (b1, b2, lr) = (0.9f32, 0.999f32, 0.05f32);
     let n: f32 = data.iter().map(|e| e.w).sum::<f32>().max(1.0);
     for t in 1..=epochs {
-        let mut g = vec![0.0f32; d + 1];
+        let mut g = vec![0.0f32; all];
         for ex in data {
             let mut z = w[d];
             for j in 0..d {
                 z += w[j] * (ex.x[j] - mean[j]) / std[j];
+            }
+            for &k in &ex.words {
+                z += w[d + 1 + k as usize];
             }
             let err = ex.w * (sigmoid(z) - ex.y);
             for j in 0..d {
                 g[j] += err * (ex.x[j] - mean[j]) / std[j];
             }
             g[d] += err;
+            for &k in &ex.words {
+                g[d + 1 + k as usize] += err;
+            }
         }
-        for j in 0..=d {
-            let grad = g[j] / n + if j < d { l2 * w[j] } else { 0.0 };
+        for j in 0..all {
+            let grad = g[j] / n + if j == d { 0.0 } else { l2 * w[j] };
             m[j] = b1 * m[j] + (1.0 - b1) * grad;
             v[j] = b2 * v[j] + (1.0 - b2) * grad * grad;
             let mh = m[j] / (1.0 - b1.powi(t as i32));
@@ -340,7 +364,214 @@ fn train(data: &[Example], mean: &[f32], std: &[f32], l2: f32, epochs: usize) ->
             w[j] -= lr * mh / (vh.sqrt() + 1e-8);
         }
     }
-    w
+    let words = w.split_off(d + 1);
+    (w, words)
+}
+
+/// Words in at least this many training pages may join the vocabulary.
+const MIN_WORD_PAGES: usize = 20;
+/// Most words considered in training; the model keeps at most
+/// `pagemodel::MAX_WORDS` of them, those of most weight.
+const MAX_VOCABULARY: usize = 20_000;
+/// Most trees tried; the model keeps as many as do best on validation.
+const MAX_TREES: usize = 300;
+/// Each tree's step (shrinkage).
+const TREE_RATE: f32 = 0.1;
+/// Words weighing less than this are left out of the model.
+const MIN_WORD_WEIGHT: f32 = 0.05;
+
+/// The vocabulary: words in at least [`MIN_WORD_PAGES`] training pages,
+/// the most common first, at most [`MAX_VOCABULARY`].
+fn vocabulary<'a>(pages: impl Iterator<Item = &'a [String]>) -> Vec<String> {
+    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for words in pages {
+        for w in words {
+            *seen.entry(w.as_str()).or_default() += 1;
+        }
+    }
+    let mut common: Vec<(&str, usize)> = seen
+        .into_iter()
+        .filter(|(_, n)| *n >= MIN_WORD_PAGES)
+        .collect();
+    common.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    common.truncate(MAX_VOCABULARY);
+    common.into_iter().map(|(w, _)| w.to_owned()).collect()
+}
+
+/// Gradient boosting (logistic loss) of depth-3 trees on the features,
+/// starting from each page's `base` log-odds: what the regression cannot
+/// express, such as a password form that also sends to another site.
+mod boost {
+    use super::{Example, sigmoid};
+    use rift_core::pagemodel::{TREE_LEAVES, TREE_SPLITS};
+
+    /// Candidate thresholds per feature, and the most of them.
+    const BINS: usize = 64;
+    const LAMBDA: f32 = 1.0;
+    /// Fewest pages (by weight of the Hessian) a leaf must have.
+    const MIN_HESSIAN: f32 = 5.0;
+
+    pub struct Tree {
+        pub features: [usize; TREE_SPLITS],
+        pub thresholds: [f32; TREE_SPLITS],
+        pub values: [f32; TREE_SPLITS],
+        pub leaves: [f32; TREE_LEAVES],
+    }
+
+    impl Tree {
+        pub fn eval(&self, x: &[f32]) -> f32 {
+            let mut node = 0;
+            while node < TREE_SPLITS {
+                node = 2 * node
+                    + if x[self.features[node]] < self.thresholds[node] {
+                        1
+                    } else {
+                        2
+                    };
+            }
+            self.leaves[node - TREE_SPLITS]
+        }
+
+        /// The model file's line (pagemodel's `Tree::parse`).
+        pub fn line(&self, names: &[&str]) -> String {
+            let mut out = String::from("tree");
+            for i in 0..TREE_SPLITS {
+                out.push_str(&format!(
+                    " {} {} {}",
+                    names[self.features[i]], self.thresholds[i], self.values[i]
+                ));
+            }
+            for leaf in &self.leaves {
+                out.push_str(&format!(" {leaf}"));
+            }
+            out
+        }
+    }
+
+    /// Thresholds per feature: quantiles of the training values.
+    pub fn edges(data: &[Example], d: usize) -> Vec<Vec<f32>> {
+        (0..d)
+            .map(|j| {
+                let mut v: Vec<f32> = data.iter().map(|e| e.x[j]).collect();
+                v.sort_by(f32::total_cmp);
+                v.dedup();
+                if v.len() <= BINS {
+                    // Between each pair of values.
+                    v.windows(2).map(|p| (p[0] + p[1]) / 2.0).collect()
+                } else {
+                    let mut e: Vec<f32> = (1..BINS)
+                        .map(|k| {
+                            let at = k * v.len() / BINS;
+                            (v[at - 1] + v[at]) / 2.0
+                        })
+                        .collect();
+                    e.dedup();
+                    e
+                }
+            })
+            .collect()
+    }
+
+    /// Each page's bin per feature: how many thresholds its value reaches.
+    pub fn bin(data: &[Example], edges: &[Vec<f32>]) -> Vec<Vec<u8>> {
+        data.iter()
+            .map(|e| {
+                edges
+                    .iter()
+                    .enumerate()
+                    .map(|(j, ed)| ed.partition_point(|t| *t <= e.x[j]) as u8)
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn value(g: f32, h: f32, eta: f32) -> f32 {
+        -eta * g / (h + LAMBDA)
+    }
+
+    /// One tree, fitted to the gradients `g` and Hessians `h`.
+    pub fn grow(bins: &[Vec<u8>], edges: &[Vec<f32>], g: &[f32], h: &[f32], eta: f32) -> Tree {
+        let d = edges.len();
+        let mut tree = Tree {
+            features: [0; TREE_SPLITS],
+            thresholds: [f32::MAX; TREE_SPLITS],
+            values: [0.0; TREE_SPLITS],
+            leaves: [0.0; TREE_LEAVES],
+        };
+        // Which node each page is at.
+        let mut at = vec![0usize; bins.len()];
+        for node in 0..TREE_SPLITS {
+            let (mut gs, mut hs) = (0.0f32, 0.0f32);
+            let mut hist_g = vec![vec![0.0f32; super::boost::BINS + 1]; d];
+            let mut hist_h = vec![vec![0.0f32; super::boost::BINS + 1]; d];
+            for (i, b) in bins.iter().enumerate() {
+                if at[i] != node {
+                    continue;
+                }
+                gs += g[i];
+                hs += h[i];
+                for j in 0..d {
+                    hist_g[j][b[j] as usize] += g[i];
+                    hist_h[j][b[j] as usize] += h[i];
+                }
+            }
+            tree.values[node] = value(gs, hs, eta);
+            let parent = gs * gs / (hs + LAMBDA);
+            let mut best: Option<(f32, usize, usize)> = None;
+            for j in 0..d {
+                let (mut gl, mut hl) = (0.0f32, 0.0f32);
+                for k in 0..edges[j].len() {
+                    gl += hist_g[j][k];
+                    hl += hist_h[j][k];
+                    let (gr, hr) = (gs - gl, hs - hl);
+                    if hl < MIN_HESSIAN || hr < MIN_HESSIAN {
+                        continue;
+                    }
+                    let gain = gl * gl / (hl + LAMBDA) + gr * gr / (hr + LAMBDA) - parent;
+                    if gain > 1e-6 && best.is_none_or(|(b, _, _)| gain > b) {
+                        best = Some((gain, j, k));
+                    }
+                }
+            }
+            // No split worth making: all pages go left, both children alike.
+            let (j, k) = best.map_or((0, usize::MAX), |(_, j, k)| (j, k));
+            tree.features[node] = j;
+            if k != usize::MAX {
+                tree.thresholds[node] = edges[j][k];
+            }
+            for (i, b) in bins.iter().enumerate() {
+                if at[i] == node {
+                    at[i] = 2 * node + if (b[j] as usize) <= k { 1 } else { 2 };
+                }
+            }
+        }
+        let (mut lg, mut lh) = ([0.0f32; TREE_LEAVES], [0.0f32; TREE_LEAVES]);
+        for i in 0..bins.len() {
+            lg[at[i] - TREE_SPLITS] += g[i];
+            lh[at[i] - TREE_SPLITS] += h[i];
+        }
+        for leaf in 0..TREE_LEAVES {
+            // An empty leaf keeps its parent's value.
+            let parent = (leaf + TREE_SPLITS - 1) / 2;
+            tree.leaves[leaf] = if lh[leaf] > 0.0 {
+                value(lg[leaf], lh[leaf], eta)
+            } else {
+                tree.values[parent]
+            };
+        }
+        tree
+    }
+
+    /// Gradients and Hessians of the weighted logistic loss at log-odds `z`.
+    pub fn gradients(data: &[Example], z: &[f32]) -> (Vec<f32>, Vec<f32>) {
+        data.iter()
+            .zip(z)
+            .map(|(e, z)| {
+                let p = sigmoid(*z);
+                (e.w * (p - e.y), (e.w * p * (1.0 - p)).max(1e-6))
+            })
+            .unzip()
+    }
 }
 
 /// Folds standardisation into the weights: (raw weights, raw bias).
@@ -349,15 +580,6 @@ fn fold(w: &[f32], mean: &[f32], std: &[f32]) -> (Vec<f32>, f32) {
     let raw: Vec<f32> = (0..d).map(|j| w[j] / std[j]).collect();
     let bias = w[d] - (0..d).map(|j| w[j] * mean[j] / std[j]).sum::<f32>();
     (raw, bias)
-}
-
-fn scores(data: &[Example], raw: &[f32], bias: f32) -> Vec<(f32, bool)> {
-    data.iter()
-        .map(|ex| {
-            let z = raw.iter().zip(&ex.x).fold(bias, |z, (w, x)| z + w * x);
-            (sigmoid(z), ex.y > 0.5)
-        })
-        .collect()
 }
 
 fn auc(s: &[(f32, bool)]) -> f64 {
@@ -374,20 +596,43 @@ fn auc(s: &[(f32, bool)]) -> f64 {
     (rank_sum - pos * (pos + 1.0) / 2.0) / (pos * neg)
 }
 
-/// The lowest score that flags at most `fpr` of the legitimate pages.
-fn threshold(s: &[(f32, bool)], fpr: f64) -> f32 {
-    let mut neg: Vec<f32> = s.iter().filter(|(_, p)| !p).map(|(x, _)| *x).collect();
-    neg.sort_by(|a, b| b.total_cmp(a));
-    let allowed = (neg.len() as f64 * fpr).floor() as usize;
-    neg.get(allowed).map_or(1.0, |x| (x + 1e-6).min(1.0))
+/// The lowest score that flags at most `fpr` of the legitimate pages, by
+/// weight (`w`, in `s`'s order): recent pages count as they do in training,
+/// so the thresholds are set mostly by the pages of today.
+fn threshold(s: &[(f32, bool)], w: &[f32], fpr: f64) -> f32 {
+    let mut neg: Vec<(f32, f32)> = s
+        .iter()
+        .zip(w)
+        .filter(|((_, p), _)| !p)
+        .map(|((x, _), w)| (*x, *w))
+        .collect();
+    neg.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let allowed = neg.iter().map(|n| f64::from(n.1)).sum::<f64>() * fpr;
+    let mut flagged = 0.0;
+    for (x, w) in &neg {
+        flagged += f64::from(*w);
+        if flagged > allowed {
+            return (x + 1e-6).min(1.0);
+        }
+    }
+    1.0
 }
 
-fn rates(s: &[(f32, bool)], t: f32) -> (f64, f64) {
-    let pos = s.iter().filter(|(_, p)| *p).count().max(1) as f64;
-    let neg = s.iter().filter(|(_, p)| !p).count().max(1) as f64;
-    let tp = s.iter().filter(|(x, p)| *p && *x >= t).count() as f64;
-    let fp = s.iter().filter(|(x, p)| !*p && *x >= t).count() as f64;
-    (tp / pos, fp / neg)
+/// Weighted shares of phishing and legitimate pages at `t` or above.
+fn rates(s: &[(f32, bool)], w: &[f32], t: f32) -> (f64, f64) {
+    let share = |phishing: bool| {
+        let (mut all, mut over) = (0.0f64, 0.0f64);
+        for ((x, p), w) in s.iter().zip(w) {
+            if *p == phishing {
+                all += f64::from(*w);
+                if *x >= t {
+                    over += f64::from(*w);
+                }
+            }
+        }
+        over / all.max(1e-9)
+    };
+    (share(true), share(false))
 }
 
 /// One counted page: its address, label and the counts the app would see.
@@ -571,16 +816,18 @@ fn gate(new: &Measured, shipped: &Measured, phishing: usize, legit: usize) -> Ve
     refused
 }
 
-/// `train <out-model> --counts FILE[:WEIGHT]... [--recent FILE] [--champion MODEL]`
+/// `train <out-model> --counts FILE[:WEIGHT]... [--recent FILE] [--champion MODEL] [--words on|off] [--trees N]`
 fn train_cmd(args: &[String]) -> ExitCode {
     let Some(out_path) = args.first() else {
         eprintln!(
-            "usage: page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL]"
+            "usage: page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL] [--words on|off] [--trees N]"
         );
         return ExitCode::FAILURE;
     };
     let mut sources: Vec<(String, f32, bool)> = Vec::new();
     let mut champion = None;
+    let mut use_words = true;
+    let mut max_trees = MAX_TREES;
     let mut it = args[1..].iter();
     while let Some(flag) = it.next() {
         let Some(value) = it.next() else {
@@ -598,6 +845,14 @@ fn train_cmd(args: &[String]) -> ExitCode {
                 sources.push((path, weight, flag == "--recent"));
             }
             "--champion" => champion = Some(value.clone()),
+            "--words" => use_words = value != "off",
+            "--trees" => match value.parse() {
+                Ok(n) => max_trees = n,
+                Err(_) => {
+                    eprintln!("page: --trees needs a number");
+                    return ExitCode::FAILURE;
+                }
+            },
             _ => {
                 eprintln!("page: unknown option {flag}");
                 return ExitCode::FAILURE;
@@ -621,12 +876,38 @@ fn train_cmd(args: &[String]) -> ExitCode {
             }
         }
     }
+    // The words of every page, once; the vocabulary from the training split.
+    let page_words: Vec<Vec<String>> = pages
+        .iter()
+        .map(|p| pagemodel::words(&p.0.counts))
+        .collect();
+    let vocab: Vec<String> = if use_words {
+        vocabulary(
+            pages
+                .iter()
+                .zip(&page_words)
+                .filter(|(p, _)| p.3 == 0)
+                .map(|(_, w)| w.as_slice()),
+        )
+    } else {
+        Vec::new()
+    };
+    let index: std::collections::HashMap<&str, u32> = vocab
+        .iter()
+        .enumerate()
+        .map(|(i, w)| (w.as_str(), i as u32))
+        .collect();
     let examples = |split: usize| -> Vec<Example> {
         pages
             .iter()
-            .filter(|p| p.3 == split)
-            .map(|(c, w, _, _)| Example {
+            .zip(&page_words)
+            .filter(|(p, _)| p.3 == split)
+            .map(|((c, w, _, _), words)| Example {
                 x: pagemodel::features(&c.host, &c.counts),
+                words: words
+                    .iter()
+                    .filter_map(|w| index.get(w.as_str()).copied())
+                    .collect(),
                 y: if c.phishing { 1.0 } else { 0.0 },
                 w: *w,
             })
@@ -634,10 +915,11 @@ fn train_cmd(args: &[String]) -> ExitCode {
     };
     let (train_set, valid) = (examples(0), examples(1));
     eprintln!(
-        "page: {} pages: train {}, validation {}",
+        "page: {} pages: train {}, validation {}; {} words",
         pages.len(),
         train_set.len(),
-        valid.len()
+        valid.len(),
+        vocab.len()
     );
     let d = FEATURES.len();
     let n: f32 = train_set.iter().map(|e| e.w).sum::<f32>().max(1.0);
@@ -654,36 +936,129 @@ fn train_cmd(args: &[String]) -> ExitCode {
             var.sqrt().max(1e-3)
         })
         .collect();
-    let mut best: Option<(f64, f32, Vec<f32>)> = None;
-    for l2 in [0.0f32, 1e-4, 1e-3, 1e-2] {
-        let w = train(&train_set, &mean, &std, l2, 400);
+    // The regression's log-odds for a page, with the words the model keeps.
+    let linear = |raw: &[f32], bias: f32, words: &[f32], ex: &Example| -> f32 {
+        let z = raw.iter().zip(&ex.x).fold(bias, |z, (w, x)| z + w * x);
+        z + ex.words.iter().map(|k| words[*k as usize]).sum::<f32>()
+    };
+    let vw: Vec<f32> = valid.iter().map(|e| e.w).collect();
+    let recall = |s: &[(f32, bool)]| rates(s, &vw, threshold(s, &vw, 0.005)).0;
+    let mut best: Option<(f64, f32, Vec<f32>, Vec<f32>)> = None;
+    for l2 in [1e-4f32, 1e-3, 1e-2] {
+        let (w, words) = train(&train_set, &mean, &std, vocab.len(), l2, 400);
         let (raw, bias) = fold(&w, &mean, &std);
-        let s = scores(&valid, &raw, bias);
-        let t = threshold(&s, 0.005);
-        let (tpr, _) = rates(&s, t);
+        let s: Vec<(f32, bool)> = valid
+            .iter()
+            .map(|ex| (sigmoid(linear(&raw, bias, &words, ex)), ex.y > 0.5))
+            .collect();
+        let tpr = recall(&s);
         eprintln!(
             "page: l2 {l2}: validation AUC {:.4}, recall at 0.5% false alarms {:.3}",
             auc(&s),
             tpr
         );
-        if best.as_ref().is_none_or(|(b, _, _)| tpr > *b) {
-            best = Some((tpr, l2, w));
+        if best.as_ref().is_none_or(|(b, _, _, _)| tpr > *b) {
+            best = Some((tpr, l2, w, words));
         }
     }
-    let Some((_, l2, w)) = best else {
+    let Some((_, l2, w, mut word_weights)) = best else {
         return ExitCode::FAILURE;
     };
+    // The words the model keeps: those of most weight, at most MAX_WORDS.
+    let mut kept: Vec<usize> = (0..vocab.len())
+        .filter(|k| word_weights[*k].abs() >= MIN_WORD_WEIGHT)
+        .collect();
+    kept.sort_by(|a, b| word_weights[*b].abs().total_cmp(&word_weights[*a].abs()));
+    kept.truncate(pagemodel::MAX_WORDS);
+    let keep: std::collections::HashSet<usize> = kept.iter().copied().collect();
+    for (k, weight) in word_weights.iter_mut().enumerate() {
+        if !keep.contains(&k) {
+            *weight = 0.0;
+        }
+    }
     let (raw, bias) = fold(&w, &mean, &std);
-    let s = scores(&valid, &raw, bias);
-    let high = threshold(&s, 0.005);
-    let elevated = threshold(&s, 0.02).min(high);
+    // Trees on what the regression leaves, as many as do best on validation.
+    let mut trees: Vec<boost::Tree> = Vec::new();
+    if max_trees > 0 {
+        let edges = boost::edges(&train_set, d);
+        let bins = boost::bin(&train_set, &edges);
+        let mut z: Vec<f32> = train_set
+            .iter()
+            .map(|ex| linear(&raw, bias, &word_weights, ex))
+            .collect();
+        let mut zv: Vec<f32> = valid
+            .iter()
+            .map(|ex| linear(&raw, bias, &word_weights, ex))
+            .collect();
+        let score_valid = |zv: &[f32]| -> Vec<(f32, bool)> {
+            zv.iter()
+                .zip(&valid)
+                .map(|(z, ex)| (sigmoid(*z), ex.y > 0.5))
+                .collect()
+        };
+        let mut best_recall = recall(&score_valid(&zv));
+        let mut best_count = 0;
+        eprintln!("page: no trees: validation recall at 0.5% false alarms {best_recall:.3}");
+        for t in 1..=max_trees {
+            let (g, h) = boost::gradients(&train_set, &z);
+            let tree = boost::grow(&bins, &edges, &g, &h, TREE_RATE);
+            for (zi, ex) in z.iter_mut().zip(&train_set) {
+                *zi += tree.eval(&ex.x);
+            }
+            for (zi, ex) in zv.iter_mut().zip(&valid) {
+                *zi += tree.eval(&ex.x);
+            }
+            trees.push(tree);
+            if t % 10 == 0 {
+                let s = score_valid(&zv);
+                let r = recall(&s);
+                eprintln!(
+                    "page: {t} trees: validation AUC {:.4}, recall at 0.5% false alarms {r:.3}",
+                    auc(&s)
+                );
+                if r > best_recall {
+                    best_recall = r;
+                    best_count = t;
+                }
+            }
+        }
+        trees.truncate(best_count);
+        eprintln!("page: {best_count} trees kept");
+    }
+    let total = |ex: &Example| -> f32 {
+        linear(&raw, bias, &word_weights, ex) + trees.iter().map(|t| t.eval(&ex.x)).sum::<f32>()
+    };
+    let s: Vec<(f32, bool)> = valid
+        .iter()
+        .map(|ex| (sigmoid(total(ex)), ex.y > 0.5))
+        .collect();
+    let high = threshold(&s, &vw, 0.005);
+    let elevated = threshold(&s, &vw, 0.02).min(high);
     // Means of legitimate training pages: what the reasons compare against.
     let legit: Vec<&Example> = train_set.iter().filter(|e| e.y < 0.5).collect();
     let ln = legit.len().max(1) as f32;
-    let mut body = format!("bias {bias}\nhigh {high}\nelevated {elevated}\n");
+    let words_mean = legit
+        .iter()
+        .map(|e| {
+            e.words
+                .iter()
+                .map(|k| word_weights[*k as usize])
+                .sum::<f32>()
+        })
+        .sum::<f32>()
+        / ln;
+    let mut body =
+        format!("bias {bias}\nhigh {high}\nelevated {elevated}\nwords_mean {words_mean}\n");
     for (j, name) in FEATURES.iter().enumerate() {
         let m = legit.iter().map(|e| e.x[j]).sum::<f32>() / ln;
         body.push_str(&format!("feature {name} {} {m}\n", raw[j]));
+    }
+    for k in &kept {
+        body.push_str(&format!("word {} {}\n", vocab[*k], word_weights[*k]));
+    }
+    for tree in &trees {
+        body.push_str(&tree.line(FEATURES));
+        body.push('\n');
     }
     let model = match PageModel::parse(&body) {
         Ok(m) => m,
@@ -762,13 +1137,45 @@ fn main() -> ExitCode {
     match args.get(1).map(String::as_str) {
         Some("counts") => counts_cmd(&args[2..]),
         Some("train") => train_cmd(&args[2..]),
+        Some("eval") => eval_cmd(&args[2..]),
         _ => {
             eprintln!(
-                "usage: page counts <index.sql|index.tsv> <pages-dir> <out.tsv>\n       page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL]"
+                "usage: page counts <index.sql|index.tsv> <pages-dir> <out.tsv>\n       page train <out-model> --counts FILE[:WEIGHT]... [--recent FILE[:WEIGHT]] [--champion MODEL] [--words on|off] [--trees N]\n       page eval <model> <counts>..."
             );
             ExitCode::FAILURE
         }
     }
+}
+
+/// `eval <model> <counts>...`: the model on every page of each counts file.
+fn eval_cmd(args: &[String]) -> ExitCode {
+    let Some((path, files)) = args.split_first().filter(|(_, f)| !f.is_empty()) else {
+        eprintln!("usage: page eval <model> <counts>...");
+        return ExitCode::FAILURE;
+    };
+    let model = match fs::read_to_string(path)
+        .map_err(|e| e.to_string())
+        .and_then(|t| PageModel::parse(&t).map_err(|e| e.to_string()))
+    {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("page: {path}: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    for file in files {
+        match read_counts(file) {
+            Ok(pages) => {
+                let pages: Vec<&Counted> = pages.iter().collect();
+                println!("{file}: {}", describe(&measure(&model, &pages)));
+            }
+            Err(e) => {
+                eprintln!("page: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 #[cfg(test)]

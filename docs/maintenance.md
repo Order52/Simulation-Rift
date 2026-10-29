@@ -72,17 +72,17 @@ The APK signing key is in the `release` environment's secrets, and a copy must b
 
 | Job | When | Script | Gate | Output |
 |---|---|---|---|---|
-| `retrain` (address model) | Monthly | `tools/rift-train/retrain.sh` | `gate.py`: no more false alarms, no lower AUC, no slower scoring, against the shipped model and the hand-checked baseline (`baseline.json`) | `models/url-model.bin`, `.json` |
-| `collect-pages` | Twice daily | `retrain_pages.sh collect` | none; it only adds to the memory | the `rift-page-memory` artifact |
-| `pages` (page model) | Monthly | `retrain_pages.sh train` | `rift-train page train --champion` against the shipped model | `models/page-model.txt` |
-| `brands` | Monthly | `retrain_brands.sh` | `rift-train brands`: no more warnings on ordinary addresses than the shipped list (by 0.05 points or 0.5%) | `models/brands.txt` |
+| `retrain` (address model) | Weekly (Tuesdays) | `tools/rift-train/retrain.sh` | `gate.py`: no more false alarms, no lower AUC, no slower scoring, against the shipped model and the hand-checked baseline (`baseline.json`) | `models/url-model.bin`, `.json` |
+| `collect-pages` | Four times a day | `retrain_pages.sh collect` | none; it only adds to the memory | the `rift-page-memory` artifact |
+| `pages` (page model) | Weekly (Tuesdays) | `retrain_pages.sh train` | `rift-train page train --champion` against the shipped model; it also reports the shipped model on the week's pages (forward test) | `models/page-model.txt` |
+| `brands` | Weekly (Tuesdays) | `retrain_brands.sh` | `rift-train brands`: no more warnings on ordinary addresses than the shipped list (by 0.05 points or 0.5%) | `models/brands.txt` |
 
 ### Memory
 
 The models learn from more than one month's data:
 
 - **`rift-ai-memory`** keeps each month's phishing addresses for 24 months (`memory.py`); the address model trains on it too.
-- **`rift-page-memory`** keeps counts of fetched pages (never the pages themselves) for 24 months, up to 300,000 (`page_memory.py`).
+- **`rift-page-memory`** keeps counts of fetched pages (never the pages themselves), each dated by the day it was counted, for 24 months, up to 300,000 (`page_memory.py`).
 
 Both are workflow artifacts that each run takes from the last one (`take_memory.sh`) and hands on, whether or not its model passes. Artifacts last 90 days, so if no run succeeds for three months, a memory starts again.
 

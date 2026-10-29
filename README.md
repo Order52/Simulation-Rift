@@ -171,7 +171,7 @@ Or use [Obtainium](https://obtainium.imranr.dev): with Obtainium installed, open
 | Android System WebView | As Google ships it | Play Store (Rift refuses one missing an exploited fix) |
 | The app and its browser | Weekly release, when anything changed | Rift installs it itself (or Obtainium does) |
 | Exploited-WebView list | Weekly | From CISA's catalogue, merged when CI passes |
-| Rift AI (address model) | Monthly | Retrained on current feeds plus its memory of the last 24 months' phishing pages, merged if it passes its accuracy gate and CI |
+| Rift AI (address and page models, protected brands) | Weekly | Retrained on current feeds and pages plus its memory of the last 24 months, merged if it passes its accuracy gate and CI, in time for the weekly release |
 | Rust, Gradle and Actions dependencies | Weekly | Dependabot, versions at least 7 days old, merged when CI passes |
 | Rust compiler, NDK, cargo-ndk, OSV-Scanner | Monthly | Moved to the latest release, merged when CI passes |
 

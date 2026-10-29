@@ -5,17 +5,19 @@
 # never committed).
 #
 #   sh tools/rift-train/retrain_pages.sh collect <work-dir> <memory.tsv> [<ordinary-urls>]
-#     Twice a day: fetches the newest phishing pages and some ordinary ones,
+#     Four times a day: fetches the newest phishing pages and some ordinary ones,
 #     counts them, deletes them, and adds the counts to the memory.
 #     <ordinary-urls> is a cached Common Crawl sample; made if missing.
 #
 #   sh tools/rift-train/retrain_pages.sh train <work-dir> <memory.tsv>
-#     Monthly: trains on the 2021 dataset and the memory, and writes
-#     models/page-model.txt only if the gate passes. Exit status 2: refused.
+#     Weekly: scores the shipped model on the pages gathered in the last 7
+#     days (a forward test: it was trained before they were), then trains on
+#     the 2021 dataset and the memory, and writes models/page-model.txt only
+#     if the gate passes. Exit status 2: refused.
 set -eu
 mode="$1"; D="$2"; MEMORY="$3"
 T=tools/rift-train
-month="$(date -u +%Y-%m)"
+day="$(date -u +%Y-%m-%d)"
 mkdir -p "$D"
 fetch() { curl -fsSL --retry 3 -o "$1" "$2"; }
 page() { cargo run --quiet --locked --release -p rift-train --bin page -- "$@"; }
@@ -65,7 +67,7 @@ collect)
   rm -rf "$D/fetched/pages"
   previous=-
   if [ -s "$MEMORY" ]; then cp "$MEMORY" "$D/memory-before.tsv"; previous="$D/memory-before.tsv"; fi
-  python3 -I $T/page_memory.py "$month" "$previous" "$MEMORY" "$D/recent.tsv" "$D/fresh.tsv"
+  python3 -I $T/page_memory.py "$day" "$previous" "$MEMORY" "$D/recent.tsv" "$D/fresh.tsv"
   ;;
 train)
   # The 2021 dataset, checked against Mendeley's hashes and counted a part at a time.
@@ -86,6 +88,12 @@ train)
   echo "2021 dataset: $(wc -l < "$D/base.tsv") pages counted."
   [ -s "$MEMORY" ] || { echo "No page memory: nothing new to learn from."; exit 2; }
   cut -f2- "$MEMORY" > "$D/recent.tsv"
+  # The forward test: the shipped model on the week's pages, all new to it.
+  since="$(python3 -I -c 'import datetime; print(datetime.date.today() - datetime.timedelta(days=7))')"
+  awk -F '\t' -v since="$since" 'length($1) == 10 && $1 >= since' "$MEMORY" | cut -f2- > "$D/week.tsv"
+  if [ -s "$D/week.tsv" ]; then
+    echo "Forward test, the shipped model on the pages gathered since $since:$(page eval models/page-model.txt "$D/week.tsv" | cut -d: -f2-)"
+  fi
   # Recent pages weigh as much in all as the 2021 dataset (at most ten times each).
   weight="$(python3 -I -c 'import sys; b, r = (sum(1 for _ in open(p)) for p in sys.argv[1:]); print(min(10, max(1, round(b / max(r, 1)))))' "$D/base.tsv" "$D/recent.tsv")"
   echo "Page memory: $(wc -l < "$D/recent.tsv") pages, each weighing $weight."

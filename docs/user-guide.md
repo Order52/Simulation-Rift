@@ -84,7 +84,7 @@ While a page is open, the bar at the top of the browser shows what the page has 
 - a download, and what its scan found;
 - every device feature the page asked for;
 - the tracking services it reached, with what each records and how to stop it;
-- Rift AI's reading of the page: a password form that sends to another site, links that go nowhere, a brand name that does not match the site, urgent "your account is locked" wording. It warns before you type anything.
+- Rift AI's reading of the page: a password form that sends to another site, links that go nowhere, a brand name that does not match the site, urgent "your account is locked" wording, or wording that recent phishing pages use. It warns before you type anything. Rift AI is retrained every week on newly found phishing pages and links, and each weekly update of Rift carries the newest model that passed its accuracy checks.
 - three fixed checks on sign-in pages, named one by one: its links go nowhere, a form sends what you type to a script on another site, or it blocks the right-click menu;
 - fingerprinting: a page that reads back a drawing, asks for the graphics chip, renders sound out of hearing or measures many fonts to tell your phone apart. Rift changes the drawing and sound readings faintly, differently in each session, so they do not follow you from one session to the next.
 

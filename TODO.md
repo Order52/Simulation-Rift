@@ -12,9 +12,9 @@ What is left, roughly in order. [STATUS.md](STATUS.md) says what works now and h
 ## Android
 
 - Rift's own fixed scriptlets for sign-in walls built only with scripts (LinkedIn, some of Quora), fed checked arguments, so list scripts still never run.
-- A relay (Tor, or a VPN chained behind the proxy) so pages do not see the phone's IP address.
-- Rift AI: compare it with Safe Browsing, and teach it to recognise tracking.
-- Sign the threat lists' snapshots, or check them against a second source, so a list's server alone cannot decide what Check warns about (§10.12, §24).
+- Close the Orbot gap of the relay (3.2): Android cannot say who owns a loopback port, and Orbot's "running" broadcast can be forged (§24). Orbot's VPN mode for the browser's UID alone would avoid both.
+- Rift AI: run the Safe Browsing comparison (built in 3.2; it needs a `SAFE_BROWSING_KEY` secret), and gate the page model on the weekly forward test once a few weeks of dated pages exist.
+- Sign the threat lists' snapshots, or check them against a second source, so a list's server alone cannot decide what Check warns about (§10.12, §24). Since 3.2 an update that replaces most of a list at once is held until the user chooses it.
 
 ## Linux, for later
 
