@@ -50,7 +50,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.webkit:webkit:1.17.1")
+    implementation("androidx.webkit:webkit:1.18.0")
 
     testImplementation("junit:junit:4.13.2")
 }
