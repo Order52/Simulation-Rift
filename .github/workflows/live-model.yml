@@ -1,0 +1,88 @@
+name: live model
+
+# Rift AI's model, daily, without waiting for an app release: retrains on the
+# day's feeds (tools/rift-train/retrain.sh), holds the result to the gate
+# (gate.py, with its forward test) and to the update canary
+# (`cargo test -p rift-ffi ai::`), and only then puts the model on the rolling
+# "model-latest" pre-release and starts intel-pages.yml, which signs it with
+# the model key and serves it from GitHub Pages (docs/reports/key-policy.md,
+# "The model key"). The apps ask for it by themselves about every five hours.
+#
+# This job holds no signing key: a model that fails the gate or the canary is
+# never uploaded, and the publisher checks the canary again before signing.
+# The weekly retrain (retrain.yml) is separate: it ships a model in the app.
+#
+# OFF until the repository variable RIFT_LIVE_MODEL is "true", which should
+# happen only after the key ceremony (key-ceremony.md), the INTEL_MODEL_KEY
+# secret and a release whose signed targets delegate the model: before that
+# intel-pages.yml refuses a newer model, because the offline targets pin the
+# one in the release.
+#
+# Both retraining workflows share one lock (the group below), so they never
+# train at the same time. This one reads the weekly run's memory
+# ("rift-ai-memory") and does not hand a memory on: the weekly run owns it.
+on:
+  schedule:
+    - cron: "23 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rift-ai-train
+  cancel-in-progress: false
+
+jobs:
+  train:
+    if: vars.RIFT_LIVE_MODEL == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Keep the shipped model's report
+        run: cp models/url-model.json "$RUNNER_TEMP/shipped.json"
+      - name: Take the memory the last weekly run left
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh tools/rift-train/take_memory.sh rift-ai-memory "$RUNNER_TEMP/memory" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Retrain on today's feeds and the memory
+        env:
+          GH_TOKEN: ${{ secrets.RIFT_SEARCH_TOKEN || github.token }}
+          RIFT_AI_MEMORY: ${{ runner.temp }}/memory/memory.tsv
+        shell: bash  # pipefail, as for the gate
+        run: sh tools/rift-train/retrain.sh "$RUNNER_TEMP/feeds" "$RUNNER_TEMP/prepared" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Gate
+        shell: bash  # pipefail: a failed gate must fail the step, not be hidden by tee
+        run: python3 -I tools/rift-train/gate.py "$RUNNER_TEMP/shipped.json" models/url-model.json tools/rift-train/baseline.json | tee "$RUNNER_TEMP/gate.txt"
+      - name: The update canary and the shipped-model tests still hold
+        run: "cargo test --locked -p rift-ffi ai::"
+      - name: Put the model on model-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="$(sha256sum models/url-model.bin | cut -d' ' -f1)"
+          {
+            echo "Rift AI's model trained on $(date -u +%Y-%m-%d) by live-model.yml; it passed the gate and the update canary."
+            echo
+            echo "sha256 $sha"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/gate.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/notes.md"
+          if gh release view model-latest >/dev/null 2>&1; then
+            gh release edit model-latest --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create model-latest --prerelease --latest=false --title "Rift AI model (rolling)" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          gh release upload model-latest models/url-model.bin --clobber
+          # The publisher signs it (the model key lives only in that environment).
+          gh workflow run intel-pages.yml
+          echo "Published model $sha to model-latest and started the publisher." >> "$GITHUB_STEP_SUMMARY"
