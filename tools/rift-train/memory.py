@@ -8,13 +8,35 @@ The memory is a list of `YYYY-MM<TAB>url` lines (the month each URL was
 last seen). It holds real malicious URLs: it lives outside the repository
 (the retrain workflow keeps it as an artifact), never in it.
 
+The training file has one `url<TAB>weight` line per URL: a page last seen on
+a feed this month weighs 1, and the weight halves every HALF_LIFE months
+since (never under FLOOR), so the model leans on what phishing looks like now
+and keeps what older pages taught it. RIFT_AI_HALF_LIFE_MONTHS=0 gives every
+URL weight 1. URLs listed in the file named by RIFT_AI_EXCLUDE (the forward
+test's links, retrain.sh) stay in the memory but are left out of the training
+file this once.
+
 usage: python3 -I memory.py <month YYYY-MM> <old memory or -> <new memory> <training urls> <prepared list>...
 """
+import os
 import re
 import sys
 
 MONTHS = 24
 MAX = 1_500_000
+FLOOR = 0.1
+
+
+def months_between(then, now):
+    (y0, m0), (y1, m1) = (map(int, x.split("-")) for x in (then, now))
+    return (y1 - y0) * 12 + (m1 - m0)
+
+
+def weight(then, now, half_life):
+    if half_life <= 0:
+        return 1.0
+    return max(FLOOR, 0.5 ** (months_between(then, now) / half_life))
+
 
 month, old, new, urls, *lists = sys.argv[1:]
 if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month) or not lists:
@@ -40,9 +62,16 @@ for path in lists:
             added += url not in seen
             seen[url] = month
 
+half_life = float(os.environ.get("RIFT_AI_HALF_LIFE_MONTHS", "6"))
+excluded = set()
+if os.environ.get("RIFT_AI_EXCLUDE"):
+    with open(os.environ["RIFT_AI_EXCLUDE"], encoding="utf-8", errors="replace") as f:
+        excluded = {line.strip() for line in f}
+
 kept = sorted(seen.items(), key=lambda kv: kv[1], reverse=True)[:MAX]
 with open(new, "w", encoding="utf-8") as out, open(urls, "w", encoding="utf-8") as train:
     for url, when in kept:
         out.write(f"{when}\t{url}\n")
-        train.write(url + "\n")
+        if url not in excluded:
+            train.write(f"{url}\t{weight(when, month, half_life):.3f}\n")
 print(f"memory {month}: {before} remembered, {added} new, {len(kept)} kept (since {oldest}, at most {MAX})")
