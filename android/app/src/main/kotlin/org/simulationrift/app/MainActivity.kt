@@ -303,6 +303,7 @@ class MainActivity : ComponentActivity() {
                         Tab.SECURITY -> {
                             Text("Security", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                             ProtectionCard(lock, active?.generation, reduced)
+                            UpdateProtectionCard()
                             RelayCard(active?.generation)
                             ExtraIsolationCard()
                             IntelCard()

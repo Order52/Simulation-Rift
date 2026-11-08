@@ -216,6 +216,7 @@ object ContentFilter {
         // Check's link-cleaning rules follow the same switch, filters on or off.
         LinkCleaning.refreshIfStale(STALE_MS)
         ThreatLists.refreshIfStale(STALE_LISTS_MS)
+        Core.refreshIntelIfStale(STALE_INTEL_MS)
         if (!now.enabled || now.busy != null && now.busy != APPLYING) return
         if (now.lists.values.none { it.downloaded }) return
         val due = catalog.filter { source ->
@@ -495,6 +496,8 @@ object ContentFilter {
     private const val STALE_MS = 4L * 24 * 60 * 60 * 1000
     /** Threat lists change within hours; a day old is old enough to fetch again. */
     private const val STALE_LISTS_MS = 24L * 60 * 60 * 1000
+    /** The signed database, and with it Rift AI's model, is asked for again after this long (under the 6-hour check, so a check is never skipped). */
+    private const val STALE_INTEL_MS = 5L * 60 * 60 * 1000
     private const val START_CHECK_MS = 60_000L
     private const val CHECK_MS = 6L * 60 * 60 * 1000
     private val UPSTREAM_DATE = Regex("^!\\\\s*(?:Last modified|Version|TimeUpdated)\\\\s*:\\\\s*(.+)$", RegexOption.IGNORE_CASE)

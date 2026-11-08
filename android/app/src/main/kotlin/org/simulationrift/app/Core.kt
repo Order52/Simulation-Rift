@@ -923,6 +923,37 @@ object Core {
         }
     }
 
+    /**
+     * With the filters' "Keep the lists up to date": asks the update host for a
+     * newer database (and so a newer Rift AI model) again once the last ask is
+     * older than [staleMs]. Only once one has been installed (the first is the
+     * user's tap), and only for a build with a trusted root and an update
+     * address. The pack is verified and its model passes the canary exactly as
+     * after a tap; a failed ask is retried at the next stale check.
+     */
+    fun refreshIntelIfStale(staleMs: Long) {
+        if (!::app.isInitialized || _intel.value !is IntelStatus.Installed) return
+        val source = updateSource() ?: return
+        val marker = File(app.filesDir, "rift/intel-checked")
+        val last = try {
+            marker.readText().trim().toLong()
+        } catch (e: java.io.IOException) {
+            0L
+        } catch (e: NumberFormatException) {
+            0L
+        }
+        if (System.currentTimeMillis() - last <= staleMs) return
+        try {
+            marker.parentFile?.mkdirs()
+            marker.writeText(System.currentTimeMillis().toString())
+        } catch (e: java.io.IOException) {
+            Log.w(TAG, "intel check time not saved: ${e.message}")
+            return
+        }
+        Log.i(TAG, "asking for a newer threat database by itself")
+        updateIntelOnline(source)
+    }
+
     /** The update address this build was given (`RIFT_INTEL_URL`, android/build.sh), if any. */
     fun updateSource(): String? = try {
         app.assets.open(UPDATE_SOURCE).use { it.readBytes().decodeToString().trim() }.takeIf { it.startsWith("https://") }
