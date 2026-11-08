@@ -35,8 +35,8 @@ use tough::key_source::{KeySource, LocalKeySource};
 use tough::schema::decoded::{Decoded, Hex};
 use tough::schema::key::Key;
 use tough::schema::{
-    Hashes, KeyHolder, Metafile, Role, RoleKeys, RoleType, Root, Signature, Signed, Snapshot,
-    Targets, Timestamp,
+    DelegatedRole, DelegatedTargets, Delegations, Hashes, KeyHolder, Metafile, PathPattern,
+    PathSet, Role, RoleKeys, RoleType, Root, Signature, Signed, Snapshot, Targets, Timestamp,
 };
 use tough::sign::{Sign, parse_keypair};
 
@@ -47,6 +47,14 @@ const SPEC_VERSION: &str = "1.0.0";
 const OFFLINE: [RoleType; 2] = [RoleType::Root, RoleType::Targets];
 /// Roles whose keys sign on the publishing machine.
 const ONLINE: [RoleType; 2] = [RoleType::Snapshot, RoleType::Timestamp];
+
+/// The delegated targets role that signs Rift AI's model (key-policy.md,
+/// "The model key"): one online key, the one path [`MODEL_PATH`], named in
+/// the offline-signed targets so that only the targets holders can change who
+/// may sign it.
+pub const MODEL_ROLE: &str = "model";
+/// The only file the model role may sign.
+pub const MODEL_PATH: &str = rift_core::pack::MODEL;
 
 /// Generates one Ed25519 key (PKCS#8, mode 0600) at `path`, which must not
 /// exist and must lie outside any git work tree.
@@ -286,10 +294,38 @@ pub fn draft_targets(
     expires: jiff::Timestamp,
     out: &Path,
 ) -> Result<Pack> {
+    draft_targets_with(pack_dir, version, expires, out, None)
+}
+
+/// As [`draft_targets`], but with the model delegated to the holder of
+/// `model_key` (a public key file from [`export_public_key`]): the targets
+/// then list the other pack files and name that key as the only signer of
+/// [`MODEL_PATH`], whose entry is signed by [`publish_signed`] on the
+/// publishing machine.
+pub fn draft_targets_delegating_model(
+    pack_dir: &Path,
+    version: NonZeroU64,
+    expires: jiff::Timestamp,
+    out: &Path,
+    model_key: &Path,
+) -> Result<Pack> {
+    draft_targets_with(pack_dir, version, expires, out, Some(model_key))
+}
+
+fn draft_targets_with(
+    pack_dir: &Path,
+    version: NonZeroU64,
+    expires: jiff::Timestamp,
+    out: &Path,
+    model_key: Option<&Path>,
+) -> Result<Pack> {
     let pack = read_pack(pack_dir)?;
     let mut targets = Targets::new(SPEC_VERSION.into(), version, expires);
     runtime()?.block_on(async {
         for name in pack_file_names(pack_dir) {
+            if model_key.is_some() && name == MODEL_PATH {
+                continue;
+            }
             let (target_name, target) = RepositoryEditor::build_target(pack_dir.join(name))
                 .await
                 .map_err(tuf)?;
@@ -297,6 +333,21 @@ pub fn draft_targets(
         }
         Ok::<_, ToolError>(())
     })?;
+    if let Some(path) = model_key {
+        let key: Key = read_json(path)?;
+        let id = key.key_id().map_err(tuf)?;
+        let mut delegations = Delegations::new();
+        delegations.keys.insert(id.clone(), key);
+        delegations.roles.push(DelegatedRole {
+            name: MODEL_ROLE.into(),
+            keyids: vec![id],
+            threshold: NonZeroU64::MIN,
+            paths: PathSet::Paths(vec![PathPattern::new(MODEL_PATH).map_err(tuf)?]),
+            terminating: true,
+            targets: None,
+        });
+        targets.delegations = Some(delegations);
+    }
     write_json(
         out,
         &Signed {
@@ -305,6 +356,45 @@ pub fn draft_targets(
         },
     )?;
     Ok(pack)
+}
+
+/// The model delegation of `targets`, if it has one: it must be exactly the
+/// one role this tool knows how to publish (one key, one path), or the targets
+/// are refused.
+fn model_delegation(targets: &Targets) -> Result<Option<&Delegations>> {
+    let Some(delegations) = &targets.delegations else {
+        return Ok(None);
+    };
+    let paths_ok = |role: &DelegatedRole| matches!(&role.paths, PathSet::Paths(paths) if paths.len() == 1 && paths.iter().all(|p| p.value() == MODEL_PATH));
+    match delegations.roles.as_slice() {
+        [] => Ok(None),
+        [role]
+            if role.name == MODEL_ROLE
+                && role.threshold == NonZeroU64::MIN
+                && role.keyids.len() == 1
+                && paths_ok(role) =>
+        {
+            Ok(Some(delegations))
+        }
+        _ => Err(ToolError::Refused(format!(
+            "the targets delegate something other than the {MODEL_ROLE} role for {MODEL_PATH} to one key"
+        ))),
+    }
+}
+
+/// Refuses a delegation key that is also a key of any role of `root`: the
+/// model key must be its own, so that a stolen one signs nothing else.
+fn check_model_key_is_its_own(delegations: &Delegations, root: &Root) -> Result<()> {
+    for id in delegations.keys.keys() {
+        if let Some((role, _)) = root.roles.iter().find(|(_, k)| k.keyids.contains(id)) {
+            return Err(ToolError::Refused(format!(
+                "the model key {} is also a {} key; it must be its own key",
+                hex(id),
+                role_name(*role)
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Adds the signature of the key at `key` to the targets metadata at
@@ -325,10 +415,15 @@ pub fn sign_targets(targets: &Path, root: &Path, key: &Path) -> Result<String> {
             root.signed.version
         )));
     }
+    if let Some(delegations) = model_delegation(&draft.signed)? {
+        check_model_key_is_its_own(delegations, &root.signed)?;
+    }
     add_signature(targets, draft, key)
 }
 
-/// Version and expiry of the online roles in one publication.
+/// Version and expiry of the online roles in one publication. The model
+/// role, if the targets delegate one, takes the timestamp's expiry (7 days)
+/// and the release's version.
 #[derive(Debug, Clone, Copy)]
 pub struct OnlineRelease {
     pub version: NonZeroU64,
@@ -341,11 +436,17 @@ pub struct OnlineRelease {
 /// it trusts), the offline-signed `targets` for the pack in `pack_dir`, and
 /// snapshot and timestamp metadata signed here with the online keys.
 /// Everything a client would check is checked first.
+///
+/// If the targets delegate the model ([`draft_targets_delegating_model`]),
+/// `model_key` must be the delegated key: the model's entry is then signed
+/// here, into `model.json`, and the snapshot lists it. Without a delegation
+/// `model_key` must be None.
 pub fn publish_signed(
     roots: &[PathBuf],
     targets: &Path,
     pack_dir: &Path,
     online_keys: &[PathBuf],
+    model_key: Option<&Path>,
     release: &OnlineRelease,
     out: &Path,
 ) -> Result<()> {
@@ -360,10 +461,40 @@ pub fn publish_signed(
             latest.signed.version
         ))
     })?;
-    read_pack(pack_dir)?;
-    let listed: HashSet<&str> = targets.signed.targets.keys().map(|n| n.raw()).collect();
+    // A model the publisher would sign must pass what the app will check of it
+    // (rift_core::pack::model_canary), so a broken one is stopped here, not on
+    // every phone.
+    if let Some(model) = read_pack(pack_dir)?.model {
+        rift_core::pack::model_canary(&model).map_err(|why| {
+            ToolError::Refused(format!("the model in the pack is refused: {why}"))
+        })?;
+    }
+    let delegations = model_delegation(&targets.signed)?;
+    match (delegations, model_key) {
+        (Some(_), None) => {
+            return Err(ToolError::Refused(
+                "the targets delegate the model; publish-signed needs the model key".into(),
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(ToolError::Refused(
+                "a model key was given, but the targets delegate nothing".into(),
+            ));
+        }
+        _ => {}
+    }
+    if let Some(delegations) = delegations {
+        check_model_key_is_its_own(delegations, &latest.signed)?;
+    }
     let names = pack_file_names(pack_dir);
-    if listed != names.iter().copied().collect() {
+    // With the model delegated, the targets list every pack file but the model.
+    let expected: HashSet<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| delegations.is_none() || *name != MODEL_PATH)
+        .collect();
+    let listed: HashSet<&str> = targets.signed.targets.keys().map(|n| n.raw()).collect();
+    if listed != expected {
         return Err(ToolError::Refused(format!(
             "the targets list {listed:?}, not exactly the pack files"
         )));
@@ -373,6 +504,11 @@ pub fn publish_signed(
         let path = pack_dir.join(name);
         let bytes = fs::read(&path).map_err(io(&path))?;
         let digest = Sha256::digest(&bytes);
+        if delegations.is_some() && name == MODEL_PATH {
+            // Signed below by the model role, not by the targets.
+            files.push((format!("{}.{name}", hex_bytes(&digest)), bytes));
+            continue;
+        }
         let signed_target = targets
             .signed
             .targets
@@ -414,6 +550,39 @@ pub fn publish_signed(
         .map(|path| Box::new(LocalKeySource { path: path.clone() }) as Box<dyn KeySource>)
         .collect();
     let targets_bytes = pretty(&targets)?;
+    // The model role's metadata, signed with the model key alone.
+    let model_signed = match (delegations, model_key) {
+        (Some(delegations), Some(key)) => {
+            let mut listed = Targets::new(
+                SPEC_VERSION.into(),
+                release.version,
+                release.timestamp_expires,
+            );
+            if pack_dir.join(MODEL_PATH).exists() {
+                let (name, target) = runtime()?.block_on(async {
+                    RepositoryEditor::build_target(pack_dir.join(MODEL_PATH))
+                        .await
+                        .map_err(tuf)
+                })?;
+                listed.targets.insert(name, target);
+            }
+            let sources: Vec<Box<dyn KeySource>> = vec![Box::new(LocalKeySource {
+                path: key.to_path_buf(),
+            })];
+            let role = DelegatedTargets {
+                name: MODEL_ROLE.into(),
+                targets: listed,
+            };
+            let holder = KeyHolder::Delegations(delegations.clone());
+            let rng = SystemRandom::new();
+            Some(runtime()?.block_on(async {
+                SignedRole::new(role, &holder, &sources, &rng)
+                    .await
+                    .map_err(tuf)
+            })?)
+        }
+        _ => None,
+    };
     let mut snapshot = Snapshot::new(
         SPEC_VERSION.into(),
         release.version,
@@ -423,6 +592,12 @@ pub fn publish_signed(
         "targets.json".into(),
         metafile(&targets_bytes, targets.signed.version),
     );
+    if let Some(model) = &model_signed {
+        snapshot.meta.insert(
+            format!("{MODEL_ROLE}.json"),
+            metafile(model.buffer(), model.signed().signed.version()),
+        );
+    }
     let rng = SystemRandom::new();
     let (snapshot, timestamp) = runtime()?.block_on(async {
         let snapshot = SignedRole::new(snapshot, &holder, &sources, &rng)
@@ -462,6 +637,12 @@ pub fn publish_signed(
             snapshot.buffer().clone(),
         ),
     ];
+    if let Some(model) = &model_signed {
+        written.push((
+            metadata.join(model.signed().signed.filename(true)),
+            model.buffer().clone(),
+        ));
+    }
     written.extend(
         files
             .into_iter()

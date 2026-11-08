@@ -13,6 +13,12 @@ name: intel update host
 # INTEL_SNAPSHOT_KEY and INTEL_TIMESTAMP_KEY, each the base64 of the online
 # .pk8 key. Without them the run says so and stops. These keys cannot sign a
 # pack or a root (key-policy.md).
+#
+# If the signed targets delegate Rift AI's model (key-policy.md, "The model
+# key"), the environment also needs INTEL_MODEL_KEY (the model key, base64,
+# its own key) and the run signs the newest model from the rolling
+# "model-latest" release (live-model.yml), which must pass the app's canary
+# before anything is signed.
 on:
   schedule:
     - cron: "37 4 */5 * *"
@@ -67,12 +73,21 @@ jobs:
           TAG: ${{ steps.ready.outputs.tag }}
           SNAPSHOT: ${{ secrets.INTEL_SNAPSHOT_KEY }}
           TIMESTAMP: ${{ secrets.INTEL_TIMESTAMP_KEY }}
+          MODEL: ${{ secrets.INTEL_MODEL_KEY }}
         run: |
           keys="$RUNNER_TEMP/online-keys"
           (umask 077 && mkdir "$keys")
           printf '%s' "$SNAPSHOT" | base64 -d > "$keys/rift-snapshot-publisher.pk8"
           printf '%s' "$TIMESTAMP" | base64 -d > "$keys/rift-timestamp-publisher.pk8"
+          [ -z "$MODEL" ] || printf '%s' "$MODEL" | base64 -d > "$keys/rift-model-publisher.pk8"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.tar.gz' --dir "$RUNNER_TEMP/bundle"
+          # The newest trained model, if live-model.yml has published one. pages.sh
+          # uses it only when the signed targets delegate the model, and refuses it otherwise.
+          if gh release download model-latest --repo "$GITHUB_REPOSITORY" --pattern url-model.bin --dir "$RUNNER_TEMP/model" 2>/dev/null \
+            && [ -n "$MODEL" ]; then
+            export RIFT_MODEL_FILE="$RUNNER_TEMP/model/url-model.bin"
+            echo "Signing the newest model (sha256 $(sha256sum "$RIFT_MODEL_FILE" | cut -d' ' -f1))." >> "$GITHUB_STEP_SUMMARY"
+          fi
           status=0
           sh tools/rift-pack/pages.sh publish "$RUNNER_TEMP"/bundle/*.tar.gz "$keys" "$RUNNER_TEMP/site" || status=$?
           rm -rf "$keys"

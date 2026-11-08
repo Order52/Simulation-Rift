@@ -25,6 +25,8 @@ impl InstallCheck for Accept {
 const ROOT: [&str; 3] = ["root-a", "root-b", "root-c"];
 const TARGETS: [&str; 2] = ["targets-a", "targets-b"];
 const ONLINE: [&str; 2] = ["snapshot", "timestamp"];
+/// The online key of the delegated model role (key-policy.md): its own key, in no root role.
+const MODEL: &str = "model";
 
 struct Maintainers {
     dir: tempfile::TempDir,
@@ -59,7 +61,7 @@ impl Maintainers {
     }
 
     fn keys(&self, g: &str) {
-        for holder in ROOT.iter().chain(&TARGETS).chain(&ONLINE) {
+        for holder in ROOT.iter().chain(&TARGETS).chain(&ONLINE).chain(&[MODEL]) {
             production::generate_key(&self.key(g, holder)).unwrap();
             production::export_public_key(
                 &self.key(g, holder),
@@ -129,7 +131,55 @@ impl Maintainers {
             snapshot_expires: days(14),
             timestamp_expires: days(7),
         };
-        production::publish_signed(&roots, &targets, &pack, &online, &release, &repo)?;
+        production::publish_signed(&roots, &targets, &pack, &online, None, &release, &repo)?;
+        Ok(repo)
+    }
+
+    /// As [`Self::release`], with `model` (a model file) delegated to generation
+    /// `g`'s model key; `signing_key` is the key the publisher is given for it
+    /// (the right one is `key(g, MODEL)`).
+    fn release_with_model(
+        &self,
+        roots: &[&Path],
+        g: &str,
+        version: u64,
+        model: &[u8],
+        signing_key: &Path,
+    ) -> Result<PathBuf, rift_pack::ToolError> {
+        let pack = self.path(&format!("pack-model-{g}-{version}"));
+        std::fs::create_dir(&pack).unwrap();
+        rift_pack::write_demo_pack(&pack, jiff::Timestamp::now()).unwrap();
+        std::fs::write(pack.join(rift_core::pack::MODEL), model).unwrap();
+        let version = NonZeroU64::new(version).unwrap();
+        let targets = self.path(&format!("targets-model-{g}-{version}.json"));
+        production::draft_targets_delegating_model(
+            &pack,
+            version,
+            days(90),
+            &targets,
+            &self.path(&format!("{g}-{MODEL}.pub.json")),
+        )?;
+        let newest = roots.last().unwrap();
+        for holder in TARGETS {
+            production::sign_targets(&targets, newest, &self.key(g, holder))?;
+        }
+        let repo = self.path(&format!("repo-model-{g}-{version}"));
+        let roots: Vec<PathBuf> = roots.iter().map(|p| p.to_path_buf()).collect();
+        let online: Vec<PathBuf> = ONLINE.iter().map(|h| self.key(g, h)).collect();
+        let release = OnlineRelease {
+            version,
+            snapshot_expires: days(14),
+            timestamp_expires: days(7),
+        };
+        production::publish_signed(
+            &roots,
+            &targets,
+            &pack,
+            &online,
+            Some(signing_key),
+            &release,
+            &repo,
+        )?;
         Ok(repo)
     }
 
@@ -324,6 +374,7 @@ fn the_tool_keeps_offline_and_online_keys_apart() {
         &targets,
         &pack,
         &online,
+        None,
         &release,
         &m.path("repo"),
     )
@@ -333,4 +384,74 @@ fn the_tool_keeps_offline_and_online_keys_apart() {
         error.to_string().contains("offline keys do not belong"),
         "{error}"
     );
+}
+
+/// The model the apps ship; any valid model file would do.
+const A_MODEL: &[u8] = include_bytes!("../../../models/url-model.bin");
+
+#[test]
+fn a_model_signed_by_the_delegated_model_key_is_installed() {
+    let m = Maintainers::new("a", &ROOT[..2]);
+    let repo = m
+        .release_with_model(&[&root_v1(&m)], "a", 1, A_MODEL, &m.key("a", MODEL))
+        .unwrap();
+    // The metadata has the model role, signed by its own key, listed in the snapshot.
+    let model_json = std::fs::read_to_string(repo.join("metadata/1.model.json")).unwrap();
+    assert!(model_json.contains(rift_core::pack::MODEL));
+    let snapshot = std::fs::read_to_string(repo.join("metadata/1.snapshot.json")).unwrap();
+    assert!(snapshot.contains("model.json"));
+    let pack = m.import(&repo).unwrap();
+    let installed = pack.model.expect("the delegated model is in the pack");
+    assert_eq!(
+        installed.digest_hex(),
+        rift_core::urlmodel::UrlModel::parse(A_MODEL)
+            .unwrap()
+            .digest_hex()
+    );
+}
+
+#[test]
+fn the_tool_refuses_a_model_key_that_is_not_the_delegated_one_or_not_its_own() {
+    let m = Maintainers::new("a", &ROOT[..2]);
+    // The publisher is handed another online key (the snapshot key) for the model.
+    let error = m
+        .release_with_model(&[&root_v1(&m)], "a", 1, A_MODEL, &m.key("a", "snapshot"))
+        .unwrap_err();
+    println!("result model key wrong: {error}");
+    // A delegation to a key that already signs a root role is refused when the
+    // targets holders sign it.
+    let pack = m.path("pack-shared");
+    std::fs::create_dir(&pack).unwrap();
+    rift_pack::write_demo_pack(&pack, jiff::Timestamp::now()).unwrap();
+    std::fs::write(pack.join(rift_core::pack::MODEL), A_MODEL).unwrap();
+    let targets = m.path("targets-shared.json");
+    production::draft_targets_delegating_model(
+        &pack,
+        NonZeroU64::MIN,
+        days(90),
+        &targets,
+        &m.path("a-snapshot.pub.json"),
+    )
+    .unwrap();
+    let error =
+        production::sign_targets(&targets, &root_v1(&m), &m.key("a", TARGETS[0])).unwrap_err();
+    println!("result model key shared: {error}");
+    assert!(error.to_string().contains("must be its own key"), "{error}");
+}
+
+#[test]
+fn a_changed_model_role_is_refused() {
+    let m = Maintainers::new("a", &ROOT[..2]);
+    let repo = m
+        .release_with_model(&[&root_v1(&m)], "a", 1, A_MODEL, &m.key("a", MODEL))
+        .unwrap();
+    // A model.json that is not the one the snapshot pinned (its hash and length).
+    let path = repo.join("metadata/1.model.json");
+    let changed = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("\"version\": 1", "\"version\": 7");
+    std::fs::write(&path, changed).unwrap();
+    let error = m.import(&repo).unwrap_err();
+    println!("result model role changed: {error}");
+    assert!(m.current().is_none());
 }

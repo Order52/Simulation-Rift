@@ -328,7 +328,9 @@ async fn verify(
     let required = pack::FILES.iter().map(|name| (*name, true));
     for (name, needed) in required.chain(pack::OPTIONAL.iter().map(|name| (*name, false))) {
         let target = TargetName::new(name).map_err(|e| refused(&e, Stage::Metadata))?;
-        let Some(listed) = repo.targets().signed.targets.get(&target) else {
+        // Through the delegations too: the model may be listed by the model
+        // role (key-policy.md), which tough has verified and holds to its path.
+        let Some(listed) = repo.targets().signed.find_target(&target, false).ok() else {
             if needed {
                 return Err(UpdateError::NotListed(name));
             }
