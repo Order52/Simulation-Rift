@@ -93,6 +93,10 @@ Release builds then verify updates against this root only (§13.2). The update U
 
 The targets expire after 90 days, and the feeds pack asks to be refreshed after 7. A release every week or two keeps devices current, and each one needs the two targets drives.
 
+## Optional: the model key (not yet part of the ceremony)
+
+To let Rift AI's model be updated without the targets holders, make an eighth key, its own, on the publishing machine (`sh tools/rift-pack/ceremony.sh key model publisher $K`, which writes `rift-model-publisher.pk8` and `.pub.json`), copy its public half to the transfer drive, and draft each release's targets with it: `rift-pack targets-draft <pack> <version> targets-<version>.json rift-model.pub.json`. The targets holders sign as in step 2 and publish with `-- <snapshot> <timestamp> -- <model key>`. The key must not be one of the root's keys. See key-policy.md, "The model key". On GitHub, put it in the `intel-publish` environment as `INTEL_MODEL_KEY` (`base64 < rift-model-publisher.pk8`), then set the repository variable `RIFT_LIVE_MODEL` to `true` to start `live-model.yml`. `ceremony.sh rehearse` covers a release with a delegated model and the Pages step; `ceremony.sh key model <name> <dir>` makes the key.
+
 ## GitHub Pages as the update host
 
 Instead of a server of your own, the repository can serve the database from GitHub Pages, at `https://order52.github.io/Simulation-Rift/rift/`. The online keys then live in GitHub, as the APK key already does (key-policy.md): whoever controls the account can delay or replay a release for up to 7 days, but cannot sign a pack or a root. Rehearsed on 27 October 2026 with throwaway 1-of-1 keys and the demo pack: bundle, publish, and `verify` from root v1 gave "OK … targets v1, timestamp v29885496".
