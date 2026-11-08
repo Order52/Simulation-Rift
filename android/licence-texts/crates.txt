@@ -9,15 +9,15 @@
 # Public License 2.0 (selectors; servo/stylo has no licence file). A crate
 # whose version changes fails android/notices.py until this list is checked
 # and updated.
-cranelift-assembler-x64 0.132.3 wasmtime-v45.0.3
-cranelift-bitset 0.132.3 wasmtime-v45.0.3
-pulley-interpreter 45.0.3 wasmtime-v45.0.3
-wasmtime-internal-core 45.0.3 wasmtime-v45.0.3
-wasmtime-internal-jit-icache-coherence 45.0.3 wasmtime-v45.0.3
+cranelift-assembler-x64 0.135.8 wasmtime-v48.0.8
+cranelift-bitset 0.135.8 wasmtime-v48.0.8
+pulley-interpreter 48.0.8 wasmtime-v48.0.8
+wasmtime-internal-core 48.0.8 wasmtime-v48.0.8
+wasmtime-internal-jit-icache-coherence 48.0.8 wasmtime-v48.0.8
 wasm-encoder 0.245.1 wasm-tools-v1.245.1
 wasmparser 0.245.1 wasm-tools-v1.245.1
-yara-x 1.21.0 yara-x-v1.21.0
-yara-x-parser 1.21.0 yara-x-v1.21.0
+yara-x 1.23.0 yara-x-v1.23.0
+yara-x-parser 1.23.0 yara-x-v1.23.0
 uniffi 0.32.2 uniffi-rs-v0.32.2
 uniffi_core 0.32.2 uniffi-rs-v0.32.2
 uniffi_pipeline 0.32.2 uniffi-rs-v0.32.2
@@ -32,3 +32,4 @@ io_tee 0.1.1 generic-apache
 typed-path 0.9.3 generic-apache
 flatbuffers 25.12.19 generic-apache
 seahash 4.1.0 generic-mit
+wasmtime-internal-component-util 48.0.8 wasmtime-v48.0.8

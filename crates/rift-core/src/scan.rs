@@ -350,7 +350,7 @@ mod tests {
     use super::*;
     use crate::pack::tests::{demo_rule, metadata, pack_files, validate};
 
-    const ENGINE: &str = "yara-x 1.21.0";
+    const ENGINE: &str = "yara-x 1.23.0";
     const MARKED: [u8; 32] = [1; 32];
     const OTHER: [u8; 32] = [2; 32];
 
