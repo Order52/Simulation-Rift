@@ -1333,49 +1333,18 @@ mod tests {
         repo.to_string_lossy().into_owned()
     }
 
-    #[test]
-    fn a_signed_packs_model_replaces_the_shipped_one() {
-        use rift_core::urlmodel::{MIN_BITS, ModelParts, Suffixes, UrlModel};
-        let dir = tempfile::tempdir().unwrap();
-        let publisher = dir.path().join("publisher");
-        let (trusted_root, first) = demo_repository(&publisher);
-        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
-        let shipped = Ai::load(include_bytes!("../../../models/url-model.bin").to_vec()).unwrap();
-        let navigator = Navigator::with_ai(Vec::new(), Vec::new(), Vec::new(), Some(shipped));
-        let level = |intel: &Arc<Intel>| {
-            let check = navigator.check(
-                "https://www.uotechnology.edu.iq/".into(),
-                Some(intel.clone()),
-                0,
-            );
-            check.ai.unwrap().level
-        };
-        install(&intel, trusted_root.clone(), first);
-        assert_eq!(intel.ai_digest(), None);
-        assert_eq!(level(&intel), ai::AiLevel::Low);
-
-        // Version 2 carries a model that rates every address High.
-        let model = UrlModel::encode(&ModelParts {
-            bits: MIN_BITS,
-            bias: 8.0,
-            elevated: 0.5,
-            high: 0.9,
-            weights: vec![0.0; 1 << MIN_BITS],
-            suffixes: Suffixes::default(),
-            popular: Vec::new(),
-            factors: None,
-        })
-        .unwrap();
-        let pack = publisher.join("pack-model");
+    /// Publishes version `version` of the demo pack with `model` as its Rift AI model.
+    fn publish_with_model(publisher: &std::path::Path, version: u64, model: &[u8]) -> String {
+        let pack = publisher.join(format!("pack-model-{version}"));
         std::fs::create_dir(&pack).unwrap();
         let later = jiff::Timestamp::now()
             .checked_add(jiff::SignedDuration::from_secs(1))
             .unwrap();
         rift_pack::write_demo_pack(&pack, later).unwrap();
-        std::fs::write(pack.join(rift_core::pack::MODEL), &model).unwrap();
-        let repo = publisher.join("repo-model");
-        let two = std::num::NonZeroU64::new(2).unwrap();
-        let release = rift_pack::Release::standard(two, jiff::Timestamp::now()).unwrap();
+        std::fs::write(pack.join(rift_core::pack::MODEL), model).unwrap();
+        let repo = publisher.join(format!("repo-model-{version}"));
+        let version = std::num::NonZeroU64::new(version).unwrap();
+        let release = rift_pack::Release::standard(version, jiff::Timestamp::now()).unwrap();
         rift_pack::publish(
             &publisher.join("root.json"),
             &publisher.join("keys"),
@@ -1384,14 +1353,64 @@ mod tests {
             &release,
         )
         .unwrap();
-        install(&intel, trusted_root, repo.to_string_lossy().into_owned());
-        let digest = UrlModel::parse(&model).unwrap().digest_hex();
+        repo.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn a_signed_packs_model_replaces_the_shipped_one() {
+        use rift_core::urlmodel::UrlModel;
+        let dir = tempfile::tempdir().unwrap();
+        let publisher = dir.path().join("publisher");
+        let (trusted_root, first) = demo_repository(&publisher);
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        install(&intel, trusted_root.clone(), first);
+        assert_eq!(intel.ai_digest(), None);
+
+        // Version 2 carries a model that passes the canary: the shipped model
+        // itself, which is what a retrained one is checked against.
+        let model = include_bytes!("../../../models/url-model.bin");
+        let repo = publish_with_model(&publisher, 2, model);
+        install(&intel, trusted_root, repo);
+        let digest = UrlModel::parse(model).unwrap().digest_hex();
         assert_eq!(intel.ai_digest(), Some(digest.clone()));
-        assert_eq!(level(&intel), ai::AiLevel::High);
         // A restart reads the same model back from the installed snapshot.
         let reopened =
             Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
         assert_eq!(reopened.ai_digest(), Some(digest));
+    }
+
+    #[test]
+    fn a_signed_packs_model_that_fails_the_canary_is_refused() {
+        use rift_core::urlmodel::{MIN_BITS, ModelParts, Suffixes, UrlModel};
+        let dir = tempfile::tempdir().unwrap();
+        let publisher = dir.path().join("publisher");
+        let (trusted_root, first) = demo_repository(&publisher);
+        let intel = Intel::open(dir.path().join("intel").to_string_lossy().into_owned()).unwrap();
+        install(&intel, trusted_root.clone(), first);
+        // Every address High, and every address Low: both are refused.
+        for (version, bias) in [(2u64, 8.0f32), (3, -8.0)] {
+            let model = UrlModel::encode(&ModelParts {
+                bits: MIN_BITS,
+                bias,
+                elevated: 0.5,
+                high: 0.9,
+                weights: vec![0.0; 1 << MIN_BITS],
+                suffixes: Suffixes::default(),
+                popular: Vec::new(),
+                factors: None,
+            })
+            .unwrap();
+            let repo = publish_with_model(&publisher, version, &model);
+            let refused = intel
+                .clone()
+                .verify_offline(trusted_root.clone(), repo)
+                .unwrap_err();
+            assert!(
+                matches!(&refused, IntelFailure::Refused { detail, .. } if detail.contains("Rift AI model was refused")),
+                "{refused:?}"
+            );
+            assert_eq!(intel.ai_digest(), None);
+        }
     }
 
     /// Verifies and installs `repo`, with the rule check run by a confined worker.

@@ -287,6 +287,15 @@ impl Intel {
                 refused(reason, &e)
             },
         )?;
+        // A model in the pack replaces the one in use only if it passes the canary.
+        if let Some(model) = &pack.model
+            && let Err(why) = rift_core::pack::model_canary(model)
+        {
+            return Err(refused(
+                UpdateRefusal::Damaged,
+                &format!("the update's Rift AI model was refused: {why}"),
+            ));
+        }
         let job = NEXT_INTEL_JOB.fetch_add(2, Ordering::SeqCst);
         let rules = RulesStep::new(job, 0, &pack)?;
         Ok(Arc::new(PendingIntel {
