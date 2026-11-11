@@ -20,7 +20,18 @@ T=tools/rift-train
 mkdir -p "$D" "$P"
 fetch() { curl -fsSL --retry 3 -o "$1" "$2"; }
 
-fetch "$D/phishing-db-active.txt" https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
+# Phishing.Database stopped committing its lists to GitHub on 2 Oct 2026 and
+# publishes them at phish.co.za now (its README). That host first; the GitHub
+# copy, which no longer changes, is the fallback, and a stale feed is said
+# aloud: a retrain on links the memory already holds learns nothing new.
+if curl -fsSL --retry 3 -o "$D/phishing-db-active.txt" https://phish.co.za/latest/phishing-links-ACTIVE.txt && [ "$(wc -l < "$D/phishing-db-active.txt")" -ge 100000 ]; then
+  echo "Phishing.Database: phish.co.za"
+else
+  echo "Phishing.Database: phish.co.za is not answering; using the GitHub copy" >&2
+  fetch "$D/phishing-db-active.txt" https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
+  last="$(curl -fsSL https://api.github.com/repos/Phishing-Database/Phishing.Database/commits?per_page=1 | python3 -I -c 'import json, sys; print(json.load(sys.stdin)[0]["commit"]["committer"]["date"][:10])' 2>/dev/null || echo unknown)"
+  echo "STALE FEED: the GitHub copy of Phishing.Database was last updated $last; this model may have learned nothing new" >&2
+fi
 # The live list: every split file in phishing-links-ACTIVE/, joined.
 fetch "$D/active-index.json" https://api.github.com/repos/Phishing-Database/Phishing.Database/contents/phishing-links-ACTIVE
 python3 -I -c '

@@ -163,3 +163,5 @@ Run on a computer (`tools/rift-train`, today's feeds, the 27 October memory), no
 - **The recency weights could not be measured:** the memory holds one month, so every weight is about 0.9.
 
 What would help: a fresh source of full phishing URLs whose licence allows training and shipping a model, or a different way to keep the model current from what the lists already say. None is chosen yet.
+
+**Where Phishing.Database went (9 Nov 2026).** Its README now points to `https://phish.co.za/latest/` for the lists; the GitHub copy stopped on 2 October. `retrain.sh` tries that host first and falls back to the GitHub copy with a `STALE FEED` warning. On 9 Nov the host answered 503 (no server), so the fallback was tested and the new host was not: its file format and freshness are unchecked. The project's source repository (`Phishing-Database/phishing`, `additions/permanent/links.list`) is updated daily but holds only about 11,000 curated links, 270 of them on sites the memory has not seen, too few for the forward test (300 needed).
