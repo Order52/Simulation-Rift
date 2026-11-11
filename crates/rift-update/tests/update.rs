@@ -106,7 +106,7 @@ fn offline_import_installs_a_verified_pack() {
             matched: vec!["rift_demo_marker".into()],
             truncated: false,
         },
-        engine: "yara-x 1.21.0",
+        engine: "yara-x 1.23.0",
         now_unix: pack.metadata.created_unix,
     });
     assert_eq!(verdict.status, Status::KnownMalicious);

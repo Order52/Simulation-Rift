@@ -101,6 +101,8 @@ struct Example {
     view: View,
     source: usize,
     split: Split,
+    /// How much a training step counts: 1 unless the line gave one (see [`load`]).
+    weight: f32,
 }
 
 #[derive(Debug)]
@@ -492,6 +494,19 @@ fn load(
                 if source.hosts && kept >= MAX_HOST_LIST && !source.malicious {
                     break;
                 }
+                // A line may end in <TAB><weight> (memory.py): how much the
+                // example counts in training; measuring ignores it.
+                let (line, weight) = match line.split_once('\t') {
+                    Some((url, w)) => (
+                        url.trim(),
+                        w.trim()
+                            .parse::<f32>()
+                            .ok()
+                            .filter(|w| w.is_finite() && *w > 0.0)
+                            .unwrap_or(1.0),
+                    ),
+                    None => (line, 1.0),
+                };
                 let raw = if source.hosts {
                     format!("http://{line}/")
                 } else {
@@ -557,6 +572,7 @@ fn load(
                         view: View::HostOnly,
                         source: index,
                         split,
+                        weight,
                     });
                 }
                 examples.push(Example {
@@ -566,6 +582,7 @@ fn load(
                     view: View::Address,
                     source: index,
                     split,
+                    weight,
                 });
                 kept += 1;
             }
@@ -617,12 +634,15 @@ fn train(
     let mut order: Vec<usize> = (0..examples.len())
         .filter(|&i| examples[i].split == Split::Train && !sources[examples[i].source].eval_only)
         .collect();
+    // Classes count equally by their weights (all 1 unless a source says
+    // otherwise), so older, down-weighted pages do not tip the balance.
     let positives = order
         .iter()
         .filter(|&&i| examples[i].malicious)
-        .count()
-        .max(1) as f32;
-    let negatives = (order.len() as f32 - positives).max(1.0);
+        .map(|&i| examples[i].weight)
+        .sum::<f32>()
+        .max(1.0);
+    let negatives = (order.iter().map(|&i| examples[i].weight).sum::<f32>() - positives).max(1.0);
     let total = positives + negatives;
     let (weight_pos, weight_neg) = (total / (2.0 * positives), total / (2.0 * negatives));
     let mut rng = Rng(seed | 1);
@@ -640,7 +660,7 @@ fn train(
                 let (index, sign) = f.bucket(bits);
                 features.push((index, sign * f.value));
             });
-            let cw = if e.malicious { weight_pos } else { weight_neg };
+            let cw = e.weight * if e.malicious { weight_pos } else { weight_neg };
             loss += f64::from(model.step(&mut state, &features, e.malicious, cw, l2, factor_l2));
         }
         eprintln!(

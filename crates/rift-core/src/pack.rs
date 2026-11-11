@@ -256,6 +256,59 @@ impl Pack {
     }
 }
 
+/// Ordinary addresses, some on the hosting platforms the fakes use: a model
+/// that rates any of them High is refused (see [`model_canary`]).
+pub const CANARY_ORDINARY: [&str; 4] = [
+    "https://rust-lang.github.io/rustup/",
+    "https://my-portfolio.vercel.app/",
+    "https://hello-world.workers.dev/",
+    "https://shop.local-hardware.de/kontakt",
+];
+
+/// Fake sign-in addresses: a model must warn (Elevated or High) on at least
+/// [`CANARY_FAKES_NEEDED`] of them.
+pub const CANARY_FAKES: [&str; 7] = [
+    "http://secure-paypal-login.verify-account.xyz/signin/update.php?id=1",
+    "https://appleid.apple.com.account-verify.top/",
+    "https://paypa1-secure.workers.dev/login",
+    "https://chase-online-verify.netlify.app/login",
+    "http://192.168.4.20/bank/login.php",
+    "https://metamask-wallet-restore.pages.dev/",
+    "https://appleid-verify-account.web.app/",
+];
+
+pub const CANARY_FAKES_NEEDED: usize = 5;
+
+/// A last check before a model that arrives in an update replaces the one in
+/// use: it must not rate ordinary addresses High and must warn on most fakes,
+/// so a broken or hostile model (everything High, or nothing) is refused and
+/// the current one stays. It is not an accuracy test; the training gate is.
+pub fn model_canary(model: &UrlModel) -> Result<(), String> {
+    let assess = |address: &str| {
+        let url = crate::urlcanon::canonicalize(address.as_bytes())
+            .map_err(|_| format!("canary address {address} does not parse"))?;
+        Ok::<_, String>(model.assess(&url, urlmodel::View::Address).level)
+    };
+    for address in CANARY_ORDINARY {
+        if assess(address)? == urlmodel::Level::High {
+            return Err(format!("it rates the ordinary address {address} High"));
+        }
+    }
+    let mut warned = 0usize;
+    for address in CANARY_FAKES {
+        if assess(address)? >= urlmodel::Level::Elevated {
+            warned = warned.saturating_add(1);
+        }
+    }
+    if warned < CANARY_FAKES_NEEDED {
+        return Err(format!(
+            "it warns on {warned} of {} fake sign-in addresses, under the {CANARY_FAKES_NEEDED} needed",
+            CANARY_FAKES.len()
+        ));
+    }
+    Ok(())
+}
+
 /// How far behind a pack's creation time the clock may read before it counts as wrong.
 pub const CLOCK_TOLERANCE_SECS: u64 = 3600;
 

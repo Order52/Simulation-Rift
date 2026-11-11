@@ -44,7 +44,7 @@ case "$cmd" in
   key)
     [ $# = 3 ] || die "usage: key <role> <name> <drive-dir>"
     role="$1" name="$2" drive="$3"
-    case "$role" in root | targets) offline ;; snapshot | timestamp) ;; *) die "role is root, targets, snapshot or timestamp" ;; esac
+    case "$role" in root | targets) offline ;; snapshot | timestamp | model) ;; *) die "role is root, targets, snapshot, timestamp or model" ;; esac
     case "$name" in *[!a-z0-9-]* | "") die "name: lower-case letters, digits and -" ;; esac
     [ -d "$drive" ] || die "$drive is not a directory (mount the drive first)"
     key="$drive/rift-$role-$name.pk8" pub="$drive/rift-$role-$name.pub.json"
@@ -93,11 +93,13 @@ case "$cmd" in
     self="$0"
     export RIFT_CEREMONY_REHEARSAL=1
     if [ -z "${RIFT_PACK:-}" ]; then
-      cargo build --quiet --locked --release -p rift-pack -p rift-update --examples
+      # --examples alone builds no binary, so the two are built separately.
+      cargo build --quiet --locked --release -p rift-pack
+      cargo build --quiet --locked --release -p rift-update --examples
       RIFT_PACK="$(pwd)/target/release/rift-pack"; export RIFT_PACK
     fi
     # Seven drives, one key each, as seven holders would have.
-    for k in root:a root:b root:c targets:a targets:b snapshot:publisher timestamp:publisher; do
+    for k in root:a root:b root:c targets:a targets:b snapshot:publisher timestamp:publisher model:publisher; do
       mkdir "$dir/drive-${k%%:*}-${k#*:}"
       sh "$self" key "${k%%:*}" "${k#*:}" "$dir/drive-${k%%:*}-${k#*:}" > /dev/null
     done
@@ -125,6 +127,29 @@ case "$cmd" in
     echo "== the app's own verifier"
     target="$(dirname "$RIFT_PACK")/examples/verify"
     "$target" "$dir/root-1.json" "$dir/repo" "$dir/datastore"
+    echo "== a release with the model delegated to its own online key"
+    mkdir "$dir/pack-model"
+    pack_tool demo "$dir/pack-model" > /dev/null
+    cp "$(dirname "$self")/../../models/url-model.bin" "$dir/pack-model/url-model.bin"
+    pack_tool targets-draft "$dir/pack-model" 2 "$dir/targets-2.json" "$(pub model publisher)"
+    sh "$self" sign-targets "$dir/targets-2.json" "$dir/root-1.json" "$(key targets a)"
+    sh "$self" sign-targets "$dir/targets-2.json" "$dir/root-1.json" "$(key targets b)"
+    echo "== the model key given for another role's key is refused"
+    if pack_tool publish-signed "$dir/targets-2.json" "$dir/pack-model" "$dir/repo-y" 2 "$dir/root-1.json" -- \
+      "$(key snapshot publisher)" "$(key timestamp publisher)" -- "$(key snapshot publisher)" 2>&1; then die "a wrong model key was accepted"; fi
+    echo "== no model key at all is refused"
+    if pack_tool publish-signed "$dir/targets-2.json" "$dir/pack-model" "$dir/repo-z" 2 "$dir/root-1.json" -- \
+      "$(key snapshot publisher)" "$(key timestamp publisher)" 2>&1; then die "a delegated model was published without its key"; fi
+    pack_tool publish-signed "$dir/targets-2.json" "$dir/pack-model" "$dir/repo-model" 2 "$dir/root-1.json" -- \
+      "$(key snapshot publisher)" "$(key timestamp publisher)" -- "$(key model publisher)"
+    "$target" "$dir/root-1.json" "$dir/repo-model" "$dir/datastore-model"
+    echo "== the Pages step: a newer model replaces the bundle's, a broken one is refused"
+    mkdir "$dir/online-keys"
+    cp "$(key snapshot publisher)" "$(key timestamp publisher)" "$(key model publisher)" "$dir/online-keys/"
+    sh "$(dirname "$self")/pages.sh" bundle "$dir/targets-2.json" "$dir/pack-model" "$dir/bundle.tar.gz" "$dir/root-1.json" > /dev/null
+    printf 'not a model' > "$dir/broken-model.bin"
+    if RIFT_MODEL_FILE="$dir/broken-model.bin" sh "$(dirname "$self")/pages.sh" publish "$dir/bundle.tar.gz" "$dir/online-keys" "$dir/site-x" 2>&1; then die "a broken model was published"; fi
+    RIFT_MODEL_FILE="$(dirname "$self")/../../models/url-model.bin" sh "$(dirname "$self")/pages.sh" publish "$dir/bundle.tar.gz" "$dir/online-keys" "$dir/site"
     rm -f "$dir"/drive-*/*.pk8
     echo "rehearsal passed; its throwaway private keys are deleted"
     ;;

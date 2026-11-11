@@ -12,6 +12,12 @@
 #     snapshot and timestamp with the online keys only (rift-snapshot-publisher.pk8,
 #     rift-timestamp-publisher.pk8), checks the result as the app would from
 #     the oldest root, and lays it out under <site-dir>/rift/.
+#     If the bundle's signed targets delegate the model (key-policy.md, "The
+#     model key"), the model key (rift-model-publisher.pk8 in the same
+#     directory) signs the model too, and RIFT_MODEL_FILE, if set, replaces
+#     the bundle's model first: it must pass the app's canary, or nothing is
+#     published. Without a delegation a newer model is refused, because the
+#     offline targets pin the one in the bundle.
 set -eu
 mode="$1"; shift
 pack() { cargo run --quiet --locked --release -p rift-pack -- "$@"; }
@@ -43,9 +49,21 @@ publish)
   # Minutes since 1970: higher at every run, as snapshot and timestamp versions must be.
   version=$(( $(date -u +%s) / 60 ))
   roots="$(ls "$W/roots" | sort -n | sed "s|^|$W/roots/|")"
-  # shellcheck disable=SC2086 # the root paths have no spaces (mktemp, numbered names)
+  delegated=no
+  python3 -I -c 'import json, sys; sys.exit(0 if json.load(open(sys.argv[1]))["signed"].get("delegations", {}).get("roles") else 1)' \
+    "$W/targets.json" && delegated=yes
+  if [ -n "${RIFT_MODEL_FILE:-}" ]; then
+    [ "$delegated" = yes ] || { echo "pages.sh: a newer model was given, but the signed targets do not delegate the model" >&2; exit 1; }
+    cp "$RIFT_MODEL_FILE" "$W/pack/url-model.bin"
+  fi
+  model_key=""
+  if [ "$delegated" = yes ]; then
+    [ -f "$keys/rift-model-publisher.pk8" ] || { echo "pages.sh: the targets delegate the model, but there is no rift-model-publisher.pk8" >&2; exit 1; }
+    model_key="$keys/rift-model-publisher.pk8"
+  fi
+  # shellcheck disable=SC2086 # the root paths have no spaces (mktemp, numbered names); $model_key is a path or nothing
   pack publish-signed "$W/targets.json" "$W/pack" "$W/repo" "$version" $roots \
-    -- "$keys/rift-snapshot-publisher.pk8" "$keys/rift-timestamp-publisher.pk8"
+    -- "$keys/rift-snapshot-publisher.pk8" "$keys/rift-timestamp-publisher.pk8" ${model_key:+-- "$model_key"}
   cargo run --quiet --locked -p rift-update --example verify -- "$W/roots/1.root.json" "$W/repo" "$W/datastore"
   rm -rf "$site"
   mkdir -p "$site/rift"

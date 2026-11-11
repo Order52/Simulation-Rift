@@ -24,19 +24,37 @@ The data is checked too: a source whose test sites fell below half of the
 shipped report's (a feed that failed or shrank) refuses the model, which
 would otherwise learn from a lopsided month.
 
+The forward test (retrain.sh): phishing links that appeared since the last
+run, on sites the memory had never seen, are held out of training (the source
+"forward") and scored by the new model and by the shipped one. A new model
+that catches more than 1 point fewer of them at High than the shipped model
+is refused, whatever its site-split figures say: that is the drift the other
+limits cannot see. It is judged only when at least MIN_FORWARD links were
+measured, and the source is not part of the shrunken-feed check (its size
+follows the week's feed).
+
 usage: python3 -I gate.py <shipped.json> <new.json> [<baseline.json>]   (prints a summary; exit 1 if refused)
 """
 import json, sys
+
+FORWARD = "forward"
+MIN_FORWARD = 300
+FORWARD_MARGIN = 0.01
 
 old, new = (json.load(open(path)) for path in sys.argv[1:3])
 references = [("shipped", old)] + [("baseline", json.load(open(path))) for path in sys.argv[3:4]]
 
 
-def high(report, source):
+def row_of(report, source):
     for row in report["test"]:
         if row["source"] == source and row["view"] == "address":
-            return row["high_rate"]
+            return row
     return None
+
+
+def high(report, source):
+    row = row_of(report, source)
+    return None if row is None else row["high_rate"]
 
 
 problems = []
@@ -75,7 +93,27 @@ if champion:
 
 
 def sizes(report):
-    return {row["source"]: row["n"] for row in report["test"] if row["view"] == "address"}
+    return {row["source"]: row["n"] for row in report["test"] if row["view"] == "address" and row["source"] != FORWARD}
+
+
+forward_new = row_of(new, FORWARD)
+forward_note = None
+if forward_new is not None and forward_new["n"] >= MIN_FORWARD:
+    forward_old = row_of(champion, FORWARD) if champion else None
+    if forward_old is None:
+        forward_note = f"forward test: {forward_new['high_rate']:.2%} of {forward_new['n']} new links at High (shipped model not measured on them)"
+    else:
+        forward_note = (
+            f"forward test: {forward_new['high_rate']:.2%} of {forward_new['n']} new links at High "
+            f"(shipped model on the same links: {forward_old['high_rate']:.2%})"
+        )
+        if forward_new["high_rate"] < forward_old["high_rate"] - FORWARD_MARGIN:
+            problems.append(
+                f"forward test: {forward_new['high_rate']:.2%} of {forward_new['n']} new links at High, "
+                f"against the shipped model's {forward_old['high_rate']:.2%} on the same links"
+            )
+elif forward_new is not None:
+    forward_note = f"forward test: only {forward_new['n']} new links (fewer than {MIN_FORWARD}), not judged"
 
 
 for source, n in sizes(old).items():
@@ -87,6 +125,8 @@ print(f"AUC {auc_old:.4f} -> {auc_new:.4f}" + (f" (shipped model on the same sit
 for source in [r["source"] for r in new["test"] if r["view"] == "address"]:
     before, after = high(old, source), high(new, source)
     print(f"  {source:<18} High {'-' if before is None else f'{before:.2%}':>7} -> {after:.2%}")
+if forward_note:
+    print(forward_note)
 print(f"model {new['model']['sha256']} ({new['model']['bytes']} bytes)")
 if problems:
     print("refused:\n  " + "\n  ".join(problems))

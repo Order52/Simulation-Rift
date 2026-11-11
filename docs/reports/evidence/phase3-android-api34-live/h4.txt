@@ -1,0 +1,13 @@
+in front: outsider: org.simulationrift.outsider/org.simulationrift.outsider.OutsiderActivity; home: org.simulationrift.app/org.simulationrift.app.MainActivity; browser: org.simulationrift.browser/org.simulationrift.browser.BrowserActivity
+--------- beginning of main
+11-08 18:12:09.759 11854 11854 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Rift outsider (test) | Outsider text
+11-08 18:12:09.870 11854 11854 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Rift outsider (test) | Outsider text
+11-08 18:12:09.894 11854 11854 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Rift outsider (test) | Outsider text
+11-08 18:12:10.188 11854 11854 I rift-outsider-a11y: window org.simulationrift.outsider: 2 texts: Rift outsider (test) | Outsider text
+11-08 18:12:27.571 11854 11854 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sun, Nov 8 | Phone | Messages | Termux | Chrome | Rift
+11-08 18:12:27.605 11854 11854 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sun, Nov 8 | Phone | Messages | Termux | Chrome | Rift
+11-08 18:12:27.628 11854 11854 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sun, Nov 8 | Phone | Messages | Termux | Chrome | Rift
+11-08 18:12:27.638 11854 11854 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sun, Nov 8 | Phone | Messages | Termux | Chrome | Rift
+11-08 18:12:27.732 11854 11854 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sun, Nov 8 | Phone | Messages | Termux | Chrome | Rift
+11-08 18:12:27.834 11854 11854 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sun, Nov 8 | Phone | Messages | Termux | Chrome | Rift
+11-08 18:12:27.853 11854 11854 I rift-outsider-a11y: window com.google.android.apps.nexuslauncher: 6 texts: Sun, Nov 8 | Phone | Messages | Termux | Chrome | Rift

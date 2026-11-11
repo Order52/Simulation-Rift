@@ -227,6 +227,16 @@ mod tests {
         assert!(report.contains(&format!("\"sha256\": \"{}\"", ai.digest())));
     }
 
+    /// The check an installed update's model must pass (rift_core::pack::model_canary):
+    /// the weekly retrain's `cargo test -p rift-ffi ai::` holds each new model to it too.
+    #[test]
+    fn the_shipped_model_passes_the_update_canary() {
+        let model =
+            rift_core::urlmodel::UrlModel::parse(include_bytes!("../../../models/url-model.bin"))
+                .unwrap();
+        assert_eq!(rift_core::pack::model_canary(&model), Ok(()));
+    }
+
     #[test]
     fn the_shipped_model_does_not_score_the_most_visited_sites() {
         let ai = shipped();

@@ -20,7 +20,18 @@ T=tools/rift-train
 mkdir -p "$D" "$P"
 fetch() { curl -fsSL --retry 3 -o "$1" "$2"; }
 
-fetch "$D/phishing-db-active.txt" https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
+# Phishing.Database stopped committing its lists to GitHub on 2 Oct 2026 and
+# publishes them at phish.co.za now (its README). That host first; the GitHub
+# copy, which no longer changes, is the fallback, and a stale feed is said
+# aloud: a retrain on links the memory already holds learns nothing new.
+if curl -fsSL --retry 3 -o "$D/phishing-db-active.txt" https://phish.co.za/latest/phishing-links-ACTIVE.txt && [ "$(wc -l < "$D/phishing-db-active.txt")" -ge 100000 ]; then
+  echo "Phishing.Database: phish.co.za"
+else
+  echo "Phishing.Database: phish.co.za is not answering; using the GitHub copy" >&2
+  fetch "$D/phishing-db-active.txt" https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
+  last="$(curl -fsSL https://api.github.com/repos/Phishing-Database/Phishing.Database/commits?per_page=1 | python3 -I -c 'import json, sys; print(json.load(sys.stdin)[0]["commit"]["committer"]["date"][:10])' 2>/dev/null || echo unknown)"
+  echo "STALE FEED: the GitHub copy of Phishing.Database was last updated $last; this model may have learned nothing new" >&2
+fi
 # The live list: every split file in phishing-links-ACTIVE/, joined.
 fetch "$D/active-index.json" https://api.github.com/repos/Phishing-Database/Phishing.Database/contents/phishing-links-ACTIVE
 python3 -I -c '
@@ -65,24 +76,45 @@ for sample in commoncrawl-popular commoncrawl-platforms; do
 done
 
 memory=""
+forward=""
 if [ -n "${RIFT_AI_MEMORY:-}" ]; then
   previous=-
   [ -s "$RIFT_AI_MEMORY" ] && { cp "$RIFT_AI_MEMORY" "$D/memory-before.tsv"; previous="$D/memory-before.tsv"; }
-  python3 -I $T/memory.py "$(date -u +%Y-%m)" "$previous" "$RIFT_AI_MEMORY" "$P/memory.txt" "$P/phishing-db.txt" "$P/phishing-db-now.txt"
+  # The forward test (gate.py): phishing links that are new since the last run,
+  # on sites the memory had never seen, held out of this run's training and
+  # scored by the new model and the shipped one. Not without a memory to
+  # tell new from old, and capped so it takes little from training.
+  if [ "$previous" != - ]; then
+    cut -f2 "$previous" > "$D/memory-before-urls.txt"
+    cat "$P/phishing-db.txt" "$P/phishing-db-now.txt" > "$D/feeds-now.txt"
+    python3 -I $T/new_sites.py "$P/psl-ascii.txt" "$D/memory-before-urls.txt" "$D/feeds-now.txt" "$D/forward-all.txt"
+    sort -u "$D/forward-all.txt" | awk -v max=20000 '{ line[NR] = $0 } END { step = int((NR + max - 1) / max); if (step < 1) step = 1; for (i = step; i <= NR; i += step) print line[i] }' > "$P/forward.txt"
+    echo "forward test: $(wc -l < "$P/forward.txt") new links held out of training"
+    [ -s "$P/forward.txt" ] && forward="--source forward:malicious:urls:$P/forward.txt:eval"
+  fi
+  RIFT_AI_EXCLUDE="$([ -s "$P/forward.txt" ] && echo "$P/forward.txt")" \
+    python3 -I $T/memory.py "$(date -u +%Y-%m)" "$previous" "$RIFT_AI_MEMORY" "$P/memory.txt" "$P/phishing-db.txt" "$P/phishing-db-now.txt"
   memory="--source memory:malicious:urls:$P/memory.txt"
+  # The held-out links are not trained on through the feeds' own sources either.
+  if [ -n "$forward" ]; then
+    for list in phishing-db phishing-db-now; do
+      grep -vxFf "$P/forward.txt" "$P/$list.txt" > "$P/$list.txt.kept" || true
+      mv "$P/$list.txt.kept" "$P/$list.txt"
+    done
+  fi
 fi
 
 github=""
 [ -s "$P/github-platforms.txt" ] && github="--source github-platforms:benign:urls:$P/github-platforms.txt"
 # The shipped model, measured on this run's test sites for the gate.
 cp models/url-model.bin "$D/champion.bin"
-# shellcheck disable=SC2086 # $github and $memory are one option or none
+# shellcheck disable=SC2086 # $github, $memory and $forward are one option or none
 cargo run --quiet --locked --release -p rift-train --bin rift-train -- --bits 19 --epochs 3 --factors 4,16,0.1 \
   --out models/url-model.bin --report models/url-model.json --champion "$D/champion.bin" \
   --suffixes "$P/psl-ascii.txt" --popular "$P/tranco-hosts.txt:10000" --platforms $T/platforms.txt \
   --source "phishdb:malicious:urls:$P/phishing-db.txt" --source "phishdb-2026:malicious:urls:$P/phishing-db-now.txt" \
   --source "phiusiil-phish:malicious:urls:$P/phiusiil-phishing.txt" --source "commoncrawl:benign:urls:$P/commoncrawl.txt" \
   --source "popular:benign:urls:$P/commoncrawl-popular.txt" --source "platforms:benign:urls:$P/commoncrawl-platforms.txt" \
-  $github $memory \
+  $github $memory $forward \
   --source "tranco:benign:hosts:$P/tranco-hosts.txt" --source "phiusiil-legit:benign:urls:$P/phiusiil-legit.txt" \
   > /dev/null

@@ -19,9 +19,10 @@
 //! rift-pack root-draft <policy.json> <root.json>  an unsigned root from a policy
 //! rift-pack root-sign <root.json> <key.pk8> [<previous-root.json>]
 //! rift-pack root-check <root.json> [<previous-root.json>]
-//! rift-pack targets-draft <pack-dir> <version> <targets.json>   valid for 90 days
+//! rift-pack targets-draft <pack-dir> <version> <targets.json> [<model-key.pub.json>]   valid for 90 days; with a
+//!                                                 model key, the model is delegated to it (key-policy.md)
 //! rift-pack targets-sign <targets.json> <root.json> <key.pk8>
-//! rift-pack publish-signed <targets.json> <pack-dir> <repo-dir> <version> <root.json>... -- <online-key.pk8>...
+//! rift-pack publish-signed <targets.json> <pack-dir> <repo-dir> <version> <root.json>... -- <online-key.pk8>... [-- <model-key.pk8>]
 //! ```
 
 use std::num::NonZeroU64;
@@ -134,28 +135,47 @@ fn run(args: &[&str]) -> Result<String, ToolError> {
         ["root-check", root, previous @ ..] if previous.len() <= 1 => {
             production::check_root(Path::new(root), previous.first().map(Path::new))
         }
-        ["targets-draft", pack, v, out] => {
+        ["targets-draft", pack, v, out, model @ ..] if model.len() <= 1 => {
             let v = version(v)?;
-            production::draft_targets(Path::new(pack), v, days_from_now(90)?, Path::new(out)).map(
-                |pack| {
-                    format!(
-                        "unsigned targets v{v} for {} written to {out}",
-                        pack.digest.hex()
-                    )
-                },
-            )
+            let expires = days_from_now(90)?;
+            let drafted = match model.first() {
+                None => production::draft_targets(Path::new(pack), v, expires, Path::new(out)),
+                Some(key) => production::draft_targets_delegating_model(
+                    Path::new(pack),
+                    v,
+                    expires,
+                    Path::new(out),
+                    Path::new(key),
+                ),
+            };
+            drafted.map(|pack| {
+                format!(
+                    "unsigned targets v{v} for {} written to {out}",
+                    pack.digest.hex()
+                )
+            })
         }
         ["targets-sign", targets, root, key] => {
             production::sign_targets(Path::new(targets), Path::new(root), Path::new(key))
                 .map(|id| format!("{targets} signed by key {id}"))
         }
         ["publish-signed", targets, pack, out, v, rest @ ..] => {
-            let mut parts = rest.splitn(2, |a| *a == "--");
+            let mut parts = rest.splitn(3, |a| *a == "--");
             let (roots, keys) = match (parts.next(), parts.next()) {
                 (Some(roots), Some(keys)) if !roots.is_empty() && !keys.is_empty() => (roots, keys),
                 _ => {
                     return Err(ToolError::Refused(
-                        "publish-signed needs <root.json>... -- <online-key.pk8>...".into(),
+                        "publish-signed needs <root.json>... -- <online-key.pk8>... [-- <model-key.pk8>]"
+                            .into(),
+                    ));
+                }
+            };
+            let model = match parts.next() {
+                None => None,
+                Some([key]) => Some(PathBuf::from(key)),
+                Some(_) => {
+                    return Err(ToolError::Refused(
+                        "after the second -- give exactly one model key".into(),
                     ));
                 }
             };
@@ -170,6 +190,7 @@ fn run(args: &[&str]) -> Result<String, ToolError> {
                 Path::new(targets),
                 Path::new(pack),
                 &paths(keys),
+                model.as_deref(),
                 &release,
                 Path::new(out),
             )
