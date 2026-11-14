@@ -1,0 +1,38 @@
+11-14 12:38:13.849 29536 29563 I Rift    : result f3: installing
+11-14 12:38:14.302 29536 29563 I Rift    : result f3: outcome after 452 ms: Installed demo-20261114T092508Z.
+11-14 12:38:17.684 29776 29797 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:18.600 30034 30067 I Rift    : result f3: installing
+11-14 12:38:19.005 30034 30067 I Rift    : result f3: outcome after 404 ms: Installed demo-20261114T092508Z.
+11-14 12:38:22.150 30199 30220 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:22.966 30458 30482 I Rift    : result f3: installing
+11-14 12:38:23.368 30458 30482 I Rift    : result f3: outcome after 403 ms: Installed demo-20261114T092508Z.
+11-14 12:38:26.084 30601 30622 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:26.855 30850 30874 I Rift    : result f3: installing
+11-14 12:38:27.209 30850 30874 I Rift    : result f3: outcome after 354 ms: Installed demo-20261114T092508Z.
+11-14 12:38:30.352 30991 31012 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:31.180 31228 31252 I Rift    : result f3: installing
+11-14 12:38:31.583 31228 31252 I Rift    : result f3: outcome after 403 ms: Installed demo-20261114T092508Z.
+11-14 12:38:34.413 31375 31396 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:35.248 31616 31640 I Rift    : result f3: installing
+11-14 12:38:35.655 31616 31640 I Rift    : result f3: outcome after 407 ms: Installed demo-20261114T092508Z.
+11-14 12:38:38.334 31760 31781 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:39.189 31998 32022 I Rift    : result f3: installing
+11-14 12:38:42.017 32142 32163 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:42.817 32381 32405 I Rift    : result f3: installing
+11-14 12:38:43.220 32381 32405 I Rift    : result f3: outcome after 403 ms: Installed demo-20261114T092508Z.
+11-14 12:38:45.967 32528 32549 I Rift    : result f4: database after the kill: Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:47.390   313   338 I Rift    : result f5: ready
+11-14 12:38:47.693   313   338 I Rift    : result f5: full: 0 bytes usable
+11-14 12:38:47.714   313   338 I Rift    : result f5: install: the demo database could not be copied, so nothing was installed: could not create repo; database Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:47.817   313   338 I Rift    : result f5: download: storage error: encryption failed: failed to write header: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" })
+11-14 12:38:47.837   313   338 I Rift    : result f5: reset: Failed(message=Session storage failed: storage error: No space left on device (os error 28))
+11-14 12:38:47.837   313   338 I Rift    : result f5: free the space
+11-14 12:38:48.400   313   338 I Rift    : result f5: after freeing the space: session 61
+11-14 12:38:47.390   313   338 I Rift    : result f5: ready
+11-14 12:38:47.693   313   338 I Rift    : result f5: full: 0 bytes usable
+11-14 12:38:47.714   313   338 I Rift    : result f5: install: the demo database could not be copied, so nothing was installed: could not create repo; database Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.])
+11-14 12:38:47.817   313   338 I Rift    : result f5: download: storage error: encryption failed: failed to write header: IoError(Os { code: 28, kind: StorageFull, message: "No space left on device" })
+11-14 12:38:47.837   313   338 I Rift    : result f5: reset: Failed(message=Session storage failed: storage error: No space left on device (os error 28))
+11-14 12:38:47.837   313   338 I Rift    : result f5: free the space
+11-14 12:38:48.400   313   338 I Rift    : result f5: after freeing the space: session 61
+11-14 12:38:50.130   937  1007 I Rift    : result f6: session 62; database Installed(snapshot=demo-20261114T092508Z, digest=1e8190b379aca12e440035c8c974ac9618f540487fc58ac35ffb2d4d014b461d, demo=true, stale=false, clockBehind=false, createdUnix=1794648308, refreshAfterUnix=1795253108, notices=[DEMO: not real coverage. These indicators match only Simulation-Rift's own test content.]); downloads stored again

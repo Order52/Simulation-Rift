@@ -1402,6 +1402,38 @@ class SecurityTest {
     }
 
     /**
+     * The home screen's VPN card (the same switch as in Protection, in a place
+     * the user finds): "Stop VPN" turns the lock off and says so, "Turn VPN on"
+     * brings it back, and the lock follows each tap.
+     */
+    @Test
+    fun s28d_theVpnCardStopsAndStartsTheVpnFromHome() {
+        awaitLock()
+        try {
+            openHome()
+            scrollHomeTo(By.res("vpn-stop"), "Stop VPN").click()
+            val deadline = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+            while (NetworkLock.state.value != NetworkLock.State.TurnedOff) {
+                if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("the lock did not stop: ${NetworkLock.state.value}")
+                SystemClock.sleep(50)
+            }
+            assertNotNull("the card now offers to turn it on", device.wait(Until.findObject(By.res("vpn-start")), UI_TIMEOUT_MS))
+            screenshot("s28d-stopped")
+            device.findObject(By.res("vpn-start")).click()
+            val back = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
+            while (NetworkLock.state.value != NetworkLock.State.Active) {
+                if (SystemClock.elapsedRealtime() > back) throw AssertionError("the lock did not start again: ${NetworkLock.state.value}")
+                SystemClock.sleep(50)
+            }
+            assertNotNull("the card offers to stop it again", device.wait(Until.findObject(By.res("vpn-stop")), UI_TIMEOUT_MS))
+            report("s28d", "Stop VPN on Home turned the lock off (card offered Turn VPN on); Turn VPN on started it again (card offered Stop VPN)")
+        } finally {
+            if (NetworkLock.state.value == NetworkLock.State.TurnedOff) instrumentation.runOnMainSync { NetworkLock.turn(context, true) }
+            awaitLock()
+        }
+    }
+
+    /**
      * Content filters (§10.9), with the user's own rules (no list is
      * downloaded in a test): a script is blocked, an element is hidden by
      * a site rule and a sign-in pop-up by a generic one, the article stays;

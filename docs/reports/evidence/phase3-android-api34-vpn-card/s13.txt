@@ -1,0 +1,15 @@
+killed main 28512
+RESETTING 42
+generation=42
+after recovery: main=28792 browser=
+11-14 12:37:40.625 28623 28638 I RiftBrowser: browser process exiting: core died
+11-14 12:37:40.626   536   550 I ActivityManager: Process org.simulationrift.app (pid 28512) has died: fg  TOP 
+11-14 12:37:40.640   536   565 I ActivityManager: Start proc 28792:org.simulationrift.app/u0a212 for top-activity {org.simulationrift.app/org.simulationrift.app.MainActivity}
+11-14 12:37:40.646   536  1865 I ActivityManager: Process org.simulationrift.browser:web (pid 28623) has died: prcp CRE 
+11-14 12:37:41.348 28792 28792 I Rift    : network lock active
+11-14 12:37:41.385 28600 28616 I RiftBrowser: system wipe requested in pid 28600
+11-14 12:37:41.567   536   565 I ActivityManager: Start proc 28859:org.simulationrift.browser/u0a213 for service {org.simulationrift.browser/org.simulationrift.browser.SessionService}
+11-14 12:37:41.862 28792 28830 I Rift    : browser wiped: pid 28600 -> 28859, no files
+11-14 12:37:41.875 28792 28830 I Rift    : generation 42 disposed
+11-14 12:37:41.895 28792 28830 I Rift    : session 43 active; recovered interrupted session 42
+after recovery: files in the browser app: none

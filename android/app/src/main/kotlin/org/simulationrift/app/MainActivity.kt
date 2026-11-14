@@ -287,6 +287,7 @@ class MainActivity : ComponentActivity() {
                         Tab.HOME -> {
                             Header(state, lock, active != null && active.generation == reduced)
                             NoticeCard()
+                            VpnCard(lock)
                             SessionCard(state, lock, mayBrowse, reduced)
                             if (active != null) WatchCard(active.generation)
                             if (active != null) FilesCard()
@@ -703,6 +704,53 @@ class MainActivity : ComponentActivity() {
                     contentPadding = PaddingValues(0.dp),
                     modifier = Modifier.testTag("watch-coverage"),
                 ) { Text(if (coverage) "Hide what it covers" else "What the live check sees") }
+            }
+        }
+    }
+
+    /**
+     * Whether Rift's VPN is on, with the switch where it is easy to find (the
+     * same one as in Protection, so isolation behaves the same). The VPN is the
+     * network lock: it applies to Rift's browser only and forwards nothing, and
+     * Rift runs no DNS service of its own.
+     */
+    @Composable
+    private fun VpnCard(lock: NetworkLock.State) {
+        val on = lock == NetworkLock.State.Active || lock == NetworkLock.State.Starting
+        val off = lock == NetworkLock.State.TurnedOff
+        if (!on && !off) return
+        Card(
+            Modifier.fillMaxWidth().testTag("vpn-card"),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (on) "Rift's VPN is on" else "Rift's VPN is off", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (on) {
+                        "It applies to Rift's browser only. Your other apps, their traffic and their DNS do not go through it, " +
+                            "and Rift has no DNS service. Stopping it ends the current session; pages then reach websites " +
+                            "only through Rift's proxy, with reduced isolation."
+                    } else {
+                        "Pages reach websites only through Rift's proxy, with reduced isolation. Turning the VPN on ends the current session."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (on) {
+                    OutlinedButton(
+                        onClick = { NetworkLock.turn(this@MainActivity, false) },
+                        modifier = Modifier.testTag("vpn-stop"),
+                    ) { Text("Stop VPN") }
+                } else {
+                    Button(
+                        onClick = {
+                            NetworkLock.turn(this@MainActivity, true)
+                            turnOnLock()
+                        },
+                        modifier = Modifier.testTag("vpn-start"),
+                    ) { Text("Turn VPN on") }
+                }
             }
         }
     }
