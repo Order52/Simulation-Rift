@@ -767,6 +767,7 @@ A new snapshot invalidates cached conclusions as *current*. They remain visible 
 - A known shortener host: "destination unknown until followed". No network expansion is done.
 - No TLS.
 - (2.6) A protected brand inside another site's host, as a whole label word or joined to a lure word (`paypal-login.example`, `paypalsecure.example`): a warning with the lure, a note without. A protected domain's name in the path (`/paypal.com/signin`): a warning. A free hosting platform (`web.app`, `github.io`, `pages.dev` and others, a list the controller passes): a note, and it counts as a lure. A TLD that reads as a file name (`.zip`, `.mov`): a note. Domains already flagged as a lookalike or subdomain trick are not flagged again.
+- (3.2) A Telegram link (`t.me`, `telegram.me`, `telegram.dog`) to a bot (the name ends in "bot") whose name has a run of four or more digits (`t.me/rshdbbniq7811846_bot`): a warning. Fake prize and bank offers, such as a forged Rasheed Bank "14,000 IQD" ad seen on 14 Nov 2026, send people to such bots, and the address has no bank name for the brand check to find. A bot without a number (`@BotFather`) or a channel is not matched. Tests: `heuristics::a_telegram_bot_with_a_number_in_its_name_warns`, `ai::a_telegram_prize_bot_link_is_stopped_with_a_reason`. It does not decide what a given bot does, and a legitimate bot named like this is warned about too.
 
 Each heuristic yields a *Suspicious* flag naming the measured fact. Thresholds are pack data, not hard-coded.
 
