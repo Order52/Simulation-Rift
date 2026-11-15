@@ -287,8 +287,8 @@ class MainActivity : ComponentActivity() {
                         Tab.HOME -> {
                             Header(state, lock, active != null && active.generation == reduced)
                             NoticeCard()
-                            VpnCard(lock)
                             SessionCard(state, lock, mayBrowse, reduced)
+                            VpnCard(lock)
                             if (active != null) WatchCard(active.generation)
                             if (active != null) FilesCard()
                         }
