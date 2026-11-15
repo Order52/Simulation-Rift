@@ -132,6 +132,12 @@ pub enum Flag {
     FreeHosting {
         platform: String,
     },
+    /// A Telegram link to a bot whose name carries a long number
+    /// (`t.me/rshdbbniq7811846_bot`), the shape fake prize and bank offers
+    /// use: the bot, not Telegram or any bank, decides what happens next.
+    TelegramBotWithNumber {
+        name: String,
+    },
     /// The site name ends in `.zip` or `.mov`, which read as a file name.
     FileNameTld {
         tld: String,
@@ -156,6 +162,7 @@ impl Flag {
             | Self::MixedScriptLabel { .. }
             | Self::CredentialsInUrl
             | Self::ProtectedNameInPath { .. }
+            | Self::TelegramBotWithNumber { .. }
             | Self::BrandInHost { lure: Some(_), .. } => Severity::Warn,
             Self::InternationalizedHost { .. }
             | Self::IpLiteralHost
@@ -188,6 +195,7 @@ impl Flag {
             Self::ProtectedNameInPath { .. } => "protected-name-in-path",
             Self::FreeHosting { .. } => "free-hosting",
             Self::FileNameTld { .. } => "file-name-tld",
+            Self::TelegramBotWithNumber { .. } => "telegram-bot-with-number",
         }
     }
 
@@ -255,6 +263,10 @@ impl Flag {
                 "The site name ends in .{}, which can be mistaken for a file name.",
                 escape_for_display(tld)
             ),
+            Self::TelegramBotWithNumber { name } => format!(
+                "This opens the Telegram bot @{}. Fake prize and bank offers send people to bots with a number in the name; the bot, not Telegram or a bank, decides what it asks for.",
+                escape_for_display(name)
+            ),
         }
     }
 }
@@ -301,6 +313,9 @@ pub fn assess(raw: &[u8], url: &CanonicalUrl, config: &HeuristicConfig) -> Vec<F
             platform: platform.clone(),
         });
     }
+    if let Some(name) = telegram_bot_with_number(host, url.path()) {
+        flags.push(Flag::TelegramBotWithNumber { name });
+    }
     if let Some(tld) = host.rsplit('.').next()
         && matches!(tld, "zip" | "mov")
     {
@@ -344,6 +359,26 @@ pub fn assess(raw: &[u8], url: &CanonicalUrl, config: &HeuristicConfig) -> Vec<F
     }
     flags.extend(named);
     flags
+}
+
+/// `t.me/<name>`, `telegram.me/<name>` or `telegram.dog/<name>` where `<name>`
+/// is a bot (it ends in "bot") with a run of at least four digits: the shape
+/// of the fake prize and bank offers that send people to a Telegram bot. A
+/// plain bot name (`@BotFather`, `@gif`) is not matched.
+fn telegram_bot_with_number(host: &str, path: &str) -> Option<String> {
+    if !matches!(host, "t.me" | "telegram.me" | "telegram.dog") {
+        return None;
+    }
+    let name = path.strip_prefix('/')?.trim_end_matches('/');
+    let valid = (5..=32).contains(&name.len())
+        && name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    let digits = name
+        .split(|c: char| !c.is_ascii_digit())
+        .map(str::len)
+        .max()
+        .unwrap_or(0);
+    (valid && name.to_ascii_lowercase().ends_with("bot") && digits >= 4).then(|| name.to_owned())
 }
 
 /// Words fake sign-in, payment and delivery pages put in their addresses.
@@ -850,6 +885,38 @@ mod tests {
             "https://invoice.zip/",
             &Flag::FileNameTld { tld: "zip".into() }
         ));
+    }
+
+    #[test]
+    fn a_telegram_bot_with_a_number_in_its_name_warns() {
+        let wanted = Flag::TelegramBotWithNumber {
+            name: "rshdbbniq7811846_bot".into(),
+        };
+        // The address from a fake Rasheed Bank prize ad, in the ways it is written.
+        assert!(has("https://t.me/rshdbbniq7811846_bot", &wanted));
+        assert!(has("https://t.me/rshdbbniq7811846_bot/", &wanted));
+        assert!(has("https://t.me/rshdbbniq7811846_bot?start=ref1", &wanted));
+        assert!(has("https://T.ME/rshdbbniq7811846_bot", &wanted));
+        assert_eq!(wanted.severity(), Severity::Warn);
+        assert!(wanted.explain().contains("@rshdbbniq7811846_bot"));
+        // Other bots, channels and other hosts are not matched.
+        for ok in [
+            "https://t.me/BotFather",
+            "https://t.me/gif",
+            "https://t.me/some_news_channel2026",
+            "https://t.me/durov",
+            "https://t.me/mybot_123",
+            "https://t.me/s/rshdbbniq7811846_bot",
+            "https://t.me/",
+            "https://example.com/rshdbbniq7811846_bot",
+        ] {
+            assert!(
+                !flags(ok)
+                    .iter()
+                    .any(|f| f.code() == "telegram-bot-with-number"),
+                "{ok}"
+            );
+        }
     }
 
     #[test]
