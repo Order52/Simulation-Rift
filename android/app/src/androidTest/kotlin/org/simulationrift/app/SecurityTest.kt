@@ -1417,15 +1417,15 @@ class SecurityTest {
                 if (SystemClock.elapsedRealtime() > deadline) throw AssertionError("the lock did not stop: ${NetworkLock.state.value}")
                 SystemClock.sleep(50)
             }
-            assertNotNull("the card now offers to turn it on", device.wait(Until.findObject(By.res("vpn-start")), UI_TIMEOUT_MS))
+            val start = scrollHomeTo(By.res("vpn-start"), "Turn VPN on")
             screenshot("s28d-stopped")
-            device.findObject(By.res("vpn-start")).click()
+            start.click()
             val back = SystemClock.elapsedRealtime() + CORE_TIMEOUT_MS
             while (NetworkLock.state.value != NetworkLock.State.Active) {
                 if (SystemClock.elapsedRealtime() > back) throw AssertionError("the lock did not start again: ${NetworkLock.state.value}")
                 SystemClock.sleep(50)
             }
-            assertNotNull("the card offers to stop it again", device.wait(Until.findObject(By.res("vpn-stop")), UI_TIMEOUT_MS))
+            scrollHomeTo(By.res("vpn-stop"), "Stop VPN")
             report("s28d", "Stop VPN on Home turned the lock off (card offered Turn VPN on); Turn VPN on started it again (card offered Stop VPN)")
         } finally {
             if (NetworkLock.state.value == NetworkLock.State.TurnedOff) instrumentation.runOnMainSync { NetworkLock.turn(context, true) }
