@@ -373,6 +373,12 @@ class AndroidBrowserDisposal(private val context: Context) : BrowserDisposal {
             // androidx.profileinstaller (via Compose): an empty marker that the
             // ART baseline profile was installed, and (release builds) the APK
             // update time it was written for. Neither holds browsing data.
+            // Rift's own settings: the theme choice and the update switches and
+            // the time of the last update check. They hold no browsing data, and
+            // they appear on any phone where the user opened About or the app
+            // checked for an update, so a reset must not treat them as leftovers.
+            Regex("files/appearance"),
+            Regex("files/self-update-(off|launch-off|checked|store-defaults)"),
             Regex("files/profileInstalled"),
             Regex("files/profileinstaller_profileWrittenFor_lastUpdateTime\\.dat"),
             // ART's runtime app image (Android 14+, apps that are not

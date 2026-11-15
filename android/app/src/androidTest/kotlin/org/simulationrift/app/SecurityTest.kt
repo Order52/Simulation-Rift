@@ -1692,6 +1692,25 @@ class SecurityTest {
      * process; f6 then checks what is left after a restart.
      */
     @Test
+    fun s29_riftsOwnSettingsFilesAreNotLeftoversOfAReset() {
+        // A phone where About was opened and an update check ran has these in
+        // files/; a reset once failed with "unexpected file remains".
+        for (name in listOf("appearance", "self-update-checked", "self-update-off", "self-update-launch-off")) {
+            java.io.File(context.filesDir, name).writeText("1")
+        }
+        val generation = activeGeneration()
+        Core.reset(generation)
+        awaitCondition("a new session after the reset", SESSION_TIMEOUT_MS) {
+            val state = Core.state.value
+            assertTrue("cleanup failed: $state", state !is Core.State.Failed)
+            state is Core.State.Active && state.generation != generation
+        }
+        for (name in listOf("appearance", "self-update-checked", "self-update-off", "self-update-launch-off")) {
+            java.io.File(context.filesDir, name).delete()
+        }
+    }
+
+    @Test
     fun f5_aFullDiskFailsCleanly() {
         faultStep("full")
         val installed = intelMessageOf { Core.installDemoIntel() }
