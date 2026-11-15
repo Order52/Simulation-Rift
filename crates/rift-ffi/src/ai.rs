@@ -237,6 +237,33 @@ mod tests {
         assert_eq!(rift_core::pack::model_canary(&model), Ok(()));
     }
 
+    /// A fake Rasheed Bank prize ad (14,000 IQD) sent people to a Telegram bot.
+    /// The address has no bank name in it; Check must still stop and say why.
+    #[test]
+    fn a_telegram_prize_bot_link_is_stopped_with_a_reason() {
+        let navigator = crate::Navigator::new(Vec::new(), Vec::new());
+        let check = navigator.check("https://t.me/rshdbbniq7811846_bot".into(), None, 0);
+        match check.navigation {
+            crate::Navigation::Confirm { reasons, .. } => {
+                assert!(
+                    reasons
+                        .iter()
+                        .any(|r| format!("{r:?}").contains("rshdbbniq7811846_bot")),
+                    "{reasons:?}"
+                );
+            }
+            other => panic!("expected a warning, got {other:?}"),
+        }
+        // A bot without a number, and a channel, are not stopped by this rule.
+        for ok in ["https://t.me/BotFather", "https://t.me/durov"] {
+            let check = navigator.check(ok.into(), None, 0);
+            assert!(
+                matches!(check.navigation, crate::Navigation::Proceed { .. }),
+                "{ok}"
+            );
+        }
+    }
+
     #[test]
     fn the_shipped_model_does_not_score_the_most_visited_sites() {
         let ai = shipped();
