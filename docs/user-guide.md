@@ -139,6 +139,7 @@ The link field, the session (its state, **New session**, the live watch while a 
 
 ### Security
 
+- **Stop VPN** on Home: Rift's VPN is the network lock, for Rift Browser only; it forwards nothing and Rift has no DNS service. The Home card stops it (ending the session; later sessions say **reduced isolation**) and turns it on again.
 - **Protection** and **Network lock**: the state of the lock. If you need your own VPN, turn the lock off: sessions then run with **reduced isolation**, labelled as such, and still only through Rift's proxy. Rift never takes the VPN back without you.
 - **Hide your IP address**: **Off**, **Tor, through Orbot**, or **A SOCKS5 relay** (an `ip:port`). With a relay on, pages, downloads and Where it goes go through it, so sites see the relay's address, and the phone looks up no names. If the relay is not running, pages do not load: Rift never falls back to going direct. For Orbot, Rift pins the Orbot you have installed by its certificate, and **Ask Orbot to start** starts it. Rift's own updates and lists still go direct. A change starts a new session.
 - **Extra isolation** (optional, with [Shizuku](https://shizuku.rikka.app) or root): Android ignores the browser's clipboard and itself wipes the browser at each reset; with root, a firewall also keeps the browser to Rift's proxy. Each change is checked after it is made and undone when you switch it off.
