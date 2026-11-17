@@ -1,6 +1,6 @@
 # The brands Check protects (docs/architecture.md §10.3): the hand-picked ones
 # (tools/rift-train/brands-picked.txt), then those today's phishing addresses
-# fake most, written by tools/rift-train/brands.py from 436589 phishing
+# fake most, written by tools/rift-train/brands.py from 436647 phishing
 # and 46020 ordinary hosts. One registrable domain per line; a learned one is
 # marked `learned` and protects addresses only, not page names (§10.5).
 paypal.com
@@ -37,19 +37,19 @@ dropbox.com
 americanexpress.com
 tiktok.com
 ebay.com
-santander.com.br learned  # 278 phishing sites, 0 ordinary
+santander.com.br learned  # 277 phishing sites, 0 ordinary
 rakuten.co.jp learned  # 276 phishing sites, 0 ordinary
 royalmail.com learned  # 214 phishing sites, 0 ordinary
 mercari.com learned  # 211 phishing sites, 0 ordinary
-trustwallet.com learned  # 201 phishing sites, 0 ordinary
+trustwallet.com learned  # 202 phishing sites, 0 ordinary
 allegrolokalnie.pl learned  # 169 phishing sites, 0 ordinary
 opensea.io learned  # 159 phishing sites, 0 ordinary
 lloydsbank.co.uk learned  # 153 phishing sites, 0 ordinary
 commbank.com.au learned  # 139 phishing sites, 0 ordinary
-garena.com learned  # 131 phishing sites, 0 ordinary
+garena.com learned  # 132 phishing sites, 0 ordinary
 uniswap.org learned  # 130 phishing sites, 0 ordinary
 airbnb.com learned  # 127 phishing sites, 0 ordinary
-vodafone.pt learned  # 120 phishing sites, 0 ordinary
+vodafone.de learned  # 119 phishing sites, 0 ordinary
 microsoftonline.com learned  # 102 phishing sites, 0 ordinary
 runescape.com learned  # 88 phishing sites, 0 ordinary
 mygov.in learned  # 79 phishing sites, 0 ordinary
@@ -94,16 +94,16 @@ telstra.com learned  # 24 phishing sites, 0 ordinary
 tiktokshop.com learned  # 23 phishing sites, 0 ordinary
 strato.de learned  # 23 phishing sites, 0 ordinary
 shopee.co.id learned  # 23 phishing sites, 0 ordinary
+poste.it learned  # 23 phishing sites, 0 ordinary
 chronopost.fr learned  # 23 phishing sites, 0 ordinary
 sistema.gov.br learned  # 22 phishing sites, 0 ordinary
-poste.it learned  # 22 phishing sites, 0 ordinary
 mercadopago.com learned  # 22 phishing sites, 0 ordinary
 magazineluiza.com.br learned  # 22 phishing sites, 0 ordinary
 semana.com learned  # 21 phishing sites, 0 ordinary
+kucoin.com learned  # 20 phishing sites, 0 ordinary
 commerzbank.com learned  # 20 phishing sites, 0 ordinary
 bnpparibas.com learned  # 20 phishing sites, 0 ordinary
 rabobank.nl learned  # 19 phishing sites, 0 ordinary
-kucoin.com learned  # 19 phishing sites, 0 ordinary
 robinhood.com learned  # 18 phishing sites, 0 ordinary
 mercadolivre.com.br learned  # 18 phishing sites, 0 ordinary
 hotmail.com learned  # 17 phishing sites, 0 ordinary
