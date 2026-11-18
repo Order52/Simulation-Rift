@@ -9,7 +9,7 @@ A fixed list, so the work has an end. Every gate is a command or a file a reader
 | # | Gate | How it is checked | State (17 Nov 2026) |
 |---|---|---|---|
 | G1 | CI is green on `main` (rust on two systems, MSRV, dependencies, fuzz, Android API 33 and 34) | `gh run list --branch main` | Passing at each merge |
-| G2 | No open critical or high dependency alert | `gh api repos/Order52/Simulation-Rift/dependabot/alerts` | One critical, on `poc/Cargo.lock` (a harness that is not shipped); fixed in PR #23 |
+| G2 | No open critical or high dependency alert | `gh api repos/Order52/Simulation-Rift/dependabot/alerts` | None open on 17 Nov 2026 (the last, a critical wasmtime alert on `poc/Cargo.lock`, was closed by PR #23) |
 | G3 | `cargo fmt`, `clippy -D warnings`, `cargo test --workspace`, `cargo deny check` pass | CONTRIBUTING commands in CLAUDE.md | Pass on 17 Nov 2026: fmt and clippy clean, 297 tests passed, 0 failed, `cargo deny` ok |
 | G4 | The device suite passes in full on the API 34 emulator, from a clean install | `sh android/run-tests.sh` | 69 of 69 |
 | G5 | An upgrade over an older release starts a session and opens a page | `docs/demo.md`, step 0 | Pass on 17 Nov 2026 (API 34 arm64 emulator, release builds): 0.11.7 installed with its browser and started Session 1; updating in place to 0.11.9 (and its browser) started Session 2, and **New session** gave Session 3, with no cleanup failure. Done by hand with `adb`; not yet automated |
