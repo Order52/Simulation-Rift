@@ -32,4 +32,4 @@ yara-x = { version = "1.23.0", default-features = false, features = [
 rift-core = { path = "../rift-core" }
 rift-pack = { path = "../../tools/rift-pack" }
 tempfile = "3.27.0"
-jiff = "0.2.38"
+jiff = "1.0.0"
