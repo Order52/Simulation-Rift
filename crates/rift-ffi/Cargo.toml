@@ -33,7 +33,7 @@ thiserror = "2.0.21"
 uniffi = "0.32.2"
 
 [dev-dependencies]
-jiff = "0.2.38"
+jiff = "1.0.0"
 rift-pack = { path = "../../tools/rift-pack" }
 rift-worker-ffi = { path = "../rift-worker-ffi" }
 tempfile = "3.27.0"
